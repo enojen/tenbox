@@ -75,6 +75,14 @@ What workflows cannot do, and how Tenbox handles it:
 | The script cannot touch files or run commands | Agents run `tenbox ...` commands; the script only coordinates |
 | You cannot chat with one agent inside a run | Talk to the task session between runs; stop or restart single agents in `/workflows` |
 | Every step is done by an LLM, so a step could be faked | The hard gate is GitHub CI with branch protection, not an agent's report |
+| Resume works only in the same session (`resumeFromRunId`, longest unchanged prefix of `agent()` calls) | Keep the task session alive in tmux; a new session reruns the workflow, and agents reread `.tenbox/` so finished parts are skipped by the planner, not by the cache |
+| No `Date.now()`, `Math.random()` or `new Date()` in a script (they break resume) | Timestamps come from `tenbox` command output, never from the script |
+
+Checked against the Claude Code docs (sub-agents, workflows, worktrees, hooks, mods) on
+2026-10-07: every frontmatter field and script function used in this README exists;
+`pipeline` stages receive `(prevResult, item, index)`; `agentType` composes with
+`schema`; hooks run inside subagents with `agent_id` and `agent_type` and can deny a tool
+call (exit 2 or `permissionDecision: "deny"`); `SubagentStart` and `SubagentStop` exist.
 
 Considered and dropped: a custom daemon with an MCP `spawn_agent` tool and one tmux
 session per agent (workflows already do this, with resume), the Claude Agent SDK (API key
@@ -565,11 +573,12 @@ Three levels, from what exists today to what comes later:
 
 ### The live pane
 
-A Claude Code plugin: function hooks that draw a small pane or status line in the task
-session, hot-reloaded while it is built. No server, no browser. It reads the same events
-the panel will read later, so it doubles as the test for the open question "do hooks fire
-for workflow agents, and with which fields?". If they do not, the pane falls back to
-polling `.tenbox/` (part files, `rounds/N/*.json`) and the panel will do the same.
+A Claude Code mod (a plugin of function hooks, see the docs under plugins/mods) that
+draws a small pane or status line in the task session, hot-reloaded while it is built. No
+server, no browser. It listens to `SubagentStart`, `SubagentStop`, `PreToolUse` and
+`PostToolUse`, which carry `agent_id` and `agent_type`, and it reads `.tenbox/` (part
+files, `rounds/N/*.json`) for round and phase. It doubles as the test that those events
+arrive for workflow agents the way the docs say they do for subagents.
 
 ### The panel
 
@@ -648,14 +657,21 @@ Done when:
    questions.
 3. `/tenbox-build TEN-xx` builds, checks and reviews, and loops on a failure.
 4. A forced review failure produces a second round with the feedback applied.
-5. Stopping the run and starting it again resumes without redoing finished agents.
+5. Stopping the run and starting it again in the same session resumes without redoing
+   finished agents.
 
 ## Open questions
 
-- `isolation: 'worktree'`: where the worktree lives and what happens to its branch after
-  a changed run. The integrator step depends on this; check before phase 1 step 4.
-- Do hooks fire for workflow agents, and with which fields? The live pane, the panel and
-  the QA hook depend on this. The live pane is the test.
+- `isolation: 'worktree'` (docs, answered): the worktree is `.claude/worktrees/<name>/`,
+  branch `worktree-<name>`, based on `worktree.baseRef`; it is removed on its own only
+  when unchanged. What happens to a worktree with commits is not stated. Two things to
+  settle before phase 1 step 4: `tenbox start` must set `worktree.baseRef` to
+  `feat/<id>` in the task worktree's local settings, or workers branch from `main`; and
+  the `integrator` must merge the `worktree-*` branches into `feat/<id>`, then run
+  `git worktree remove` and delete the branches, since nothing else will.
+- Hooks inside workflow agents: the docs say hooks run inside subagents with `agent_id`
+  and `agent_type`, and workflow agents are subagents. Not yet tested for a workflow run;
+  the live pane is the test.
 - How strictly can the `qa` role be kept away from the code? Bash can read files, so the
   hook and Claude Code sandbox rules need testing.
 - Many task sessions at once on one subscription: watch the limit before running more
