@@ -2,6 +2,7 @@
 name: worker
 description: Builds one part of a Tenbox task. Writes the code and unit tests for that part, runs the checks, commits, and records the result in the part file. Never touches files owned by another part or listed in locked.
 permissionMode: acceptEdits
+model: sonnet
 color: green
 ---
 

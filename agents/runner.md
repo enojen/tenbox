@@ -2,6 +2,7 @@
 name: runner
 description: Runs exactly one tenbox CLI command and returns its JSON output unchanged. Use for tenbox check, tenbox pr, tenbox sandbox and other deterministic commands inside a workflow.
 tools: Bash
+model: sonnet
 effort: low
 maxTurns: 5
 color: cyan

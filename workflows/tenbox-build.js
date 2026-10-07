@@ -9,17 +9,31 @@ const input = typeof args === 'string' ? { task: args } : (args ?? {})
 const task = input.task
 if (!task) throw new Error('args: the task id, for example "TEN-301"')
 const maxRounds = input.maxRounds ?? 3
-const LENSES = ['correctness', 'fit to the plan, the spec and the project glossary; repeated code', 'security and data safety']
+// Roles run on their frontmatter model; a hard part and a strong lens get this one.
+const STRONG_MODEL = 'opus'
+const strongModelIf = (needed) => (needed ? { model: STRONG_MODEL } : {})
+
+// The base lens always runs; the planner adds the others per task in plan.md.
+const LENSES = {
+  base: { text: 'correctness, fit to the plan and the spec, the project glossary, repeated code' },
+  security: { text: 'security and data safety', strong: true },
+  contract: { text: 'API and other contract changes, backwards compatibility' },
+}
 
 const PARTS = {
   type: 'object',
   properties: {
     parts: {
       type: 'array',
-      items: { type: 'object', properties: { id: { type: 'string' }, goal: { type: 'string' } }, required: ['id', 'goal'] },
+      items: {
+        type: 'object',
+        properties: { id: { type: 'string' }, goal: { type: 'string' }, difficulty: { enum: ['easy', 'hard'] } },
+        required: ['id', 'goal', 'difficulty'],
+      },
     },
+    lenses: { type: 'array', items: { enum: ['security', 'contract'] } },
   },
-  required: ['parts'],
+  required: ['parts', 'lenses'],
 }
 const BUILT = {
   type: 'object',
@@ -31,9 +45,16 @@ const BUILT = {
   required: ['status'],
 }
 // Only the fields the loop reads; the full result is in .tenbox/rounds/N/checks.json.
+// `commit` and `file` come only from the CLI: without them the command did not run.
 const CHECKS = {
   type: 'object',
-  properties: { ok: { type: 'boolean' }, summary: { type: 'string' }, error: { type: 'string' } },
+  properties: {
+    ok: { type: 'boolean' },
+    commit: { type: 'string' },
+    file: { type: 'string' },
+    summary: { type: 'string' },
+    error: { type: 'string' },
+  },
   required: ['ok'],
 }
 const REVIEW = {
@@ -49,27 +70,27 @@ const REVIEW = {
 let feedback = input.feedback ?? 'none'
 for (let round = 1; round <= maxRounds; round++) {
   phase('Build')
-  const { parts } = await agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change. Round feedback: ${feedback}`,
+  const { parts, lenses } = await agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses. Round feedback: ${feedback}`,
     { agentType: 'planner', schema: PARTS, phase: 'Build', label: `round ${round}: parts` })
   // One after another: without separate worktrees, parallel workers would edit the same tree.
   for (const part of parts) {
     const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}`,
-      { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}` })
+      { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
     if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [] }
   }
 
   phase('Checks')
-  const checks = await agent(`Run \`tenbox check ${task} --round ${round}\` and return its JSON.`,
+  const checks = await agent(`Run \`tenbox check ${task}\` and return its JSON.`,
     { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: checks` })
-  if (!checks?.ok) {
-    feedback = checks?.summary ?? checks?.error ?? 'tenbox check failed'
+  if (!checks?.ok || !checks.commit || !checks.file) {
+    feedback = checks?.summary ?? checks?.error ?? 'tenbox check did not run'
     continue
   }
 
   phase('Review')
-  const reviews = (await parallel(LENSES.map((lens) => () =>
-    agent(`Review task ${task} through this lens: ${lens}.`,
-      { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${lens}` })))).filter(Boolean)
+  const reviews = (await parallel(['base', ...lenses].map((key) => () =>
+    agent(`Review task ${task} through this lens: ${LENSES[key].text}.`,
+      { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${key}`, ...strongModelIf(LENSES[key].strong) })))).filter(Boolean)
   const mustFix = reviews.flatMap((r) => r.must_fix)
   if (mustFix.length) {
     feedback = mustFix.join('\n')

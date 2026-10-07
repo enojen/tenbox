@@ -210,12 +210,12 @@ gets them; a project can override one in its own `.claude/agents/`.
 
 | Role | Does | Key settings |
 |---|---|---|
-| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `Write`, `Edit` only under `.tenbox/`: a frontmatter field cannot scope a tool to a path, so the prompt sets the rule and a `PreToolUse` hook enforces it later; `effort: medium` |
-| `worker` | Builds one part: code and unit tests. Commits. Writes its result file. | full tools; `permissionMode: acceptEdits` so a round does not stop on edit prompts; locked paths blocked by hook |
+| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `Write`, `Edit` only under `.tenbox/`: a frontmatter field cannot scope a tool to a path, so the prompt sets the rule and a `PreToolUse` hook enforces it later; `model: opus`, `effort: medium` |
+| `worker` | Builds one part: code and unit tests. Commits. Writes its result file. | full tools; `permissionMode: acceptEdits` so a round does not stop on edit prompts; locked paths blocked by hook; `model: sonnet`, `opus` for a part the planner marks hard |
 | `integrator` | Merges parallel worker branches into the task branch. Resolves simple conflicts. | git only |
-| `reviewer` | Reads the diff against the plan through one lens. Marks hunks for the attention list. Never edits. | `disallowedTools: Edit, Write` |
+| `reviewer` | Reads the diff against the plan through one lens. Marks hunks for the attention list. Never edits. | `disallowedTools: Edit, Write`; `model: sonnet`, `opus` for the security lens |
 | `qa` | Black-box tester. Tests one acceptance criterion against the sandbox. Never reads code. | Bash + Playwright MCP; code reads blocked by hook |
-| `runner` | Runs one `tenbox` command and returns its JSON unchanged. | `effort: low`, Bash only |
+| `runner` | Runs one `tenbox` command and returns its JSON unchanged. | `model: sonnet`, `effort: low`, Bash only |
 
 Example:
 
@@ -224,7 +224,8 @@ Example:
 name: reviewer
 description: Reviews a Tenbox task diff against its plan through one lens. Never edits.
 disallowedTools: Edit, Write, NotebookEdit
-effort: high
+model: sonnet
+effort: medium
 ---
 You review `git diff main...HEAD` against `.tenbox/plan.md` and `.tenbox/decisions.md`.
 Use only the lens you are given. Report must_fix items only when the plan, the spec or

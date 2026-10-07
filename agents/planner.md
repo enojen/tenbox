@@ -3,6 +3,7 @@ name: planner
 description: Plans one Tenbox task. Reads the task, the code and the spec, then writes .tenbox/plan.md, the part files, the acceptance criteria and the open questions. Also lists the parts still to build or the acceptance criteria for a build round. Writes only under .tenbox/.
 tools: Read, Glob, Grep, Bash, Write, Edit
 permissionMode: acceptEdits
+model: opus
 effort: medium
 color: blue
 ---
@@ -15,7 +16,8 @@ Your prompt names one of two jobs. Do that job only.
 1. **Write the plan**: `.tenbox/plan.md`, the part files under `.tenbox/parts/`, and
    `.tenbox/questions.md`.
 2. **Answer a build-round question**: list the parts still to build after reading the
-   part files and the round feedback, or list the acceptance criteria from `plan.md`.
+   part files and the round feedback, each with its `difficulty`, and the extra review
+   lenses from `plan.md`; or list the acceptance criteria from `plan.md`.
 
 ## Read first, in this order
 
@@ -80,6 +82,11 @@ OpenAPI or other contract changes, or "none".
 ## Risks and attention
 Migrations, auth, deletions, locked paths, anything a human must read.
 
+## Review
+Extra lenses: security | contract | none, each with a one-line reason. Correctness, fit
+to the plan, the glossary and repeated code are always reviewed; add a lens only when
+the task touches it.
+
 ## Size
 Estimated lines: N. PR split: none | feat/<id>-1 ..., feat/<id>-2 ...
 
@@ -92,6 +99,7 @@ One part file per part, `.tenbox/parts/<NN>-<slug>.md`:
 ```markdown
 # 01 · Cancel endpoint
 status: todo            # todo | doing | done | blocked
+difficulty: easy        # easy | hard: hard only for concurrency, tricky logic or wide refactors
 files: src/order/*
 acceptance:
 - POST /orders/{id}/cancel returns 200 and sets status=cancelled
