@@ -48,7 +48,7 @@ export const CheckResultSchema = z.object({
   file: z.string(),
 });
 
-export const LinkSchema = z.object({
+export const LinkEntrySchema = z.object({
   name: z.string(),
   source: z.string(),
   link: z.string(),
@@ -59,7 +59,7 @@ export const LinkSchema = z.object({
 export const InstallResultSchema = z.object({
   ok: z.boolean(),
   claude_dir: z.string(),
-  links: z.array(LinkSchema),
+  links: z.array(LinkEntrySchema),
 });
 
 export const FailureSchema = z.object({
@@ -73,6 +73,6 @@ export type SetupResult = z.infer<typeof SetupResultSchema>;
 export type StartResult = z.infer<typeof StartResultSchema>;
 export type CheckRun = z.infer<typeof CheckRunSchema>;
 export type CheckResult = z.infer<typeof CheckResultSchema>;
-export type Link = z.infer<typeof LinkSchema>;
+export type LinkEntry = z.infer<typeof LinkEntrySchema>;
 export type InstallResult = z.infer<typeof InstallResultSchema>;
 export type Failure = z.infer<typeof FailureSchema>;
