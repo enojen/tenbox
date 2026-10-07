@@ -1,0 +1,6 @@
+project: tenbox
+setup: bun install
+
+checks:
+  types: bunx tsc --noEmit
+  unit: bun test cli

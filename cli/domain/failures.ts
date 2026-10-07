@@ -1,0 +1,63 @@
+import { lastNonEmpty, unique } from "./utils.ts";
+
+/** vitest/jest `FAIL × ✕ ✗`, bun `(fail)`, tsc `error TS1234`: the devbox `wtbase` default. */
+export const DEFAULT_FAILURE_PATTERN = "(^|\\s)(FAIL|\\(fail\\)|×|✕|✗)(\\s|$)|error TS[0-9]+";
+
+/** `[8.00ms]` (bun), `in 3s` (gradle): durations differ on every run. */
+const TRAILING_DURATION = /(\s*\[\d+(\.\d+)?m?s\]|\s+in\s+\d+(\.\d+)?m?s)$/;
+
+/** Long enough for a stack trace head, short enough for a PR body. */
+const MAX_REASON_LENGTH = 200;
+
+/** A line of check output in our format, so two of them compare by `===`. Made only by `failureLine`. */
+export type FailureLine = string & { readonly __brand: "FailureLine" };
+
+/** No colours, no outer spaces, no duration: the same failure looks the same on every run. */
+export function failureLine(raw: string): FailureLine {
+  return Bun.stripANSI(raw).trim().replace(TRAILING_DURATION, "") as FailureLine;
+}
+
+/** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */
+export interface Baseline {
+  sha: string;
+  lines: FailureLine[];
+}
+
+export interface FailureComparison {
+  /** The only thing that fails a check. */
+  newFailures: FailureLine[];
+  fixed: FailureLine[];
+}
+
+/** A failing exit with no matching line still yields one line, so a crash cannot pass silently. */
+export function parseFailures(commandOutput: string, exitCode: number, failurePattern = DEFAULT_FAILURE_PATTERN): FailureLine[] {
+  const lines = commandOutput.split("\n").map(failureLine);
+  const matched = lines.filter(isFailureLine(failurePattern));
+  const failures = unique(matched).sort();
+  if (isCrash(failures, exitCode)) return [buildCrashFailure(lines, exitCode)];
+  return failures;
+}
+
+export function compareWithBaseline(baseline: FailureLine[], current: FailureLine[]): FailureComparison {
+  const inBaseline = new Set(baseline);
+  const inCurrent = new Set(current);
+  return {
+    newFailures: current.filter((line) => !inBaseline.has(line)),
+    fixed: baseline.filter((line) => !inCurrent.has(line)),
+  };
+}
+
+function isFailureLine(failurePattern: string): (line: FailureLine) => boolean {
+  const re = new RegExp(failurePattern);
+  return (line) => re.test(line);
+}
+
+function isCrash(failures: FailureLine[], exitCode: number): boolean {
+  return failures.length === 0 && exitCode !== 0;
+}
+
+function buildCrashFailure(lines: FailureLine[], exitCode: number): FailureLine {
+  const reason = lastNonEmpty(lines);
+  if (reason === undefined) return failureLine(`exit ${exitCode}`);
+  return failureLine(`exit ${exitCode}: ${reason.slice(0, MAX_REASON_LENGTH)}`);
+}

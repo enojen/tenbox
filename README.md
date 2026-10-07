@@ -197,8 +197,10 @@ tracker: { kind: clickup, list: 901234567 }   # ids look like 86abc123
 
 The API key lives in `tenbox.local.yaml`. The task id is the only thing that leaks out:
 branch `feat/<id>`, worktree `~/wt/<project>/<id>`, tmux `tenbox-<id>`, compose project
-`tenbox-<id>`. `tenbox start <id> --title "..."` works with no tracker at all, for trying
-Tenbox on a scratch project.
+`tenbox-<id>`. The branch and tmux names are templates under `names:` in `tenbox.yaml`
+(`branch: feat/{id}`, `tmux: tenbox-{id}` by default); the worktree path is fixed.
+`tenbox start <id> --title "..."` works with no tracker at all, for trying Tenbox on a
+scratch project.
 
 ## Roles: `.claude/agents/`
 
@@ -208,8 +210,8 @@ gets them; a project can override one in its own `.claude/agents/`.
 
 | Role | Does | Key settings |
 |---|---|---|
-| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `disallowedTools: Edit` except `.tenbox/` |
-| `worker` | Builds one part: code and unit tests. Commits. Writes its result file. | full tools; locked paths blocked by hook |
+| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `Write`, `Edit` only under `.tenbox/`: a frontmatter field cannot scope a tool to a path, so the prompt sets the rule and a `PreToolUse` hook enforces it later; `effort: high` |
+| `worker` | Builds one part: code and unit tests. Commits. Writes its result file. | full tools; `permissionMode: acceptEdits` so a round does not stop on edit prompts; locked paths blocked by hook |
 | `integrator` | Merges parallel worker branches into the task branch. Resolves simple conflicts. | git only |
 | `reviewer` | Reads the diff against the plan through one lens. Marks hunks for the attention list. Never edits. | `disallowedTools: Edit, Write` |
 | `qa` | Black-box tester. Tests one acceptance criterion against the sandbox. Never reads code. | Bash + Playwright MCP; code reads blocked by hook |
@@ -356,7 +358,7 @@ prints JSON so a `runner` agent can return it unchanged.
 | `tenbox pr <TEN-xx> [--draft\|--ready]` | Push and create or update the PR; the body holds the attention list first, then plan, decisions, review, QA, links |
 | `tenbox close <TEN-xx>` | Sandbox down, worktrees and branch removed, tmux killed, `.tenbox/` archived |
 | `tenbox ls` | All tasks: step, round, sandbox up or not, links |
-| `tenbox init` | Reads `docker-compose.yml` and `package.json`, writes a draft `tenbox.yaml` |
+| `tenbox init` | Claude Code reads the repo (lockfiles, `package.json`, compose files) and writes a draft `tenbox.yaml`; the CLI never guesses a project's tooling itself |
 | `tenbox validate` | Checks `tenbox.yaml`: schema, kinds, `${...}` references, `depends_on` cycles |
 
 ## Project manifest: `tenbox.yaml`
@@ -424,9 +426,11 @@ checks:
   types: pnpm tsc --noEmit
   lint:  pnpm lint
   unit:  pnpm test --run
+failure_pattern: "(^|\\s)FAILED(\\s|$)"   # optional: what a failing line looks like; the default knows vitest, jest, bun and tsc
 
 locked: [openapi.yaml, e2e/, tenbox.yaml]
 budget: { max_rounds: 3, max_parallel_workers: 3, max_pr_lines: 400 }
+names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults
 ```
 
 **`run`** has three forms:
@@ -633,8 +637,9 @@ macOS and Linux from the first commit:
   `timeout`, `date -d`). The CLI does that work in TypeScript and spawns only `git`,
   `tmux`, `gh`, `docker`.
 - Hooks are `bun run hooks/<name>.ts`, not bash lines in `settings.json`.
-- `wtport` and `wtbase` are re-implemented inside the CLI with the same algorithm, so the
-  CLI does not depend on devbox shell tools and gives the same port on every machine.
+- `wtbase` is re-implemented inside the CLI with the same algorithm, so the CLI does not
+  depend on devbox shell tools. `wtport` follows the same way in phase 3, with the sandbox,
+  so every machine gives a worktree the same port.
 - Links: Caddy `p<port>` on the devbox, `http://localhost:<port>` elsewhere; the CLI picks
   by environment.
 - CI runs the CLI tests on `ubuntu-latest` and `macos-latest`.
@@ -647,7 +652,8 @@ macOS and Linux from the first commit:
    `tenbox start` takes `--title` so the first runs need no tracker; the Linear adapter
    comes right after.
 4. Write `workflows/tenbox-plan.js` and `workflows/tenbox-build.js` without the Try phase.
-   Run each once, adjust, save.
+   Parts run one after another in the task worktree; parallel workers in their own
+   worktrees and the `integrator` come later. Run each once, adjust, save.
 5. Write `tenbox install`.
 
 Done when:
@@ -681,3 +687,6 @@ Done when:
   `/tenbox-close` merges them in order and rebases the rest. Decide before phase 2.
 - `max_pr_lines`: whether tests and generated files count. Start with everything except
   lockfiles and generated clients; adjust after the first few tasks.
+- Check output: `failure_pattern` and regexes today. Test runners (bun, vitest, jest,
+  Gradle, Maven) can all write JUnit XML; reading that instead would drop the pattern for
+  test checks, while `tsc` and lint stay text. Decide in phase 3.
