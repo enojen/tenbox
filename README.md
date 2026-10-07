@@ -605,8 +605,9 @@ Ideas for its look are in the mockups.
 └ docs/         flow page and mockups
 ```
 
-`tenbox install` links `agents/` into `~/.claude/agents/`, `workflows/` into
-`~/.claude/workflows/`, and registers the hooks in `~/.claude/settings.json`.
+`tenbox install` symlinks every file of `agents/` into `~/.claude/agents/` and of
+`workflows/` into `~/.claude/workflows/`. It is idempotent and never overwrites a foreign
+file. Registering the hooks in `~/.claude/settings.json` comes in a later phase.
 
 ## Roadmap
 

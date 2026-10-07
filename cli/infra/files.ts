@@ -39,8 +39,8 @@ export const files: Files = {
   async mtime(p) {
     return (await stat(p)).mtimeMs;
   },
-  async symlink(target, link) {
-    await symlink(target, link);
+  async symlink(source, link) {
+    await symlink(source, link);
   },
   async readLink(p) {
     try {

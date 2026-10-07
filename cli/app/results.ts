@@ -51,7 +51,7 @@ export const CheckResultSchema = z.object({
 export const LinkSchema = z.object({
   name: z.string(),
   source: z.string(),
-  target: z.string(),
+  link: z.string(),
   state: z.enum(["linked", "unchanged", "skipped"]),
 });
 

@@ -8,7 +8,7 @@ export class FakeFiles implements Files {
   readonly data = new Map<string, string>();
   readonly dirs = new Set<string>();
   readonly mtimes = new Map<string, number>();
-  /** link path -> target path */
+  /** link path -> source path */
   readonly links = new Map<string, string>();
 
   seed(entries: Record<string, string>): this {
@@ -44,9 +44,9 @@ export class FakeFiles implements Files {
   async mtime(p: string) {
     return this.mtimes.get(p) ?? 0;
   }
-  async symlink(target: string, link: string) {
+  async symlink(source: string, link: string) {
     if (await this.exists(link)) throw new Error(`fake symlink: ${link} exists`);
-    this.links.set(link, target);
+    this.links.set(link, source);
   }
   async readLink(p: string) {
     return this.links.get(p) ?? null;

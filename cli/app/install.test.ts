@@ -24,9 +24,9 @@ describe("install", () => {
       ok: true,
       claude_dir: CLAUDE,
       links: [
-        { name: "planner.md", source: `${ROOT}/agents/planner.md`, target: `${CLAUDE}/agents/planner.md`, state: "linked" },
-        { name: "worker.md", source: `${ROOT}/agents/worker.md`, target: `${CLAUDE}/agents/worker.md`, state: "linked" },
-        { name: "tenbox-plan.js", source: `${ROOT}/workflows/tenbox-plan.js`, target: `${CLAUDE}/workflows/tenbox-plan.js`, state: "linked" },
+        { name: "planner.md", source: `${ROOT}/agents/planner.md`, link: `${CLAUDE}/agents/planner.md`, state: "linked" },
+        { name: "worker.md", source: `${ROOT}/agents/worker.md`, link: `${CLAUDE}/agents/worker.md`, state: "linked" },
+        { name: "tenbox-plan.js", source: `${ROOT}/workflows/tenbox-plan.js`, link: `${CLAUDE}/workflows/tenbox-plan.js`, state: "linked" },
       ],
     });
     expect(await p.files.isDir(`${CLAUDE}/agents`)).toBe(true);

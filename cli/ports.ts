@@ -38,8 +38,9 @@ export interface Files {
   mkdir(p: string): Promise<void>;
   list(p: string): Promise<string[]>;
   mtime(p: string): Promise<number>;
-  symlink(target: string, link: string): Promise<void>;
-  /** The target of the symlink at `p`; null when `p` is missing or not a symlink. */
+  /** Creates `link` pointing at `source`. */
+  symlink(source: string, link: string): Promise<void>;
+  /** The source the symlink at `p` points at; null when `p` is missing or not a symlink. */
   readLink(p: string): Promise<string | null>;
 }
 
