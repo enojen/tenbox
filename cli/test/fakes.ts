@@ -8,6 +8,8 @@ export class FakeFiles implements Files {
   readonly data = new Map<string, string>();
   readonly dirs = new Set<string>();
   readonly mtimes = new Map<string, number>();
+  /** link path -> target path */
+  readonly links = new Map<string, string>();
 
   seed(entries: Record<string, string>): this {
     for (const [p, t] of Object.entries(entries)) this.put(p, t);
@@ -19,7 +21,7 @@ export class FakeFiles implements Files {
     for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) this.dirs.add(d);
   }
   async exists(p: string) {
-    return this.data.has(p) || this.dirs.has(p);
+    return this.data.has(p) || this.dirs.has(p) || this.links.has(p);
   }
   async isDir(p: string) {
     return this.dirs.has(p);
@@ -36,11 +38,18 @@ export class FakeFiles implements Files {
   async list(p: string) {
     const prefix = `${p}/`;
     const names = new Set<string>();
-    for (const k of [...this.data.keys(), ...this.dirs]) if (k.startsWith(prefix)) names.add(k.slice(prefix.length).split("/")[0]!);
+    for (const k of [...this.data.keys(), ...this.dirs, ...this.links.keys()]) if (k.startsWith(prefix)) names.add(k.slice(prefix.length).split("/")[0]!);
     return [...names];
   }
   async mtime(p: string) {
     return this.mtimes.get(p) ?? 0;
+  }
+  async symlink(target: string, link: string) {
+    if (await this.exists(link)) throw new Error(`fake symlink: ${link} exists`);
+    this.links.set(link, target);
+  }
+  async readLink(p: string) {
+    return this.links.get(p) ?? null;
   }
 }
 
@@ -109,7 +118,7 @@ export interface FakePorts extends Ports {
   logs: string[];
 }
 
-export function fakePorts(opts: { cwd: string; wtRoot: string; git: GitScript; shell?: (c: string, cwd: string) => ShellResult; which?: (b: string) => string | null }): FakePorts {
+export function fakePorts(opts: { cwd: string; wtRoot: string; tenboxRoot?: string; claudeDir?: string; git: GitScript; shell?: (c: string, cwd: string) => ShellResult; which?: (b: string) => string | null }): FakePorts {
   const logs: string[] = [];
   let tick = 0;
   return {
@@ -123,6 +132,8 @@ export function fakePorts(opts: { cwd: string; wtRoot: string; git: GitScript; s
       wtRoot: opts.wtRoot,
       baselinesRoot: path.join(opts.wtRoot, ".baselines"),
       failurePattern: DEFAULT_FAILURE_PATTERN,
+      tenboxRoot: opts.tenboxRoot ?? "/tenbox",
+      claudeDir: opts.claudeDir ?? "/home/u/.claude",
       which: opts.which ?? (() => "/usr/bin/claude"),
     },
     clock: { now: () => new Date(1_700_000_000_000 + 1000 * tick++) },

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
+import { install } from "./app/install.ts";
 import { runChecks } from "./app/runChecks.ts";
 import { startTask } from "./app/startTask.ts";
 import { TenboxError } from "./domain/errors.ts";
@@ -61,6 +62,11 @@ const COMMANDS: Record<string, Command> = {
         base: v.base as string,
         timeoutMs: intValue(v, "timeout")! * 1000,
       }),
+  },
+  install: {
+    usage: "tenbox install",
+    options: {},
+    run: (ports) => install(ports),
   },
 };
 

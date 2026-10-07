@@ -38,6 +38,9 @@ export interface Files {
   mkdir(p: string): Promise<void>;
   list(p: string): Promise<string[]>;
   mtime(p: string): Promise<number>;
+  symlink(target: string, link: string): Promise<void>;
+  /** The target of the symlink at `p`; null when `p` is missing or not a symlink. */
+  readLink(p: string): Promise<string | null>;
 }
 
 export interface BaselineMeta {
@@ -63,6 +66,10 @@ export interface Env {
   baselinesRoot: string;
   /** Fallback when the manifest has no `failure_pattern`: `WTBASE_PATTERN`, else the default. */
   failurePattern: string;
+  /** The tenbox checkout that holds `agents/` and `workflows/`. */
+  tenboxRoot: string;
+  /** `~/.claude`; `CLAUDE_CONFIG_DIR` overrides. */
+  claudeDir: string;
   which(binary: string): string | null;
 }
 

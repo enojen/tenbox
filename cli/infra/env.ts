@@ -10,6 +10,8 @@ export function env(): Env {
     wtRoot,
     baselinesRoot: process.env.WTBASE_DIR ?? path.join(wtRoot, ".baselines"),
     failurePattern: process.env.WTBASE_PATTERN ?? DEFAULT_FAILURE_PATTERN,
+    tenboxRoot: path.resolve(import.meta.dir, "..", ".."),
+    claudeDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude"),
     which: (binary) => Bun.which(binary),
   };
 }

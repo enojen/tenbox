@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
 import path from "node:path";
 import type { Files } from "../ports.ts";
 
@@ -38,5 +38,16 @@ export const files: Files = {
   },
   async mtime(p) {
     return (await stat(p)).mtimeMs;
+  },
+  async symlink(target, link) {
+    await symlink(target, link);
+  },
+  async readLink(p) {
+    try {
+      if (!(await lstat(p)).isSymbolicLink()) return null;
+      return await readlink(p);
+    } catch {
+      return null;
+    }
   },
 };

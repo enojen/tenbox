@@ -48,6 +48,20 @@ export const CheckResultSchema = z.object({
   file: z.string(),
 });
 
+export const LinkSchema = z.object({
+  name: z.string(),
+  source: z.string(),
+  target: z.string(),
+  state: z.enum(["linked", "unchanged", "skipped"]),
+});
+
+/** `ok` is false when a link was skipped; like `check`, the exit code stays 0. */
+export const InstallResultSchema = z.object({
+  ok: z.boolean(),
+  claude_dir: z.string(),
+  links: z.array(LinkSchema),
+});
+
 export const FailureSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
@@ -59,4 +73,6 @@ export type SetupResult = z.infer<typeof SetupResultSchema>;
 export type StartResult = z.infer<typeof StartResultSchema>;
 export type CheckRun = z.infer<typeof CheckRunSchema>;
 export type CheckResult = z.infer<typeof CheckResultSchema>;
+export type Link = z.infer<typeof LinkSchema>;
+export type InstallResult = z.infer<typeof InstallResultSchema>;
 export type Failure = z.infer<typeof FailureSchema>;
