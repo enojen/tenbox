@@ -1,7 +1,7 @@
 import path from "node:path";
 import { type Baseline, compareWithBaseline, parseFailures } from "../domain/failures.ts";
 import { TenboxError } from "../domain/errors.ts";
-import type { TaskId } from "../domain/ids.ts";
+import { type TaskId, shortSha } from "../domain/ids.ts";
 import type { Project } from "../domain/project.ts";
 import { nextRound, roundDir, tenboxDir } from "../domain/task.ts";
 import type { BaselineStore, Ports } from "../ports.ts";
@@ -53,7 +53,7 @@ export async function runChecks(ports: Ports, input: CheckInput): Promise<CheckR
 
     let hit = await pickBaseline(baselines, project.name, name, baseSha);
     if (!hit && mainHead === baseSha && project.mainDir !== taskWorktree) {
-      log(`tenbox check: ${name}: no baseline for ${baseSha.slice(0, 7)}, taking one in ${project.mainDir}`);
+      log(`tenbox check: ${name}: no baseline for ${shortSha(baseSha)}, taking one in ${project.mainDir}`);
       hit = await takeBaseline(ports, project, name, cmd, baseSha, timeoutMs, pattern);
     }
     const baseLines = hit?.lines ?? [];

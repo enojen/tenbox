@@ -82,7 +82,7 @@ export interface Log {
   (text: string): void;
 }
 
-export type TaskStatus = "in_progress" | "in_review" | "done";
+export type TaskStatus = "in_progress" | "done";
 
 export interface TrackerTask {
   id: string;

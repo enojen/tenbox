@@ -5,6 +5,7 @@ import { runChecks } from "./app/runChecks.ts";
 import { startTask } from "./app/startTask.ts";
 import { TenboxError } from "./domain/errors.ts";
 import { taskId } from "./domain/ids.ts";
+import { isDigits } from "./domain/utils.ts";
 import type { Failure } from "./app/results.ts";
 import { realPorts } from "./infra/index.ts";
 import type { Ports } from "./ports.ts";
@@ -20,7 +21,7 @@ interface Command {
 function intValue(values: Values, name: string): number | undefined {
   const v = values[name];
   if (v === undefined) return undefined;
-  if (typeof v !== "string" || !/^[0-9]+$/.test(v)) throw new TenboxError(`--${name} must be a whole number`, "usage");
+  if (typeof v !== "string" || !isDigits(v)) throw new TenboxError(`--${name} must be a whole number`, "usage");
   return Number(v);
 }
 

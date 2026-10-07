@@ -15,3 +15,5 @@ export function deepMerge(a: Record<string, unknown>, b: Record<string, unknown>
 }
 
 export const lastNonEmpty = <T extends string>(lines: T[]): T | undefined => lines.findLast((line) => line !== "");
+
+export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);

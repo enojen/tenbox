@@ -52,7 +52,6 @@ export function linearTracker(config: TrackerConfig): Tracker {
   function pickState(states: State[], status: TaskStatus): State | undefined {
     const sorted = [...states].sort((a, b) => a.position - b.position);
     if (status === "done") return sorted.find((s) => s.type === "completed");
-    if (status === "in_review") return sorted.find((s) => /review/i.test(s.name)) ?? sorted.find((s) => s.type === "started");
     return sorted.find((s) => s.type === "started");
   }
 

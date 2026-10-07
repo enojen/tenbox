@@ -11,6 +11,7 @@ const renderMeta = (sha: string, m: BaselineMeta): string => `sha=${sha}\ndate=$
 export function fileBaselineStore(root: string): BaselineStore {
   const dir = (project: string, check: string) => path.join(root, project, check);
   const txt = (project: string, check: string, sha: string) => path.join(dir(project, check), `${sha}.txt`);
+  const meta = (project: string, check: string, sha: string) => path.join(dir(project, check), `${sha}.meta`);
 
   const find = async (project: string, check: string, sha: string): Promise<Baseline | null> => {
     const text = await files.read(txt(project, check, sha));
@@ -29,10 +30,9 @@ export function fileBaselineStore(root: string): BaselineStore {
       }
       return newest ? find(project, check, newest.sha) : null;
     },
-    async save(project, check, baseline, meta) {
-      const file = txt(project, check, baseline.sha);
-      await files.write(file, render(baseline.lines));
-      await files.write(file.replace(/\.txt$/, ".meta"), renderMeta(baseline.sha, meta));
+    async save(project, check, baseline, info) {
+      await files.write(txt(project, check, baseline.sha), render(baseline.lines));
+      await files.write(meta(project, check, baseline.sha), renderMeta(baseline.sha, info));
     },
   };
 }

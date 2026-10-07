@@ -7,6 +7,8 @@ import { type Task, renderTaskMd, tenboxDir } from "../domain/task.ts";
 import type { Ports } from "../ports.ts";
 import { findProject, loadManifest } from "./project.ts";
 
+const SETUP_TIMEOUT_MS = 15 * 60_000;
+
 export interface StartInput {
   id: TaskId;
   /** With a title, no tracker is needed. */
@@ -114,7 +116,7 @@ async function runSetup(ports: Ports, taskWorktree: string, manifestSetup: strin
   if (!cmd) return { state: "skipped", reason: "no setup: in tenbox.yaml" };
   ports.log(`tenbox start: setup: ${cmd}`);
   const t0 = ports.clock.now().getTime();
-  const r = await ports.shell.run(cmd, { cwd: taskWorktree, timeoutMs: 15 * 60_000 });
+  const r = await ports.shell.run(cmd, { cwd: taskWorktree, timeoutMs: SETUP_TIMEOUT_MS });
   const duration_ms = ports.clock.now().getTime() - t0;
   if (r.code !== 0) {
     throw new TenboxError(`setup failed (exit ${r.code}): ${cmd}`, "setup", { output: r.output.split("\n").slice(-30).join("\n") });
