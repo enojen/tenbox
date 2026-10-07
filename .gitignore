@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+tenbox.local.yaml
+.tenbox/
+.DS_Store
