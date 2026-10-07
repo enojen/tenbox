@@ -49,8 +49,14 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 
 ## Code rules
 
-- Small named functions over clever one-liners. No magic numbers: name the constant.
-- Comments say why, never what.
+The roles carry the general code shape rules (`agents/worker.md`). For this repo also:
+
+- Signatures use named types: `files: Files`, not `files: Ports["files"]`; no `Omit<>`,
+  `Pick<>` or indexed types in a parameter. A shape used twice gets a name.
+- `app/` imports `infra/` directly; no ports bag, no dependency injection. Only the tracker
+  is an interface, because its adapter is chosen at run time.
+- Tests run against real temporary git repositories and directories, not fakes.
+- No magic numbers: name the constant. No inline casts.
 - A branded type has one constructor function, the only place with `as`.
 - Generic helpers live in `cli/domain/utils.ts`; search there before writing one.
 - Less code is always better: no code for a later phase.

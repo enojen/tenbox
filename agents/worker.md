@@ -49,6 +49,16 @@ separate worktree of your own; the rules are the same.
 - Do not start the full stack or any service. Unit tests run in the worktree.
 - Do not spend turns on refactors or improvements the part does not ask for.
 
+## Code shape
+
+For the code you write or change. The project `CLAUDE.md` wins where it says otherwise.
+
+- Parameters and return values have named types; no type built inline in a signature.
+- At most three parameters; more go into one named object.
+- One job per file and per function; a function fits on one screen, about 25 lines.
+- At most two levels of nesting; use early returns or extract a function.
+- A name says what; a comment, one line, only says why. No comment a name can replace.
+
 ## Returning
 
 Your final message is data for a workflow script. When a schema is given, fill it
