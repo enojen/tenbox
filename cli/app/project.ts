@@ -19,10 +19,10 @@ async function yamlLayer(files: Files, file: string): Promise<ManifestLayer | nu
  * Layers, later ones win:
  * tenbox.yaml (task worktree, else main) → tenbox.local.yaml (main, then task) → .tenbox/override.yaml (task)
  */
-export async function loadManifest(files: Files, mainDir: string, taskDir?: string): Promise<Manifest> {
-  const candidates = [path.join(taskDir ?? mainDir, "tenbox.yaml"), path.join(mainDir, "tenbox.local.yaml")];
-  if (taskDir && taskDir !== mainDir) candidates.push(path.join(taskDir, "tenbox.local.yaml"));
-  if (taskDir) candidates.push(path.join(taskDir, ".tenbox", "override.yaml"));
+export async function loadManifest(files: Files, mainDir: string, taskWorktree?: string): Promise<Manifest> {
+  const candidates = [path.join(taskWorktree ?? mainDir, "tenbox.yaml"), path.join(mainDir, "tenbox.local.yaml")];
+  if (taskWorktree && taskWorktree !== mainDir) candidates.push(path.join(taskWorktree, "tenbox.local.yaml"));
+  if (taskWorktree) candidates.push(path.join(taskWorktree, ".tenbox", "override.yaml"));
   const layers: ManifestLayer[] = [];
   for (const f of candidates) {
     const layer = await yamlLayer(files, f);
@@ -42,7 +42,7 @@ export async function findProject(git: Git, files: Files, cwd: string): Promise<
 }
 
 /** The task's worktree: the current one when it is the task's, else `~/wt/<project>/<id>`. */
-export async function resolveTaskDir(ports: Ports, id: TaskId): Promise<string> {
+export async function resolveTaskWorktree(ports: Ports, id: TaskId): Promise<string> {
   const { git, files, env } = ports;
   const top = await git.try(["rev-parse", "--show-toplevel"], env.cwd);
   if (top) {
@@ -50,12 +50,12 @@ export async function resolveTaskDir(ports: Ports, id: TaskId): Promise<string> 
     const manifest = await loadManifest(files, project.mainDir);
     const branch = await git.try(["rev-parse", "--abbrev-ref", "HEAD"], top);
     if (branch === taskBranch(manifest.names, id) || path.basename(top) === id) return top;
-    const dir = taskWorktreeDir(env.wtRoot, project.name, id);
-    if (await files.isDir(dir)) return dir;
+    const taskWorktree = taskWorktreeDir(env.wtRoot, project.name, id);
+    if (await files.isDir(taskWorktree)) return taskWorktree;
   }
   for (const project of await files.list(env.wtRoot)) {
-    const dir = path.join(env.wtRoot, project, id);
-    if (await files.isDir(path.join(dir, ".tenbox"))) return dir;
+    const taskWorktree = taskWorktreeDir(env.wtRoot, project, id);
+    if (await files.isDir(path.join(taskWorktree, ".tenbox"))) return taskWorktree;
   }
   throw new TenboxError(`no worktree for ${id}; run: tenbox start ${id}`, "no-worktree");
 }

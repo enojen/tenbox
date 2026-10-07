@@ -9,7 +9,7 @@ const input = typeof args === 'string' ? { task: args } : (args ?? {})
 const task = input.task
 if (!task) throw new Error('args: the task id, for example "TEN-301"')
 const maxRounds = input.maxRounds ?? 3
-const LENSES = ['correctness', 'fit to the plan and the spec', 'security and data safety']
+const LENSES = ['correctness', 'fit to the plan, the spec and the project glossary; repeated code', 'security and data safety']
 
 const PARTS = {
   type: 'object',

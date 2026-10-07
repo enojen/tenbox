@@ -29,29 +29,29 @@ export async function startTask(ports: Ports, input: StartInput): Promise<StartR
     ? { id, title: input.title, description: "", url: "", status: "todo", tracker: "none" }
     : { ...(await tracker.getTask(id)), id, tracker: tracker.kind };
 
-  const dir = taskWorktreeDir(env.wtRoot, project.name, id);
+  const taskWorktree = taskWorktreeDir(env.wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
   let created = false;
-  if (await files.isDir(dir)) {
-    if ((await git.try(["rev-parse", "--show-toplevel"], dir)) !== dir) {
-      throw new TenboxError(`${dir} exists but is not a git worktree`, "worktree");
+  if (await files.isDir(taskWorktree)) {
+    if ((await git.try(["rev-parse", "--show-toplevel"], taskWorktree)) !== taskWorktree) {
+      throw new TenboxError(`${taskWorktree} exists but is not a git worktree`, "worktree");
     }
-    log(`tenbox start: worktree ${dir} exists, reusing it`);
+    log(`tenbox start: worktree ${taskWorktree} exists, reusing it`);
   } else {
     if ((await git.try(["rev-parse", "--verify", "--quiet", `${base}^{commit}`], project.mainDir)) === null) {
       throw new TenboxError(`base branch ${base} not found; pass --base <branch>`, "no-base");
     }
-    await files.mkdir(path.dirname(dir));
+    await files.mkdir(path.dirname(taskWorktree));
     const branchExists = (await git.try(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], project.mainDir)) !== null;
-    await git.run(branchExists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, base], project.mainDir);
+    await git.run(branchExists ? ["worktree", "add", taskWorktree, branch] : ["worktree", "add", "-b", branch, taskWorktree, base], project.mainDir);
     created = true;
-    log(`tenbox start: worktree ${dir} on ${branch} from ${base}`);
+    log(`tenbox start: worktree ${taskWorktree} on ${branch} from ${base}`);
   }
 
   await git.ensureExcludes(project.commonDir, EXCLUDED_PATHS);
 
-  const tb = tenboxDir(dir);
-  await files.mkdir(path.join(tb, "tasks"));
+  const tb = tenboxDir(taskWorktree);
+  await files.mkdir(path.join(tb, "parts"));
   await files.mkdir(path.join(tb, "rounds"));
   const taskMd = path.join(tb, "task.md");
   if (!(await files.exists(taskMd))) await files.write(taskMd, renderTaskMd(task));
@@ -65,7 +65,7 @@ export async function startTask(ports: Ports, input: StartInput): Promise<StartR
     await files.write(settingsFile, `${JSON.stringify({ ...settings, worktree: { ...worktree, baseRef: "head" } }, null, 2)}\n`);
   }
 
-  const setup = await runSetup(ports, dir, manifest.setup, input.setup);
+  const setup = await runSetup(ports, taskWorktree, manifest.setup, input.setup);
 
   let trackerStatus = "skipped";
   if (!input.title) {
@@ -85,7 +85,7 @@ export async function startTask(ports: Ports, input: StartInput): Promise<StartR
       const claude = env.which("claude");
       if (!claude) tmuxState = "unavailable";
       else {
-        await tmux.newSession(session, dir, [claude]);
+        await tmux.newSession(session, taskWorktree, [claude]);
         tmuxState = "started";
       }
     }
@@ -97,7 +97,7 @@ export async function startTask(ports: Ports, input: StartInput): Promise<StartR
     task: id,
     title: task.title,
     project: project.name,
-    worktree: dir,
+    worktree: taskWorktree,
     branch,
     base,
     created,
@@ -108,13 +108,13 @@ export async function startTask(ports: Ports, input: StartInput): Promise<StartR
   };
 }
 
-async function runSetup(ports: Ports, dir: string, manifestSetup: string | undefined, wanted: boolean): Promise<SetupResult> {
+async function runSetup(ports: Ports, taskWorktree: string, manifestSetup: string | undefined, wanted: boolean): Promise<SetupResult> {
   if (!wanted) return { state: "skipped", reason: "--no-setup" };
   const cmd = manifestSetup;
   if (!cmd) return { state: "skipped", reason: "no setup: in tenbox.yaml" };
   ports.log(`tenbox start: setup: ${cmd}`);
   const t0 = ports.clock.now().getTime();
-  const r = await ports.shell.run(cmd, { cwd: dir, timeoutMs: 15 * 60_000 });
+  const r = await ports.shell.run(cmd, { cwd: taskWorktree, timeoutMs: 15 * 60_000 });
   const duration_ms = ports.clock.now().getTime() - t0;
   if (r.code !== 0) {
     throw new TenboxError(`setup failed (exit ${r.code}): ${cmd}`, "setup", { output: r.output.split("\n").slice(-30).join("\n") });

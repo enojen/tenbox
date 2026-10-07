@@ -22,6 +22,39 @@ No sandbox, no PR, no tracker API yet (`tenbox start --title` instead).
   in `workflows/`; check both against the current Claude Code docs, not memory.
 - Do not commit unless asked.
 
+## Glossary
+
+One name per concept, in code, docs, prompts and JSON. Code names in brackets.
+
+| Term | Meaning |
+|---|---|
+| task | One tracker item, worked on from start to merge. |
+| task id | The tracker's id, `TEN-301`; letters, digits, `_`, `-` (`TaskId`). |
+| project | One repository Tenbox works on; its name comes from `project:` or the directory (`Project`). |
+| main checkout | The project's own clone, `~/wt/<project>/main` (`mainDir`). |
+| worktree root | The directory that holds every project's checkouts, `~/wt` (`wtRoot`). |
+| task worktree | The git worktree of one task, `~/wt/<project>/<id>` (`taskWorktree`). |
+| manifest | `tenbox.yaml` plus its local layers (`Manifest`). |
+| setup | The manifest command that prepares a new task worktree, e.g. `bun install`. |
+| check | One named command under `checks:`; `tenbox check` runs them all. |
+| failure line | One output line of a check that matches the failure pattern (`FailureLine`). |
+| baseline | The failure lines a check has on `main` at one commit (`Baseline`). |
+| new failure | A failure line not in the baseline; the only thing that fails a check. |
+| fixed | A baseline failure line that no longer appears. |
+| round | One pass of build, checks and review inside `/tenbox-build`. |
+| part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
+| feedback | What a failed round passes to the next one: new failures or must-fix items. |
+| role | A Tenbox subagent: planner, worker, reviewer, runner. |
+| tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
+
+## Code rules
+
+- Small named functions over clever one-liners. No magic numbers: name the constant.
+- Comments say why, never what.
+- A branded type has one constructor function, the only place with `as`.
+- Generic helpers live in `cli/domain/utils.ts`; search there before writing one.
+- Less code is always better: no code for a later phase.
+
 ## Layout
 
 ```

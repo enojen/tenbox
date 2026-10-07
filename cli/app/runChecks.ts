@@ -5,7 +5,7 @@ import type { TaskId } from "../domain/ids.ts";
 import type { Project } from "../domain/project.ts";
 import { nextRound, roundDir, tenboxDir } from "../domain/task.ts";
 import type { BaselineStore, Ports } from "../ports.ts";
-import { findProject, loadManifest, resolveTaskDir } from "./project.ts";
+import { findProject, loadManifest, resolveTaskWorktree } from "./project.ts";
 import type { CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {
@@ -27,32 +27,32 @@ export async function runChecks(ports: Ports, input: CheckInput): Promise<CheckR
   const { git, files, shell, baselines, env, log } = ports;
   const { id, base, timeoutMs } = input;
 
-  const taskDir = await resolveTaskDir(ports, id);
-  const project = await findProject(git, files, taskDir);
-  const manifest = await loadManifest(files, project.mainDir, taskDir);
+  const taskWorktree = await resolveTaskWorktree(ports, id);
+  const project = await findProject(git, files, taskWorktree);
+  const manifest = await loadManifest(files, project.mainDir, taskWorktree);
   const checks = requireChecks(manifest.checks);
   const pattern = manifest.failure_pattern ?? env.failurePattern;
 
-  const round = input.round ?? nextRound(await files.list(path.join(tenboxDir(taskDir), "rounds")));
-  const rdir = roundDir(taskDir, round);
+  const round = input.round ?? nextRound(await files.list(path.join(tenboxDir(taskWorktree), "rounds")));
+  const rdir = roundDir(taskWorktree, round);
   await files.mkdir(path.join(rdir, "checks"));
 
-  const head = (await git.try(["rev-parse", "HEAD"], taskDir)) ?? "unknown";
-  const baseSha = (await git.try(["merge-base", "HEAD", base], taskDir)) ?? head;
+  const head = (await git.try(["rev-parse", "HEAD"], taskWorktree)) ?? "unknown";
+  const baseSha = (await git.try(["merge-base", "HEAD", base], taskWorktree)) ?? head;
   const mainHead = await git.try(["rev-parse", "HEAD"], project.mainDir);
 
   const results: CheckRun[] = [];
   for (const [name, cmd] of Object.entries(checks)) {
     log(`tenbox check: ${name}: ${cmd}`);
     const t0 = performance.now();
-    const r = await shell.run(cmd, { cwd: taskDir, timeoutMs });
+    const r = await shell.run(cmd, { cwd: taskWorktree, timeoutMs });
     const duration_ms = Math.round(performance.now() - t0);
     const logFile = path.join(rdir, "checks", `${name}.log`);
     await files.write(logFile, r.output);
     const current = parseFailures(r.output, r.timedOut ? 124 : r.code, pattern);
 
     let hit = await pickBaseline(baselines, project.name, name, baseSha);
-    if (!hit && mainHead === baseSha && project.mainDir !== taskDir) {
+    if (!hit && mainHead === baseSha && project.mainDir !== taskWorktree) {
       log(`tenbox check: ${name}: no baseline for ${baseSha.slice(0, 7)}, taking one in ${project.mainDir}`);
       hit = await takeBaseline(ports, project, name, cmd, baseSha, timeoutMs, pattern);
     }
@@ -69,7 +69,7 @@ export async function runChecks(ports: Ports, input: CheckInput): Promise<CheckR
       new_failures: newFailures,
       fixed,
       baseline: { sha: hit?.sha ?? baseSha, source: hit?.source ?? "none", failures: baseLines.length },
-      log: path.relative(taskDir, logFile),
+      log: path.relative(taskWorktree, logFile),
     });
   }
 
@@ -82,12 +82,12 @@ export async function runChecks(ports: Ports, input: CheckInput): Promise<CheckR
     ok: failing.length === 0,
     task: id,
     round,
-    worktree: taskDir,
+    worktree: taskWorktree,
     commit: head,
     base: { ref: base, sha: baseSha },
     checks: results,
     summary,
-    file: path.relative(taskDir, path.join(rdir, "checks.json")),
+    file: path.relative(taskWorktree, path.join(rdir, "checks.json")),
   };
   await files.write(path.join(rdir, "checks.json"), `${JSON.stringify(result, null, 2)}\n`);
   return result;

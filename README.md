@@ -94,7 +94,7 @@ auth only), self-hosted E2B (needs a cluster and `/dev/kvm`).
 |---|---|---|---|---|---|
 | 1 | Start | `tenbox start` | devbox shell | worktree, branch, `.tenbox/`, tmux session | |
 | 2 | Plan | `/tenbox-plan` | task session | `.tenbox/plan.md`, questions | 👤 you approve |
-| 3 | Build | workers | task worktree, or one worktree each | commits, `.tenbox/tasks/*.md` | |
+| 3 | Build | workers | task worktree, or one worktree each | commits, `.tenbox/parts/*.md` | |
 | 4 | Checks | `tenbox check` | task worktree | `.tenbox/rounds/N/checks.json` | no new failures |
 | 5 | Review | reviewer panel | task worktree, read-only | `.tenbox/rounds/N/review.json`, draft PR | no must-fix |
 | 6 | Try | QA agents | **sandbox**, pinned commit | `.tenbox/rounds/N/qa/` | every criterion passes |
@@ -210,7 +210,7 @@ gets them; a project can override one in its own `.claude/agents/`.
 
 | Role | Does | Key settings |
 |---|---|---|
-| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `Write`, `Edit` only under `.tenbox/`: a frontmatter field cannot scope a tool to a path, so the prompt sets the rule and a `PreToolUse` hook enforces it later; `effort: high` |
+| `planner` | Reads the task, code and spec. Writes the plan, the acceptance criteria and the questions. Splits the work into parts, and into stacked PRs when it exceeds `budget.max_pr_lines`. | `Write`, `Edit` only under `.tenbox/`: a frontmatter field cannot scope a tool to a path, so the prompt sets the rule and a `PreToolUse` hook enforces it later; `effort: medium` |
 | `worker` | Builds one part: code and unit tests. Commits. Writes its result file. | full tools; `permissionMode: acceptEdits` so a round does not stop on edit prompts; locked paths blocked by hook |
 | `integrator` | Merges parallel worker branches into the task branch. Resolves simple conflicts. | git only |
 | `reviewer` | Reads the diff against the plan through one lens. Marks hunks for the attention list. Never edits. | `disallowedTools: Edit, Write` |
@@ -241,7 +241,7 @@ Agents in one run do not talk to each other. They share files in the task worktr
 ├ plan.md               planner: steps, parts, acceptance criteria, spec changes
 ├ questions.md          open questions for you
 ├ decisions.md          answered questions; every agent reads this first
-├ tasks/01-cancel-api.md  one file per part: owner, status, files, result
+├ parts/01-cancel-api.md  one file per part: owner, status, files, result
 └ rounds/2/
   ├ checks.json         tenbox check
   ├ review.json         merged reviewer panel result: must_fix, nice_to_have, attention
@@ -278,11 +278,10 @@ Linked into `~/.claude/workflows/` so they run as `/tenbox-plan`, `/tenbox-build
 
 ### `/tenbox-plan`
 
-1. Two planner agents draft plans from different angles (smallest change first, risk
-   first).
-2. A third planner compares them and writes one `plan.md`.
-3. Questions it cannot settle go to `questions.md`, sorted by kind.
-4. Returns the plan summary and the open questions. You answer and approve between runs.
+1. One planner reads the task and the code and writes `plan.md` and the part files,
+   with the least code that does the task.
+2. Questions it cannot settle go to `questions.md`, sorted by kind.
+3. Returns the plan summary and the open questions. You answer and approve between runs.
 
 ### `/tenbox-build` (sketch)
 
@@ -301,7 +300,7 @@ let result = { status: 'failed' }
 
 for (let round = 1; round <= MAX_ROUNDS; round++) {
   phase('Build')
-  const parts = await agent(`Task ${task}, round ${round}. Read .tenbox/plan.md and .tenbox/tasks/. Feedback: ${feedback || 'none'}. Return the parts still to build.`, { agentType: 'planner', schema: PARTS })
+  const parts = await agent(`Task ${task}, round ${round}. Read .tenbox/plan.md and .tenbox/parts/. Feedback: ${feedback || 'none'}. Return the parts still to build.`, { agentType: 'planner', schema: PARTS })
   const parallelParts = parts.items.length > 1
   await pipeline(parts.items, p =>
     agent(`Build part ${p.id} of ${task}: ${p.goal}`, { agentType: 'worker', schema: BUILT, ...(parallelParts ? { isolation: 'worktree' } : {}) }))

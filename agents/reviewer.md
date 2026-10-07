@@ -14,7 +14,7 @@ reviewers cover the rest.
 ## Read first
 
 1. `.tenbox/decisions.md` if it exists. A choice recorded there is not a finding.
-2. `.tenbox/plan.md` and the part files in `.tenbox/tasks/`.
+2. `.tenbox/plan.md` and the part files in `.tenbox/parts/`.
 3. The diff: `git diff main...HEAD`, or the base branch your prompt names. Read the
    changed files in full when a hunk is not enough to judge.
 4. `tenbox.yaml` if it exists, for `locked`.
@@ -26,7 +26,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
 
 - `must_fix`: only what the plan, the spec or correctness requires. A must_fix item
   sends the task into another build round, so be sure. Style, naming and taste are never
-  must_fix.
+  must_fix, with two exceptions from the project `CLAUDE.md`: new code that repeats an
+  existing function, and a name that contradicts the project glossary.
 - `nice_to_have`: everything else worth saying. It does not block.
 - `attention`: hunks a human must read. This is a rule, not a judgement. Mark a hunk when
   it is, or touches: a migration or schema change, auth or permissions, a deletion of

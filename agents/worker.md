@@ -13,7 +13,7 @@ separate worktree of your own; the rules are the same.
 
 1. `.tenbox/decisions.md` if it exists. Every decision there is final.
 2. `.tenbox/plan.md`: approach, acceptance criteria, spec changes.
-3. Your part file in `.tenbox/tasks/`: its `files:` and `acceptance:` lines.
+3. Your part file in `.tenbox/parts/`: its `files:` and `acceptance:` lines.
 4. The round feedback in your prompt, if any. It comes from checks, reviewers or the
    user and describes behaviour, not hunks. Find the files yourself.
 5. `tenbox.yaml` if it exists, for `locked` and `checks`.
@@ -37,6 +37,10 @@ separate worktree of your own; the rules are the same.
 
 ## Rules
 
+- Before you write a new function, search the code for one that does the same job and
+  use it. Do not copy code; when two places need the same logic, keep it in one place.
+- Use the names in the project glossary (`CLAUDE.md`) for its concepts. Never give one
+  concept a second name.
 - If the task or the plan does not decide something, do not guess. Choose the stated
   default if the plan gives one; otherwise set `status: blocked` and return the question
   with its kind (`technical`, `product`, `contract`, `risk`) and whether it blocks.

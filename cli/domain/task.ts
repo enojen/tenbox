@@ -11,8 +11,8 @@ export interface Task {
   tracker: TrackerKind;
 }
 
-export const tenboxDir = (taskDir: string): string => path.join(taskDir, ".tenbox");
-export const roundDir = (taskDir: string, round: number): string => path.join(tenboxDir(taskDir), "rounds", String(round));
+export const tenboxDir = (taskWorktree: string): string => path.join(taskWorktree, ".tenbox");
+export const roundDir = (taskWorktree: string, round: number): string => path.join(tenboxDir(taskWorktree), "rounds", String(round));
 
 /** `.tenbox/task.md`: what the planner reads after `decisions.md`. */
 export function renderTaskMd(t: Task): string {
