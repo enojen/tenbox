@@ -55,7 +55,8 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 
 - Parameters and return values have named types; no type built inline in a signature.
 - At most three parameters; more go into one named object.
-- One job per file and per function; a function fits on one screen, about 25 lines.
+- One job per file and per function. If a name or a one-line description of it needs
+  "and", it does two jobs: split it. Length is a hint, not the rule.
 - At most two levels of nesting; use early returns or extract a function.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
 

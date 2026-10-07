@@ -27,7 +27,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
 
 - `must_fix`: only what the plan, the spec or correctness requires. A must_fix item
   sends the task into another build round, so be sure. Style, naming and taste are never
-  must_fix, with these exceptions from the project `CLAUDE.md`. Each one is must_fix:
+  must_fix, with these exceptions from the project `CLAUDE.md`. Each one is must_fix,
+  never taste and never nice_to_have:
   - code that repeats an existing function, or repeats itself inside the diff;
   - a name that contradicts the project glossary, or one word used for two concepts;
   - a README or `CLAUDE.md` statement the diff makes untrue;
@@ -44,7 +45,8 @@ says otherwise:
 
 - Parameters and return values have named types; no type built inline in a signature.
 - At most three parameters; more go into one named object.
-- One job per file and per function; a function fits on one screen, about 25 lines.
+- One job per file and per function. If a name or a one-line description of it needs
+  "and", it does two jobs: split it. Length is a hint, not the rule.
 - At most two levels of nesting; use early returns or extract a function.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
 
