@@ -10,6 +10,7 @@ them in the same change.
 Phase 1 of the roadmap (README, "Start here: phase 1"): roles, `/tenbox-plan`,
 `/tenbox-build` without the Try phase, `tenbox start`, `tenbox check`, `tenbox install`.
 No sandbox, no PR, no tracker API yet (`tenbox start --title` instead).
+Phase 2 started with `tenbox close`: the cleanup only, no sandbox and no merge.
 
 ## Rules
 
@@ -34,6 +35,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | main checkout | The project's own clone, `~/wt/<project>/main` (`mainDir`). |
 | worktree root | The directory that holds every project's checkouts, `~/wt` (`wtRoot`). |
 | task worktree | The git worktree of one task, `~/wt/<project>/<id>` (`taskWorktree`). |
+| archive | Where a closed task's `.tenbox/` goes, `~/wt/.archive/<project>/<id>` (`archiveDir`). |
 | manifest | `tenbox.yaml` plus its local layers (`Manifest`). |
 | setup | The manifest command that prepares a new task worktree, e.g. `bun install`. |
 | check | One named command under `checks:`; `tenbox check` runs them all. |
@@ -85,7 +87,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
     manifests  projects  worktrees/  tasks  setups  sessions  baselines
   infra/        the outside world: files, git, shell, tmux, spawn, env, baselineStore, claudeSettings, http, graphql
     tracker/      the Tracker adapters and makeTracker
-  test/         tempProject.ts and the end-to-end test
+  test/         tempProject.ts, cli.ts (runs the real CLI) and the end-to-end test
 agents/     planner.md, worker.md, integrator.md, reviewer.md, qa.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
 hooks/      locked-paths.ts, qa-no-code.ts

@@ -9,6 +9,14 @@ export type SetupResult =
 
 export type TmuxState = "started" | "exists" | "skipped" | "unavailable";
 
+export type SessionRemoveState = "killed" | "skipped";
+
+export type ArchiveState = "archived" | "skipped";
+
+export type WorktreeRemoveState = "removed" | "skipped";
+
+export type BranchRemoveState = "deleted" | "skipped";
+
 export interface TmuxInfo {
   session: string;
   state: TmuxState;
@@ -33,6 +41,38 @@ export interface StartResult {
   setup: SetupResult;
   tracker: TrackerInfo;
   tmux: TmuxInfo;
+}
+
+export interface ArchiveInfo {
+  path: string;
+  state: ArchiveState;
+}
+
+export interface SessionRemoveInfo {
+  session: string;
+  state: SessionRemoveState;
+}
+
+export interface WorktreeRemoveInfo {
+  path: string;
+  state: WorktreeRemoveState;
+}
+
+export interface BranchRemoveInfo {
+  name: string;
+  state: BranchRemoveState;
+}
+
+export interface CloseResult {
+  ok: true;
+  task: string;
+  project: string;
+  forced: boolean;
+  archive: ArchiveInfo;
+  tmux: SessionRemoveInfo;
+  worktree: WorktreeRemoveInfo;
+  branch: BranchRemoveInfo;
+  tracker: TrackerInfo;
 }
 
 export interface BaselineSummary {

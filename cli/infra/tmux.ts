@@ -7,10 +7,19 @@ export const tmux = {
     return result.code === 0;
   },
 
-  async newSession(name: string, cwd: string, command: string[]): Promise<void> {
-    const result = await spawn(["tmux", "new-session", "-d", "-s", name, "-c", cwd, ...command]);
-    if (result.code !== 0) {
-      throw new TenboxError(`tmux new-session failed: ${result.stderr.trim()}`, "tmux");
-    }
+  newSession(name: string, cwd: string, command: string[]): Promise<void> {
+    return run(["new-session", "-d", "-s", name, "-c", cwd, ...command]);
+  },
+
+  killSession(name: string): Promise<void> {
+    return run(["kill-session", "-t", `=${name}`]);
   },
 };
+
+/** Throws with tmux's stderr on a non-zero exit. */
+async function run(args: string[]): Promise<void> {
+  const result = await spawn(["tmux", ...args]);
+  if (result.code === 0) return;
+  const reason = result.stderr.trim();
+  throw new TenboxError(`tmux ${args[0]} failed: ${reason}`, "tmux");
+}

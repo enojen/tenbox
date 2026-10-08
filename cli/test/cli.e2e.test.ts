@@ -2,63 +2,21 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
+import { isPlainObject } from "../domain/utils.ts";
+import { git } from "../infra/git.ts";
+import { type Json, tenbox } from "./cli.ts";
 import { type TempProject, makeTempProject } from "./tempProject.ts";
 
-const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
 let project: TempProject;
 let wt: string;
 let main: string;
 
-async function spawn(cmd: string[], cwd: string, extraEnv: Record<string, string> = {}) {
-  const p = Bun.spawn(cmd, {
-    cwd,
-    env: { ...process.env, ...extraEnv },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [out, err, code] = await Promise.all([
-    new Response(p.stdout).text(),
-    new Response(p.stderr).text(),
-    p.exited,
-  ]);
-  return { code, out, err };
-}
-
-type Json = Record<string, unknown>;
-
-function isJson(value: unknown): value is Json {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseJson(text: string): Json | null {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isJson(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-async function tenbox(args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
-  const r = await spawn([process.execPath, "run", MAIN_TS, ...args], cwd, extraEnv);
-  const json = parseJson(r.out);
-  if (!json) {
-    throw new Error(`stdout is not JSON (exit ${r.code}):\n${r.out}\n--- stderr:\n${r.err}`);
-  }
-  return { ...r, json };
-}
-
-async function gitOutput(args: string[], cwd: string): Promise<string> {
-  const r = await spawn(["git", ...args], cwd);
-  return r.out.trim();
-}
-
-const branchOf = (cwd: string) => gitOutput(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
-const statusOf = (cwd: string) => gitOutput(["status", "--porcelain"], cwd);
+const branchOf = (cwd: string) => git.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+const statusOf = (cwd: string) => git.run(["status", "--porcelain"], cwd);
 
 const unitCheck = (json: Json) => {
   const checks = Array.isArray(json.checks) ? json.checks : [];
-  return checks.find((c) => isJson(c) && c.name === "unit");
+  return checks.find((c) => isPlainObject(c) && c.name === "unit");
 };
 
 beforeAll(async () => {

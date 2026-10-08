@@ -20,7 +20,12 @@ export const git = {
   findBranch,
   findCommonDir,
   refExists,
+  branchExists,
   addWorktree,
+  removeWorktree,
+  deleteBranch,
+  hasChanges,
+  isMerged,
   ensureExcludes,
 };
 
@@ -88,11 +93,39 @@ async function refExists(dir: string, ref: string): Promise<boolean> {
   return sha !== null;
 }
 
+function branchExists(dir: string, branch: string): Promise<boolean> {
+  return refExists(dir, `refs/heads/${branch}`);
+}
+
 async function addWorktree(input: AddWorktreeInput): Promise<void> {
   const { mainDir, branch, base } = input;
-  const branchExists = await refExists(mainDir, `refs/heads/${branch}`);
-  const args = branchExists ? [input.path, branch] : ["-b", branch, input.path, base];
+  const exists = await branchExists(mainDir, branch);
+  const args = exists ? [input.path, branch] : ["-b", branch, input.path, base];
   await run(["worktree", "add", ...args], mainDir);
+}
+
+/** Removes the worktree with whatever is in it; the caller checked for changes first. */
+async function removeWorktree(mainDir: string, worktree: string): Promise<void> {
+  await run(["worktree", "remove", "--force", worktree], mainDir);
+}
+
+/** Deletes the branch even when it is not merged; the caller checked that first. */
+async function deleteBranch(mainDir: string, branch: string): Promise<void> {
+  await run(["branch", "-D", branch], mainDir);
+}
+
+/** Modified, staged and untracked files count; paths in `info/exclude` do not. */
+async function hasChanges(dir: string): Promise<boolean> {
+  const status = await run(["status", "--porcelain"], dir);
+  return status !== "";
+}
+
+/** True when merging `branch` into `base` would change nothing, e.g. after a squash merge. */
+async function isMerged(dir: string, base: string, branch: string): Promise<boolean> {
+  const mergedTree = await find(["merge-tree", "--write-tree", base, branch], dir, exitedWithOne);
+  if (mergedTree === null) return false;
+  const baseTree = await run(["rev-parse", `${base}^{tree}`], dir);
+  return mergedTree.split("\n")[0] === baseTree;
 }
 
 /** Adds the missing patterns to `<commonDir>/info/exclude`; returns the ones added. */

@@ -4,6 +4,7 @@ import { type Task, renderTaskMd, tenboxDir } from "../domain/task.ts";
 import type { TaskStatus, Tracker } from "../domain/tracker.ts";
 import { errorMessage } from "../domain/utils.ts";
 import { files } from "../infra/files.ts";
+import type { ArchiveState } from "./commands/results.ts";
 
 export interface TaskSource {
   id: TaskId;
@@ -12,7 +13,7 @@ export interface TaskSource {
 }
 
 /** Tasks: one tracker item each, with its `.tenbox/` files in the task worktree. */
-export const tasks = { get, ensureFiles, updateStatus };
+export const tasks = { get, ensureFiles, removeFiles, updateStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
@@ -34,13 +35,22 @@ async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   return taskMd;
 }
 
+/** Moves `.tenbox/` out of the worktree into the archive; `skipped` when there is none. */
+async function removeFiles(taskWorktree: string, archiveDir: string): Promise<ArchiveState> {
+  const dir = tenboxDir(taskWorktree);
+  const exists = await files.isDir(dir);
+  if (!exists) return "skipped";
+  await files.move(dir, archiveDir);
+  return "archived";
+}
+
 /** Only tasks that came from the tracker change its status; a failure is reported, not thrown. */
 async function updateStatus(
   source: TaskSource,
   tracker: Tracker,
   status: TaskStatus,
 ): Promise<string> {
-  if (source.title) return "skipped";
+  if (source.title || tracker.kind === "none") return "skipped";
   try {
     await tracker.updateStatus(source.id, status);
     return status;

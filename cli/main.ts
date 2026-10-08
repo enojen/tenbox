@@ -8,6 +8,7 @@ import {
   stringValue,
   type Values,
 } from "./args.ts";
+import { closeTask } from "./application/commands/close.ts";
 import { runChecks } from "./application/commands/check.ts";
 import { install } from "./application/commands/install.ts";
 import type { Failure } from "./application/commands/results.ts";
@@ -23,6 +24,7 @@ interface Command extends ArgSpec {
 
 const START_USAGE = 'tenbox start <id> [--title "..."] [--base main] [--no-setup] [--no-tmux]';
 const CHECK_USAGE = "tenbox check <id> [--round N] [--base main] [--timeout 600]";
+const CLOSE_USAGE = "tenbox close <id> [--force]";
 const DEFAULT_BASE = "main";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const MS_PER_SECOND = 1000;
@@ -66,6 +68,12 @@ const COMMANDS: Record<string, Command> = {
         base: stringValue(values, "base") ?? DEFAULT_BASE,
         timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
       }),
+  },
+  close: {
+    usage: CLOSE_USAGE,
+    options: { force: { type: "boolean", default: false } },
+    run: (positionals, values) =>
+      closeTask({ id: idArg(positionals, CLOSE_USAGE), force: flagValue(values, "force") }),
   },
   install: {
     usage: "tenbox install",

@@ -42,6 +42,12 @@ export const files = {
     await rename(tmp, p);
   },
 
+  /** Renames `from` to `to`, creating the parent of `to`; both must be on one file system. */
+  async move(from: string, to: string): Promise<void> {
+    await mkdir(path.dirname(to), { recursive: true });
+    await rename(from, to);
+  },
+
   async mkdir(p: string): Promise<void> {
     await mkdir(p, { recursive: true });
   },

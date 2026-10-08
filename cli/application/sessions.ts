@@ -1,9 +1,9 @@
 import { log } from "../infra/env.ts";
 import { tmux } from "../infra/tmux.ts";
-import type { TmuxInfo, TmuxState } from "./commands/results.ts";
+import type { SessionRemoveState, TmuxInfo, TmuxState } from "./commands/results.ts";
 
 /** The tmux session of a task, with `claude` in it. */
-export const sessions = { ensure };
+export const sessions = { ensure, remove };
 
 /** Starts the task's tmux session with `claude` in it; null `taskWorktree` means not asked for. */
 async function ensure(session: string, taskWorktree: string | null): Promise<TmuxInfo> {
@@ -22,6 +22,15 @@ async function startSession(session: string, taskWorktree: string): Promise<Tmux
   }
   await tmux.newSession(session, taskWorktree, [claude]);
   return logTmux(`session ${session} started`, "started");
+}
+
+/** Kills the session; nothing to do without `tmux` or without the session. */
+async function remove(session: string): Promise<SessionRemoveState> {
+  if (Bun.which("tmux") === null) return "skipped";
+  const exists = await tmux.hasSession(session);
+  if (!exists) return "skipped";
+  await tmux.killSession(session);
+  return "killed";
 }
 
 function logTmux(message: string, state: TmuxState): TmuxState {
