@@ -43,6 +43,7 @@ async function addOrReuse(input: WorktreeInput): Promise<boolean> {
 
 async function assertWorktree(taskWorktree: string): Promise<void> {
   const top = await git.findTopLevel(taskWorktree);
-  if (top === taskWorktree) return;
+  const real = await files.realPath(taskWorktree);
+  if (top === real) return;
   throw new TenboxError(`${taskWorktree} exists but is not a git worktree`, "worktree");
 }

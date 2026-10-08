@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, readlink, rename, stat, symlink } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, realpath, rename, stat, symlink } from "node:fs/promises";
 import path from "node:path";
 import { hasErrorCode } from "../../domain/utils.ts";
 
@@ -64,6 +64,11 @@ export const files = {
   async mtime(p: string): Promise<number> {
     const info = await stat(p);
     return info.mtimeMs;
+  },
+
+  /** The path with every symlink resolved. */
+  async realPath(p: string): Promise<string> {
+    return await realpath(p);
   },
 
   /** Creates `link` pointing at `source`. */

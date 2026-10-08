@@ -3,7 +3,7 @@ import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { files } from "../infra/files.ts";
-import { tmuxTest } from "../test/cli.ts";
+import { hasTmux, tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { startTask, type StartInput } from "./start.ts";
 
@@ -36,7 +36,7 @@ async function setup(manifest: string): Promise<void> {
 }
 
 afterEach(async () => {
-  Bun.spawnSync(["tmux", "kill-session", "-t", `=${SESSION}`]);
+  if (hasTmux) Bun.spawnSync(["tmux", "kill-session", "-t", `=${SESSION}`]);
   process.env.PATH = startPath;
   process.chdir(startCwd);
   await project.remove();
@@ -75,6 +75,16 @@ test("reuses an existing worktree and keeps task.md and other settings keys", as
   expect(taskMd).toBe("# T-1 · Old title\n");
   expect(settings.permissions).toEqual({ allow: ["Bash(git:*)"] });
   expect(r.setup).toEqual({ state: "skipped", reason: "--no-setup" });
+});
+
+test("a second start through a symlinked worktree root reuses the worktree", async () => {
+  await setup("project: demo\n");
+  const link = path.join(project.root, "link");
+  await files.symlink(project.wtRoot, link);
+  process.env.TENBOX_WT_ROOT = link;
+  const first = await startTask(input({ setup: false }));
+  const second = await startTask(input({ setup: false }));
+  expect([first.created, second.created]).toEqual([true, false]);
 });
 
 test("without a title and without a tracker it fails with no-tracker", async () => {

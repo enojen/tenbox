@@ -23,7 +23,12 @@ const ENOENT = "ENOENT";
 const running = new Set<number>();
 
 /** Runs a program without a shell: Tenbox starts only git, tmux, gh, docker and claude. */
-export const processes = { run, stopAll };
+export const processes = { run, stopAll, which };
+
+/** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
+function which(name: string): string | null {
+  return Bun.which(name, { PATH: process.env.PATH });
+}
 
 async function run(cmd: string[], options: ProcessOptions = {}): Promise<ProcessResult> {
   const started = performance.now();

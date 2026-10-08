@@ -6,7 +6,7 @@ import { projectDir } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type CliRun, tenbox, tmuxTest } from "../test/cli.ts";
+import { type CliRun, hasTmux, tenbox, tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const SESSION = "tenbox-T-1";
@@ -52,7 +52,7 @@ async function expectUntouched(run: CliRun): Promise<void> {
 }
 
 afterEach(async () => {
-  Bun.spawnSync(["tmux", "kill-session", "-t", `=${SESSION}`]);
+  if (hasTmux) Bun.spawnSync(["tmux", "kill-session", "-t", `=${SESSION}`]);
   await project.remove();
 });
 

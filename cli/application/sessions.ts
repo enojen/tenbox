@@ -1,4 +1,5 @@
 import { log } from "../infra/env.ts";
+import { processes } from "../infra/processes.ts";
 import { tmux } from "../infra/tmux.ts";
 
 export type TmuxState = "started" | "exists" | "skipped" | "unavailable";
@@ -25,7 +26,7 @@ async function ensure(session: string, taskWorktree: string | null): Promise<Tmu
 async function startSession(session: string, taskWorktree: string): Promise<TmuxState> {
   const exists = await tmux.hasSession(session);
   if (exists) return logTmux(`session ${session} exists`, "exists");
-  const claude = Bun.which("claude");
+  const claude = processes.which("claude");
   if (claude === null) {
     return logTmux("claude not found in PATH, session not started", "unavailable");
   }
@@ -35,7 +36,7 @@ async function startSession(session: string, taskWorktree: string): Promise<Tmux
 
 /** Kills the session; nothing to do without `tmux` or without the session. */
 async function remove(session: string): Promise<SessionRemoveState> {
-  if (Bun.which("tmux") === null) return "skipped";
+  if (processes.which("tmux") === null) return "skipped";
   const exists = await tmux.hasSession(session);
   if (!exists) return "skipped";
   await tmux.killSession(session);

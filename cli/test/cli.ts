@@ -15,7 +15,8 @@ export interface CliRun {
 }
 
 /** Runs only where tmux is installed. */
-export const tmuxTest = Bun.which("tmux") !== null ? test : test.skip;
+export const hasTmux = Bun.which("tmux") !== null;
+export const tmuxTest = hasTmux ? test : test.skip;
 
 /** Runs `tenbox <args>` with bun by full path, so tests may change `PATH`. */
 export async function tenbox(
