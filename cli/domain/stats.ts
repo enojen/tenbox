@@ -20,7 +20,6 @@ const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";
 const ESTIMATED_LINES = /^Estimated lines:\s*(\d+)/im;
 const DIFFICULTY_LINE = /^difficulty:\s*(\S+)/m;
-const PART_ID = /^[^-.]+/;
 
 export interface StatsTimeline extends RunTimeline {
   opened: string | null;
@@ -118,11 +117,6 @@ export function checksPassed(text: string | null): boolean | null {
   if (text === null) return null;
   const parsed = parseObject(text);
   return typeof parsed?.ok === "boolean" ? parsed.ok : null;
-}
-
-/** The `NN` of a part file name `NN-<slug>.md`. */
-export function partIdOf(fileName: string): string {
-  return PART_ID.exec(fileName)?.[0] ?? fileName;
 }
 
 /** The proofs in order; a part, test file and test name seen again is dropped. */

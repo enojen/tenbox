@@ -1,12 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  checksPassed,
-  countPlan,
-  countPoints,
-  distinctProofs,
-  partIdOf,
-  sumCode,
-} from "./stats.ts";
+import { checksPassed, countPlan, countPoints, distinctProofs, sumCode } from "./stats.ts";
 
 test("countPlan lists each part's difficulty in order and the estimated lines", () => {
   const parts = ["# 01\nstatus: todo\ndifficulty: easy\n", "difficulty: hard\n", "no difficulty\n"];
@@ -33,11 +26,6 @@ test("checksPassed reads ok and gives null for anything else", () => {
   expect(checksPassed("{}")).toBeNull();
   expect(checksPassed("not json")).toBeNull();
   expect(checksPassed(null)).toBeNull();
-});
-
-test("partIdOf takes the NN prefix of a part file name", () => {
-  expect(partIdOf("01-proofs-points.md")).toBe("01");
-  expect(partIdOf("notes.md")).toBe("notes");
 });
 
 test("countPoints gives +1 per proof and -1 per unproven item, per part in order", () => {

@@ -1,11 +1,6 @@
 import path from "node:path";
-import { partIdOf } from "../domain/stats.ts";
+import { type PartFile, partIdOf } from "../domain/part.ts";
 import { files } from "../infra/files.ts";
-
-export interface PartFile {
-  id: string;
-  text: string;
-}
 
 /** Parts: the part files in `<dir>/parts/`, one per piece of the plan. */
 export const parts = { read };
