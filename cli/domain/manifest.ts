@@ -50,6 +50,8 @@ export const ManifestSchema = z.object({
   // Becomes a directory under the worktree root: `../x` would escape it.
   project: z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }).optional(),
   setup: z.string().min(1).optional(),
+  /** The branch tasks start from and merge into. */
+  base: z.string().min(1).default("main"),
   failure_pattern: z
     .string()
     .min(1)

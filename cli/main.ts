@@ -23,11 +23,10 @@ interface Command extends ArgSpec {
   run(positionals: string[], values: Values): Promise<unknown>;
 }
 
-const START_USAGE = 'tenbox start <id> [--title "..."] [--base main] [--no-setup] [--no-tmux]';
-const CHECK_USAGE = "tenbox check <id> [--round N] [--base main] [--timeout 600]";
+const START_USAGE = 'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]';
+const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 600]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
-const DEFAULT_BASE = "main";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -42,7 +41,7 @@ const COMMANDS: Record<string, Command> = {
     usage: START_USAGE,
     options: {
       title: { type: "string" },
-      base: { type: "string", default: DEFAULT_BASE },
+      base: { type: "string" },
       setup: { type: "boolean", default: true },
       tmux: { type: "boolean", default: true },
     },
@@ -50,7 +49,7 @@ const COMMANDS: Record<string, Command> = {
       startTask({
         id: idArg(positionals, START_USAGE),
         title: stringValue(values, "title"),
-        base: stringValue(values, "base") ?? DEFAULT_BASE,
+        base: stringValue(values, "base"),
         setup: flagValue(values, "setup"),
         tmux: flagValue(values, "tmux"),
       }),
@@ -59,14 +58,14 @@ const COMMANDS: Record<string, Command> = {
     usage: CHECK_USAGE,
     options: {
       round: { type: "string" },
-      base: { type: "string", default: DEFAULT_BASE },
+      base: { type: "string" },
       timeout: { type: "string", default: String(DEFAULT_TIMEOUT_SECONDS) },
     },
     run: (positionals, values) =>
       runChecks({
         id: idArg(positionals, CHECK_USAGE),
         round: intValue(values, "round"),
-        base: stringValue(values, "base") ?? DEFAULT_BASE,
+        base: stringValue(values, "base"),
         timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
       }),
   },

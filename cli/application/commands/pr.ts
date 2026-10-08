@@ -16,30 +16,28 @@ export interface PrInput {
   ready: boolean;
 }
 
-const PR_BASE = "main";
-
 /** Pushes the task branch, then creates the PR or updates the open one. */
 export async function openPr(input: PrInput): Promise<PrResult> {
   const { id, ready } = input;
   const taskWorktree = await worktrees.get(id);
   const { manifest } = await projects.get(taskWorktree);
   const branch = taskBranch(manifest.names, id);
-  await assertPushable(taskWorktree, branch);
+  await assertPushable(taskWorktree, branch, manifest.base);
   await git.push(taskWorktree, branch);
   const commit = await git.findHead(taskWorktree);
   const text = await readPrText(id, taskWorktree);
-  const pr = await createOrUpdate({ dir: taskWorktree, branch, text, ready });
+  const pr = await createOrUpdate({ dir: taskWorktree, branch, base: manifest.base, text, ready });
   return { ok: true, task: id, branch, commit: commit ?? "", pr };
 }
 
-async function assertPushable(taskWorktree: string, branch: string): Promise<void> {
+async function assertPushable(taskWorktree: string, branch: string, base: string): Promise<void> {
   const dirty = await git.hasChanges(taskWorktree);
   if (dirty) {
     throw new TenboxError(`${taskWorktree} has uncommitted changes; commit them first`, "dirty");
   }
-  const merged = await git.isMerged(taskWorktree, PR_BASE, branch);
+  const merged = await git.isMerged(taskWorktree, base, branch);
   if (merged) {
-    throw new TenboxError(`${branch} has no commits ahead of ${PR_BASE}`, "no-commits");
+    throw new TenboxError(`${branch} has no commits ahead of ${base}`, "no-commits");
   }
 }
 
@@ -66,15 +64,16 @@ async function latestChecksSummary(taskWorktree: string): Promise<string | null>
 interface CreateOrUpdateInput {
   dir: string;
   branch: string;
+  base: string;
   text: PrText;
   ready: boolean;
 }
 
 async function createOrUpdate(input: CreateOrUpdateInput): Promise<PrInfo> {
-  const { dir, branch, text, ready } = input;
+  const { dir, branch, base, text, ready } = input;
   const open = await gh.findOpen(dir, branch);
   if (open === null) {
-    await gh.create(dir, { ...text, branch, base: PR_BASE, draft: !ready });
+    await gh.create(dir, { ...text, branch, base, draft: !ready });
     const created = await getOpen(dir, branch);
     return describe(created, "created");
   }

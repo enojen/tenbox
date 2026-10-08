@@ -13,15 +13,17 @@ export interface StartInput {
   id: TaskId;
   /** With a title, no tracker is needed. */
   title?: string;
-  base: string;
+  /** Default: the manifest's `base`. */
+  base?: string;
   tmux: boolean;
   setup: boolean;
 }
 
 /** Worktree + branch from `base`, `.tenbox/` with `task.md`, setup, tmux session with `claude`. */
 export async function startTask(input: StartInput): Promise<StartResult> {
-  const { id, base } = input;
+  const { id } = input;
   const { project, manifest } = await projects.get(env().cwd);
+  const base = input.base ?? manifest.base;
   const tracker = makeTracker(manifest.tracker);
   const task = await tasks.get(input, tracker);
   const taskWorktree = taskWorktreeDir(env().wtRoot, project.name, id);

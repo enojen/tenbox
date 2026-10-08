@@ -33,6 +33,7 @@ describe("mergeManifest", () => {
     const m = mergeManifest([]);
     expect(m.checks).toEqual({});
     expect(m.tracker.kind).toBe("none");
+    expect(m.base).toBe("main");
   });
   test("bad values are reported with their path", () => {
     expect(() => mergeManifest([{ file: "tenbox.yaml", value: { checks: { unit: 42 } } }])).toThrow(
