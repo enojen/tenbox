@@ -1,6 +1,6 @@
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
-import type { StatsProof } from "../../domain/runs.ts";
+import type { StatsProof } from "../../domain/proof.ts";
 import type { SessionRemoveState, TmuxInfo } from "../sessions.ts";
 import type { SetupResult } from "../setups.ts";
 import type { ArchiveState } from "../tasks.ts";

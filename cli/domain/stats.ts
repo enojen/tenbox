@@ -1,12 +1,6 @@
 import path from "node:path";
-import type {
-  RunAgent,
-  RunMinutes,
-  RunReview,
-  RunTimeline,
-  RunUnproven,
-  StatsProof,
-} from "./runs.ts";
+import type { StatsProof } from "./proof.ts";
+import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels and the worker proofs. */

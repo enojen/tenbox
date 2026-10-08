@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { TaskId } from "../domain/ids.ts";
-import { type StatsProof, summarizeRuns, trimProof } from "../domain/runs.ts";
+import { type StatsProof, trimProof } from "../domain/proof.ts";
+import { summarizeRuns } from "../domain/runs.ts";
 import {
   checksPassed,
   countPlan,

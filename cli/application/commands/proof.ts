@@ -1,6 +1,6 @@
 import { TenboxError } from "../../domain/errors.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { isProof, type StatsProof, trimProof } from "../../domain/runs.ts";
+import { isProof, type StatsProof, trimProof } from "../../domain/proof.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { parts } from "../parts.ts";
 import { proofs } from "../proofs.ts";
