@@ -103,3 +103,12 @@ tmuxTest("starts the tmux session once and then reports exists", async () => {
   const second = await startTask(input({ tmux: true }));
   expect([first.tmux.state, second.tmux.state]).toEqual(["started", "exists"]);
 });
+
+test("invalid settings.local.json fails with code settings naming the file", async () => {
+  await setup("project: demo\n");
+  await files.write(settingsPath(), "{bad");
+  await expect(startTask(input())).rejects.toMatchObject({
+    code: "settings",
+    message: expect.stringContaining(settingsPath()),
+  });
+});

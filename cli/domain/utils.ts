@@ -24,3 +24,6 @@ export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export const elapsedMs = (started: number): number => Math.round(performance.now() - started);
+
+export const hasErrorCode = (e: unknown, codes: readonly string[]): boolean =>
+  e instanceof Error && "code" in e && codes.includes(String(e.code));

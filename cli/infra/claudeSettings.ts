@@ -1,5 +1,6 @@
 import path from "node:path";
-import { isPlainObject } from "../domain/utils.ts";
+import { TenboxError } from "../domain/errors.ts";
+import { errorMessage, isPlainObject } from "../domain/utils.ts";
 import { files } from "./files.ts";
 
 /** Claude Code's local settings in a checkout: `.claude/settings.local.json`. */
@@ -20,6 +21,11 @@ async function ensureHeadBaseRef(mainDir: string): Promise<void> {
 
 async function read(file: string): Promise<Record<string, unknown>> {
   const text = await files.read(file);
-  const parsed: unknown = text === null ? {} : JSON.parse(text);
-  return isPlainObject(parsed) ? parsed : {};
+  if (text === null) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch (e) {
+    throw new TenboxError(`${file}: ${errorMessage(e)}`, "settings");
+  }
 }

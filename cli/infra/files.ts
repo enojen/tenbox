@@ -1,13 +1,21 @@
-import { lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
+import { lstat, mkdir, readdir, readlink, rename, stat, symlink } from "node:fs/promises";
 import path from "node:path";
+import { hasErrorCode } from "../domain/utils.ts";
+
+const MISSING_CODES = ["ENOENT", "ENOTDIR"];
+
+function isMissing(e: unknown): boolean {
+  return hasErrorCode(e, MISSING_CODES);
+}
 
 export const files = {
   async exists(p: string): Promise<boolean> {
     try {
       await stat(p);
       return true;
-    } catch {
-      return false;
+    } catch (e) {
+      if (isMissing(e)) return false;
+      throw e;
     }
   },
 
@@ -15,8 +23,9 @@ export const files = {
     try {
       const info = await stat(p);
       return info.isDirectory();
-    } catch {
-      return false;
+    } catch (e) {
+      if (isMissing(e)) return false;
+      throw e;
     }
   },
 
@@ -28,7 +37,9 @@ export const files = {
 
   async write(p: string, text: string): Promise<void> {
     await mkdir(path.dirname(p), { recursive: true });
-    await Bun.write(p, text);
+    const tmp = `${p}.${process.pid}.tmp`;
+    await Bun.write(tmp, text);
+    await rename(tmp, p);
   },
 
   async mkdir(p: string): Promise<void> {
@@ -38,8 +49,9 @@ export const files = {
   async list(p: string): Promise<string[]> {
     try {
       return await readdir(p);
-    } catch {
-      return [];
+    } catch (e) {
+      if (isMissing(e)) return [];
+      throw e;
     }
   },
 
@@ -59,8 +71,9 @@ export const files = {
       const info = await lstat(p);
       if (!info.isSymbolicLink()) return null;
       return await readlink(p);
-    } catch {
-      return null;
+    } catch (e) {
+      if (isMissing(e)) return null;
+      throw e;
     }
   },
 };

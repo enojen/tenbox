@@ -14,6 +14,8 @@ export interface Env {
   tenboxRoot: string;
   /** `~/.claude`; `CLAUDE_CONFIG_DIR` overrides. */
   claudeDir: string;
+  /** `TENBOX_DEBUG=1`: log every spawn and print a stack for every error. */
+  debug: boolean;
 }
 
 /** Read at each call, so tests can set `process.env` and `process.chdir` first. */
@@ -26,6 +28,7 @@ export function env(): Env {
     failurePattern: process.env.WTBASE_PATTERN ?? DEFAULT_FAILURE_PATTERN,
     tenboxRoot: path.resolve(import.meta.dir, "..", ".."),
     claudeDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude"),
+    debug: process.env.TENBOX_DEBUG === "1",
   };
 }
 

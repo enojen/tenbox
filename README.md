@@ -361,6 +361,16 @@ prints JSON so a `runner` agent can return it unchanged.
 | `tenbox init` | Claude Code reads the repo (lockfiles, `package.json`, compose files) and writes a draft `tenbox.yaml`; the CLI never guesses a project's tooling itself |
 | `tenbox validate` | Checks `tenbox.yaml`: schema, kinds, `${...}` references, `depends_on` cycles |
 
+Environment variables:
+
+| Variable | Does |
+|---|---|
+| `TENBOX_WT_ROOT` | The worktree root; default `~/wt` |
+| `WTBASE_DIR` | Where baselines are kept; default `<worktree root>/.baselines` |
+| `WTBASE_PATTERN` | The failure pattern when the manifest has none |
+| `CLAUDE_CONFIG_DIR` | The Claude Code config directory; default `~/.claude` |
+| `TENBOX_DEBUG=1` | Logs every spawned command to stderr and prints a stack for every error, not only internal ones |
+
 ## Project manifest: `tenbox.yaml`
 
 Every project runs different services. The manifest describes them so the CLI can start

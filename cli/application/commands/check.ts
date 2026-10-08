@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors.ts";
+import { noBaseError, TenboxError } from "../../domain/errors.ts";
 import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
@@ -106,10 +106,15 @@ async function ensureRound(taskWorktree: string, wanted?: number): Promise<Round
 }
 
 async function getCommits(taskWorktree: string, base: string): Promise<Commits> {
-  const headSha = await git.findHead(taskWorktree);
-  const mergeBase = await git.findMergeBase(taskWorktree, base);
-  const head = headSha ?? "unknown";
-  return { head, baseSha: mergeBase ?? head };
+  const head = await git.findHead(taskWorktree);
+  if (head === null) {
+    throw new TenboxError(`${taskWorktree} has no commit yet; commit first`, "no-head");
+  }
+  const baseExists = await git.refExists(taskWorktree, `${base}^{commit}`);
+  if (!baseExists) throw noBaseError(base, "not found");
+  const baseSha = await git.findMergeBase(taskWorktree, base);
+  if (baseSha === null) throw noBaseError(base, "has no common ancestor with HEAD");
+  return { head, baseSha };
 }
 
 async function runCheck(round: Round, check: NamedCheck): Promise<CheckRun> {

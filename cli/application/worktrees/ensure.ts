@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors.ts";
+import { noBaseError, TenboxError } from "../../domain/errors.ts";
 import { EXCLUDED_PATHS, type Project } from "../../domain/project.ts";
 import { claudeSettings } from "../../infra/claudeSettings.ts";
 import { log } from "../../infra/env.ts";
@@ -34,9 +34,7 @@ async function addOrReuse(input: WorktreeInput): Promise<boolean> {
     return false;
   }
   const baseExists = await git.refExists(project.mainDir, `${base}^{commit}`);
-  if (!baseExists) {
-    throw new TenboxError(`base branch ${base} not found; pass --base <branch>`, "no-base");
-  }
+  if (!baseExists) throw noBaseError(base, "not found");
   await files.mkdir(path.dirname(taskWorktree));
   await git.addWorktree({ mainDir: project.mainDir, path: taskWorktree, branch, base });
   log(`tenbox start: worktree ${taskWorktree} on ${branch} from ${base}`);

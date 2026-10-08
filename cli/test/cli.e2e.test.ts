@@ -1,5 +1,6 @@
 /** End to end: the real CLI against a throwaway repo under a temp `~/wt`. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { type TempProject, makeTempProject } from "./tempProject.ts";
 
@@ -8,8 +9,13 @@ let project: TempProject;
 let wt: string;
 let main: string;
 
-async function spawn(cmd: string[], cwd: string) {
-  const p = Bun.spawn(cmd, { cwd, env: process.env, stdout: "pipe", stderr: "pipe" });
+async function spawn(cmd: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  const p = Bun.spawn(cmd, {
+    cwd,
+    env: { ...process.env, ...extraEnv },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [out, err, code] = await Promise.all([
     new Response(p.stdout).text(),
     new Response(p.stderr).text(),
@@ -33,8 +39,8 @@ function parseJson(text: string): Json | null {
   }
 }
 
-async function tenbox(args: string[], cwd: string) {
-  const r = await spawn(["bun", "run", MAIN_TS, ...args], cwd);
+async function tenbox(args: string[], cwd: string, extraEnv: Record<string, string> = {}) {
+  const r = await spawn([process.execPath, "run", MAIN_TS, ...args], cwd, extraEnv);
   const json = parseJson(r.out);
   if (!json) {
     throw new Error(`stdout is not JSON (exit ${r.code}):\n${r.out}\n--- stderr:\n${r.err}`);
@@ -145,5 +151,43 @@ describe("tenbox check", () => {
   test("resolves the worktree from the main checkout too", async () => {
     const r = await tenbox(["check", "T-1", "--round", "3"], main);
     expect(r.json).toMatchObject({ worktree: path.join(wt, "demo", "T-1"), round: 3 });
+  });
+});
+
+describe("errors and debug", () => {
+  test("a missing git binary is no-command", async () => {
+    const empty = path.join(project.root, "empty-path");
+    await Bun.write(path.join(empty, ".keep"), "");
+    const args = ["start", "T-9", "--title", "x", "--no-tmux", "--no-setup"];
+    const r = await tenbox(args, main, { PATH: empty });
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ ok: false, code: "no-command" });
+    expect(String(r.json.error)).toContain("git");
+  });
+  test("a TenboxError prints no stack unless TENBOX_DEBUG=1", async () => {
+    const unknownCommand = ["bogus"];
+    const quiet = await tenbox(unknownCommand, main);
+    const debug = await tenbox(unknownCommand, main, { TENBOX_DEBUG: "1" });
+    expect(quiet.err).not.toMatch(/^\s+at /m);
+    expect(debug.err).toMatch(/^\s+at /m);
+  });
+  // Bun's fs errors carry no stack frames, so the stack is only the message.
+  test("an internal error prints its stack", async () => {
+    await chmod(wt, 0o000);
+    try {
+      const r = await tenbox(["check", "T-1"], project.root);
+      expect(r.json).toMatchObject({ ok: false, code: "internal" });
+      expect(r.err).toContain("EACCES");
+    } finally {
+      await chmod(wt, 0o755);
+    }
+  });
+  test("TENBOX_DEBUG=1 logs each spawn and keeps stdout the same", async () => {
+    const args = ["start", "T-1", "--title", "First task", "--no-tmux", "--no-setup"];
+    const plain = await tenbox(args, main);
+    const debug = await tenbox(args, main, { TENBOX_DEBUG: "1" });
+    expect(debug.json).toEqual(plain.json);
+    expect(debug.err).toMatch(/tenbox: spawn git .* \(cwd .*\) exit \d+ in \d+ ms/);
+    expect(plain.err).not.toContain("tenbox: spawn");
   });
 });

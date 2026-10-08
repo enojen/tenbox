@@ -122,6 +122,28 @@ describe("runChecks", () => {
   });
 });
 
+describe("runChecks commits", () => {
+  beforeEach(() => setup({ "tenbox.yaml": manifest() }));
+
+  test("a base that does not exist is no-base", async () => {
+    const run = runChecks({ ...input(), base: "nope" });
+    await expect(run).rejects.toMatchObject({ code: "no-base" });
+  });
+
+  test("a base with no common ancestor is no-base", async () => {
+    await git.run(["checkout", "-q", "--orphan", "island"], taskWorktree);
+    await git.run(["commit", "-q", "--allow-empty", "-m", "island"], taskWorktree);
+    const run = runChecks(input());
+    await expect(run).rejects.toMatchObject({ code: "no-base" });
+  });
+
+  test("a branch without a commit is no-head", async () => {
+    await git.run(["checkout", "-q", "--orphan", "empty"], taskWorktree);
+    const run = runChecks(input());
+    await expect(run).rejects.toMatchObject({ code: "no-head" });
+  });
+});
+
 describe("runChecks manifest", () => {
   test("the manifest's failure_pattern replaces the default", async () => {
     await setup({

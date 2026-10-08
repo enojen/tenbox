@@ -14,6 +14,7 @@ import type { Failure } from "./application/commands/results.ts";
 import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
 import { errorMessage } from "./domain/utils.ts";
+import { env, log } from "./infra/env.ts";
 import { stopAll } from "./infra/spawn.ts";
 
 interface Command extends ArgSpec {
@@ -105,7 +106,15 @@ function toFailure(e: unknown): Failure {
 function exitWithFailure(e: unknown): never {
   const failure = toFailure(e);
   emit(failure);
+  printStack(e);
   process.exit(failure.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE);
+}
+
+/** Internal errors always show their stack; Tenbox's own errors only with TENBOX_DEBUG=1. */
+function printStack(e: unknown): void {
+  if (!(e instanceof Error)) return;
+  if (e instanceof TenboxError && !env().debug) return;
+  log(e.stack ?? e.message);
 }
 
 function exitOnStop(): void {

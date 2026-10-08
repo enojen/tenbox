@@ -1,7 +1,7 @@
 import path from "node:path";
 import { TenboxError } from "../domain/errors.ts";
 import { files } from "./files.ts";
-import { spawn } from "./spawn.ts";
+import { type Spawned, spawn } from "./spawn.ts";
 
 export interface AddWorktreeInput {
   mainDir: string;
@@ -24,47 +24,67 @@ export const git = {
   ensureExcludes,
 };
 
+const GIT_LOCALE = "C";
+const NOT_A_REPOSITORY = "not a git repository";
+
+/** Decides from a failed git result whether it is the expected "not found" answer. */
+type IsNotFound = (result: Spawned) => boolean;
+
+const exitedWithOne: IsNotFound = (result) => result.code === 1;
+const outsideRepository: IsNotFound = (result) => result.stderr.includes(NOT_A_REPOSITORY);
+
+/** English messages in any locale, so `outsideRepository` can match git's stderr. */
+function spawnGit(args: string[], cwd: string): Promise<Spawned> {
+  return spawn(["git", ...args], { cwd, env: { LC_ALL: GIT_LOCALE } });
+}
+
+function gitError(args: string[], result: Spawned): TenboxError {
+  const reason = result.stderr.trim() || result.stdout.trim();
+  return new TenboxError(`git ${args.join(" ")} failed: ${reason}`, "git");
+}
+
 /** Trimmed stdout; throws on a non-zero exit. */
 async function run(args: string[], cwd: string): Promise<string> {
-  const result = await spawn(["git", ...args], { cwd });
-  if (result.code !== 0) {
-    const reason = result.stderr.trim() || result.stdout.trim();
-    throw new TenboxError(`git ${args.join(" ")} failed: ${reason}`, "git");
-  }
+  const result = await spawnGit(args, cwd);
+  if (result.code !== 0) throw gitError(args, result);
   return result.stdout.trim();
 }
 
-/** Trimmed stdout, or null on a non-zero exit. */
-async function find(args: string[], cwd: string): Promise<string | null> {
-  const result = await spawn(["git", ...args], { cwd });
-  return result.code === 0 ? result.stdout.trim() : null;
+/** Trimmed stdout, or null when `isNotFound` accepts the failure; any other failure throws. */
+async function find(args: string[], cwd: string, isNotFound: IsNotFound): Promise<string | null> {
+  const result = await spawnGit(args, cwd);
+  if (result.code === 0) return result.stdout.trim();
+  if (isNotFound(result)) return null;
+  throw gitError(args, result);
 }
 
 function findHead(dir: string): Promise<string | null> {
-  return find(["rev-parse", "HEAD"], dir);
+  return find(["rev-parse", "--verify", "--quiet", "HEAD"], dir, exitedWithOne);
 }
 
+/** Null when HEAD and `ref` have no common ancestor. */
 function findMergeBase(dir: string, ref: string): Promise<string | null> {
-  return find(["merge-base", "HEAD", ref], dir);
+  return find(["merge-base", "HEAD", ref], dir, exitedWithOne);
 }
 
 /** The root of the checkout that contains `dir`. */
 function findTopLevel(dir: string): Promise<string | null> {
-  return find(["rev-parse", "--show-toplevel"], dir);
+  return find(["rev-parse", "--show-toplevel"], dir, outsideRepository);
 }
 
+/** Null on a detached HEAD. */
 function findBranch(dir: string): Promise<string | null> {
-  return find(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  return find(["symbolic-ref", "--quiet", "--short", "HEAD"], dir, exitedWithOne);
 }
 
 /** The `.git` directory every worktree of the repository shares, as an absolute path. */
 async function findCommonDir(dir: string): Promise<string | null> {
-  const common = await find(["rev-parse", "--git-common-dir"], dir);
+  const common = await find(["rev-parse", "--git-common-dir"], dir, outsideRepository);
   return common === null ? null : path.resolve(dir, common);
 }
 
 async function refExists(dir: string, ref: string): Promise<boolean> {
-  const sha = await find(["rev-parse", "--verify", "--quiet", ref], dir);
+  const sha = await find(["rev-parse", "--verify", "--quiet", ref], dir, exitedWithOne);
   return sha !== null;
 }
 
