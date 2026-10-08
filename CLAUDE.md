@@ -1,17 +1,19 @@
 # CLAUDE.md
 
 Tenbox: a thin layer on top of Claude Code that runs one tracker task through plan,
-build, check, review, try and merge with workflows and custom subagents. The design is
-`README.md`; read it first, it is the spec. Where code and README disagree, fix one of
-them in the same change.
+build, check, review, try and merge with workflows and custom subagents. Read
+`README.md` first: it describes what is built today, and every statement in it must be true
+of the code. Where code and README disagree, fix one of them in the same change.
+`docs/design.md` is the target design for later phases; it is not today's behaviour, so
+never change it to match the code. When a task builds a piece of it, describe that piece in
+the README.
 
 ## Status
 
-Phase 1 of the roadmap (README, "Start here: phase 1"): roles, `/tenbox-plan`,
-`/tenbox-build` without the Try phase, `tenbox start`, `tenbox check`, `tenbox install`.
-No sandbox, no PR, no tracker API yet (`tenbox start --title` instead).
-Phase 2 started with `tenbox close` (the cleanup only, no sandbox and no merge) and `tenbox pr`
-(push, then create or update the PR with `gh`).
+Phase 1 is done: roles, `/tenbox-plan`, `/tenbox-build` without the Try phase,
+`tenbox start`, `check`, `install`, the Linear tracker. Phase 2 has `tenbox close` (the
+cleanup only, no sandbox and no merge) and `tenbox pr` (push, then create or update the PR
+with `gh`); next is `/tenbox-close`. No sandbox yet.
 
 ## Rules
 
@@ -86,17 +88,15 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   domain/       pure code: ids, failure lines, manifest schema, the Tracker port
   application/  use cases, and one module per glossary concept, named in the plural
     commands/     one file per CLI command, named after it; results.ts is their JSON output
-    manifests  projects  worktrees/  tasks  setups  sessions  baselines
-  infra/        the outside world: files, git, shell, tmux, spawn, env, baselineStore, claudeSettings, http, graphql
+    manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats
+  infra/        the outside world: files, git, gh, shell, tmux, spawn, env, baselineStore,
+                claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI) and the end-to-end test
-agents/     planner.md, worker.md, integrator.md, reviewer.md, qa.md, runner.md
-workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
-hooks/      locked-paths.ts, qa-no-code.ts
-schemas/    JSON schemas for agent outputs and tenbox.yaml
-pane/       later: live pane plugin
-panel/      later: web panel
-docs/       flow page and mockups
+agents/     planner.md, worker.md, reviewer.md, runner.md
+workflows/  tenbox-plan.js, tenbox-build.js
+docs/       design.md (the target design), flow page and mockups
+hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```
 
 ## Trying it

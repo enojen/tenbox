@@ -24,9 +24,8 @@ separate worktree of your own; the rules are the same.
 1. Set `status: doing` in your part file.
 2. Write the code and the unit tests for your part. Match the project's existing style,
    libraries and test runner. Make the smallest change that meets the acceptance lines.
-3. Stay inside your part's `files:`. Never edit a path in `locked` (a hook also blocks
-   it). If your part needs a change outside its files, do not make it: set
-   `status: blocked` and return a question.
+3. Stay inside your part's `files:`. Never edit a path in `locked`. If your part needs a
+   change outside its files, do not make it: set `status: blocked` and return a question.
 4. Run the checks for what you touched: the `checks` commands from `tenbox.yaml`, or the
    project's own type check, lint and unit test commands. Fix what you broke. Do not
    silence a failing test or lower a lint rule.
