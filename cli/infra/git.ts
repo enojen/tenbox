@@ -31,6 +31,7 @@ export const git = {
   deleteBranch,
   hasChanges,
   isMerged,
+  push,
   ensureExcludes,
 };
 
@@ -163,6 +164,11 @@ async function isMerged(dir: string, base: string, branch: string): Promise<bool
   if (mergedTree === null) return false;
   const baseTree = await run(["rev-parse", `${base}^{tree}`], dir);
   return mergedTree.split("\n")[0] === baseTree;
+}
+
+/** Pushes the branch to `origin` and sets it as the upstream. A rejected push throws. */
+async function push(dir: string, branch: string): Promise<void> {
+  await run(["push", "-u", "origin", branch], dir);
 }
 
 /** Adds the missing patterns to `<commonDir>/info/exclude`; returns the ones added. */

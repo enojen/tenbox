@@ -10,7 +10,8 @@ them in the same change.
 Phase 1 of the roadmap (README, "Start here: phase 1"): roles, `/tenbox-plan`,
 `/tenbox-build` without the Try phase, `tenbox start`, `tenbox check`, `tenbox install`.
 No sandbox, no PR, no tracker API yet (`tenbox start --title` instead).
-Phase 2 started with `tenbox close`: the cleanup only, no sandbox and no merge.
+Phase 2 started with `tenbox close` (the cleanup only, no sandbox and no merge) and `tenbox pr`
+(push, then create or update the PR with `gh`).
 
 ## Rules
 

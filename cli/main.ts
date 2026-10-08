@@ -12,6 +12,7 @@ import { closeTask } from "./application/commands/close.ts";
 import { runChecks } from "./application/commands/check.ts";
 import { install } from "./application/commands/install.ts";
 import type { Failure } from "./application/commands/results.ts";
+import { openPr } from "./application/commands/pr.ts";
 import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
 import { errorMessage, MS_PER_SECOND } from "./domain/utils.ts";
@@ -25,6 +26,7 @@ interface Command extends ArgSpec {
 const START_USAGE = 'tenbox start <id> [--title "..."] [--base main] [--no-setup] [--no-tmux]';
 const CHECK_USAGE = "tenbox check <id> [--round N] [--base main] [--timeout 600]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
+const PR_USAGE = "tenbox pr <id> [--ready]";
 const DEFAULT_BASE = "main";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
@@ -73,6 +75,12 @@ const COMMANDS: Record<string, Command> = {
     options: { force: { type: "boolean", default: false } },
     run: (positionals, values) =>
       closeTask({ id: idArg(positionals, CLOSE_USAGE), force: flagValue(values, "force") }),
+  },
+  pr: {
+    usage: PR_USAGE,
+    options: { ready: { type: "boolean", default: false } },
+    run: (positionals, values) =>
+      openPr({ id: idArg(positionals, PR_USAGE), ready: flagValue(values, "ready") }),
   },
   install: {
     usage: "tenbox install",
