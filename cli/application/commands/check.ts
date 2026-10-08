@@ -8,7 +8,7 @@ import { elapsedMs } from "../../domain/utils.ts";
 import { env, log } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
-import { exitCodeOf, type ShellResult, shell } from "../../infra/shell.ts";
+import { type ShellResult, shell } from "../../infra/shell.ts";
 import { type BaselineHit, baselines } from "../baselines.ts";
 import { manifests } from "../manifests.ts";
 import { projects } from "../projects.ts";
@@ -137,7 +137,8 @@ async function executeCheck(round: Round, check: NamedCheck): Promise<ExecutedCh
 
 async function judgeCheck(round: Round, executed: ExecutedCheck): Promise<CheckRun> {
   const { name, cmd, ran, durationMs } = executed;
-  const current = parseFailures(ran.output, exitCodeOf(ran), round.pattern);
+  const exitCode = shell.exitCode(ran);
+  const current = parseFailures(ran.output, exitCode, round.pattern);
   const hit = await baselines.find({ ...round, check: name, cmd });
   const { newFailures, fixed } = compareWithBaseline(hit?.lines ?? [], current);
   log(
@@ -146,7 +147,7 @@ async function judgeCheck(round: Round, executed: ExecutedCheck): Promise<CheckR
   return {
     name,
     cmd,
-    exit_code: ran.code,
+    exit_code: exitCode,
     duration_ms: durationMs,
     timed_out: ran.timedOut,
     failures: current.length,

@@ -3,14 +3,14 @@ import { elapsedMs, hasErrorCode } from "../domain/utils.ts";
 import { env, log } from "./env.ts";
 import { files } from "./files.ts";
 
-export interface SpawnOptions {
+export interface ProcessOptions {
   cwd?: string;
   timeoutMs?: number;
   /** Variables set on top of the current environment. */
   env?: Record<string, string>;
 }
 
-export interface Spawned {
+export interface ProcessResult {
   code: number;
   stdout: string;
   stderr: string;
@@ -22,8 +22,10 @@ const ENOENT = "ENOENT";
 /** Process groups still running, so `stopAll` can end them when tenbox itself is stopped. */
 const running = new Set<number>();
 
-/** Spawn without a shell. Tenbox itself spawns only git, tmux, gh, docker and claude. */
-export async function spawn(cmd: string[], options: SpawnOptions = {}): Promise<Spawned> {
+/** Runs a program without a shell: Tenbox starts only git, tmux, gh, docker and claude. */
+export const processes = { run, stopAll };
+
+async function run(cmd: string[], options: ProcessOptions = {}): Promise<ProcessResult> {
   const started = performance.now();
   const proc = await start(cmd, options);
   running.add(proc.pid);
@@ -40,7 +42,7 @@ export async function spawn(cmd: string[], options: SpawnOptions = {}): Promise<
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    if (env().debug) logSpawn(cmd, options, code, elapsedMs(started));
+    if (env().debug) logRun(cmd, options, code, elapsedMs(started));
     return { code, stdout, stderr, timedOut };
   } finally {
     clearTimeout(timer);
@@ -50,7 +52,7 @@ export async function spawn(cmd: string[], options: SpawnOptions = {}): Promise<
 
 async function start(
   cmd: string[],
-  options: SpawnOptions,
+  options: ProcessOptions,
 ): Promise<Bun.Subprocess<"ignore", "pipe", "pipe">> {
   try {
     return Bun.spawn(cmd, {
@@ -80,14 +82,14 @@ async function missingError(cmd: string[], cwd: string | undefined): Promise<Ten
   return new TenboxError(`${cmd[0]} not found in PATH`, "no-command");
 }
 
-function logSpawn(cmd: string[], options: SpawnOptions, code: number, ms: number): void {
+function logRun(cmd: string[], options: ProcessOptions, code: number, ms: number): void {
   log(
-    `tenbox: spawn ${cmd.join(" ")} (cwd ${options.cwd ?? process.cwd()}) exit ${code} in ${ms} ms`,
+    `tenbox: run ${cmd.join(" ")} (cwd ${options.cwd ?? process.cwd()}) exit ${code} in ${ms} ms`,
   );
 }
 
 /** Ends every running command with its children; detached groups miss the terminal's Ctrl-C. */
-export function stopAll(): void {
+function stopAll(): void {
   for (const pid of running) killGroup(pid);
 }
 

@@ -14,7 +14,7 @@ export interface Env {
   tenboxRoot: string;
   /** `~/.claude`; `CLAUDE_CONFIG_DIR` overrides. */
   claudeDir: string;
-  /** `TENBOX_DEBUG=1`: log every spawn and print a stack for every error. */
+  /** `TENBOX_DEBUG=1`: log every run and print a stack for every error. */
   debug: boolean;
 }
 

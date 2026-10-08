@@ -17,7 +17,7 @@ import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
 import { errorMessage, MS_PER_SECOND } from "./domain/utils.ts";
 import { env, log } from "./infra/env.ts";
-import { stopAll } from "./infra/spawn.ts";
+import { processes } from "./infra/processes.ts";
 
 interface Command extends ArgSpec {
   run(positionals: string[], values: Values): Promise<unknown>;
@@ -134,7 +134,7 @@ function printStack(e: unknown): void {
 function exitOnStop(): void {
   for (const [signal, code] of STOP_SIGNALS) {
     process.on(signal, () => {
-      stopAll();
+      processes.stopAll();
       process.exit(code);
     });
   }

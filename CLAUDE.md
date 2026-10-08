@@ -89,7 +89,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   application/  use cases, and one module per glossary concept, named in the plural
     commands/     one file per CLI command, named after it; results.ts is their JSON output
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats
-  infra/        the outside world: files, git, gh, shell, tmux, spawn, env, baselineStore,
+  infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI) and the end-to-end test

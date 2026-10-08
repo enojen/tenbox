@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn, stopAll } from "./spawn.ts";
+import { processes } from "./processes.ts";
 
 const LONG_SLEEP_SECONDS = 30;
 const POLL_MS = 20;
@@ -40,14 +40,14 @@ async function groupGone(pid: number): Promise<boolean> {
 }
 
 test("stopAll ends a running process group with its children", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "tenbox-spawn-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "tenbox-processes-"));
   try {
     const pidFile = path.join(dir, "pid");
     const script = `sleep ${LONG_SLEEP_SECONDS} & echo $$ > ${pidFile}; wait`;
-    const running = spawn(["sh", "-c", script]);
+    const running = processes.run(["sh", "-c", script]);
     const pid = await readPid(pidFile);
     expect(groupExists(pid)).toBe(true);
-    stopAll();
+    processes.stopAll();
     await running;
     const gone = await groupGone(pid);
     expect(gone).toBe(true);
@@ -59,9 +59,11 @@ test("stopAll ends a running process group with its children", async () => {
 test("a missing cwd is no-dir and a missing binary is no-command", async () => {
   const missing = path.join(os.tmpdir(), "tenbox-no-such-dir");
   const message = `directory ${missing} does not exist`;
-  await expect(spawn(["git", "status"], { cwd: missing })).rejects.toMatchObject({
+  await expect(processes.run(["git", "status"], { cwd: missing })).rejects.toMatchObject({
     code: "no-dir",
     message,
   });
-  await expect(spawn(["tenbox-no-such-command"])).rejects.toMatchObject({ code: "no-command" });
+  await expect(processes.run(["tenbox-no-such-command"])).rejects.toMatchObject({
+    code: "no-command",
+  });
 });

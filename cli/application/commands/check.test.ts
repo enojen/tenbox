@@ -12,6 +12,10 @@ import { runChecks } from "./check.ts";
 
 const TIMEOUT_MS = 20_000;
 const MINUTE_MS = 60_000;
+const SHORT_TIMEOUT_MS = 300;
+const SLOW_CHECK_SECONDS = 5;
+/** What a timed-out check reports, as in coreutils `timeout`. */
+const TIMEOUT_EXIT_CODE = 124;
 const META = { date: "2026-01-01T00:00:00.000Z", cmd: "check", exit_code: 1 };
 const KEY = { project: "demo", check: "unit" };
 
@@ -166,5 +170,20 @@ describe("runChecks manifest", () => {
   test("no checks anywhere is an error", async () => {
     await setup({ "tenbox.yaml": JSON.stringify({ project: "demo" }) });
     await expect(runChecks(input())).rejects.toMatchObject({ code: "no-checks" });
+  });
+});
+
+describe("runChecks timeout", () => {
+  test("a timed-out check reports exit code 124 in its result and its baseline", async () => {
+    await setup({
+      "tenbox.yaml": manifest({ checks: { slow: `sleep ${SLOW_CHECK_SECONDS}` } }),
+    });
+    const baseSha = await baseShaOf();
+    const r = await runChecks({ ...input(), timeoutMs: SHORT_TIMEOUT_MS });
+    expect(r.checks[0]).toMatchObject({ exit_code: TIMEOUT_EXIT_CODE, timed_out: true });
+    const meta = await files.read(
+      path.join(env().baselinesRoot, "demo", "slow", `${baseSha}.meta`),
+    );
+    expect(meta).toContain(`exit_code=${TIMEOUT_EXIT_CODE}\n`);
   });
 });

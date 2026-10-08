@@ -4,7 +4,7 @@ import type { Project } from "../domain/project.ts";
 import { type BaselineKey, baselineStore } from "../infra/baselineStore.ts";
 import { log } from "../infra/env.ts";
 import { git } from "../infra/git.ts";
-import { exitCodeOf, shell } from "../infra/shell.ts";
+import { shell } from "../infra/shell.ts";
 
 /** The failure lines a check already has at the base commit. */
 export const baselines = { find };
@@ -54,8 +54,9 @@ async function takeBaseline(key: BaselineKey, request: BaselineRequest): Promise
     `tenbox check: ${check}: no baseline for ${shortSha(baseSha)}, taking one in ${project.mainDir}`,
   );
   const ran = await shell.run(cmd, { cwd: project.mainDir, timeoutMs });
-  const lines = parseFailures(ran.output, exitCodeOf(ran), pattern);
-  const meta = { date: new Date().toISOString(), cmd, exit_code: ran.code };
+  const exitCode = shell.exitCode(ran);
+  const lines = parseFailures(ran.output, exitCode, pattern);
+  const meta = { date: new Date().toISOString(), cmd, exit_code: exitCode };
   await baselineStore.save(key, { sha: baseSha, lines }, meta);
   return { sha: baseSha, lines, source: "main" };
 }

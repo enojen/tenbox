@@ -5,7 +5,7 @@ import path from "node:path";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { files } from "./files.ts";
 import { git } from "./git.ts";
-import { spawn } from "./spawn.ts";
+import { processes } from "./processes.ts";
 
 let project: TempProject;
 
@@ -67,7 +67,7 @@ test("findBranchCreated is the branch creation time, not the commit time", async
   await files.write(path.join(project.mainDir, "old.txt"), "x\n");
   await git.run(["add", "old.txt"], project.mainDir);
   const env = { GIT_AUTHOR_DATE: old, GIT_COMMITTER_DATE: old };
-  await spawn(["git", "commit", "-q", "-m", "old"], { cwd: project.mainDir, env });
+  await processes.run(["git", "commit", "-q", "-m", "old"], { cwd: project.mainDir, env });
   await git.run(["branch", "feat/old"], project.mainDir);
   const created = await git.findBranchCreated(project.mainDir, "feat/old");
   expect(Date.now() - Date.parse(created ?? "")).toBeLessThan(60_000);

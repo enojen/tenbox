@@ -1,9 +1,9 @@
 import { TenboxError } from "../domain/errors.ts";
-import { spawn } from "./spawn.ts";
+import { processes } from "./processes.ts";
 
 export const tmux = {
   async hasSession(name: string): Promise<boolean> {
-    const result = await spawn(["tmux", "has-session", "-t", `=${name}`]);
+    const result = await processes.run(["tmux", "has-session", "-t", `=${name}`]);
     return result.code === 0;
   },
 
@@ -18,7 +18,7 @@ export const tmux = {
 
 /** Throws with tmux's stderr on a non-zero exit. */
 async function run(args: string[]): Promise<void> {
-  const result = await spawn(["tmux", ...args]);
+  const result = await processes.run(["tmux", ...args]);
   if (result.code === 0) return;
   const reason = result.stderr.trim();
   throw new TenboxError(`tmux ${args[0]} failed: ${reason}`, "tmux");

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TenboxError } from "../domain/errors.ts";
-import { spawn } from "./spawn.ts";
+import { processes } from "./processes.ts";
 
 export interface PrText {
   title: string;
@@ -31,7 +31,7 @@ const PrListSchema = z.array(
 const SUBCOMMAND_WORDS = 2;
 
 async function run(args: string[], cwd: string): Promise<string> {
-  const result = await spawn(["gh", ...args], { cwd });
+  const result = await processes.run(["gh", ...args], { cwd });
   if (result.code === 0) return result.stdout.trim();
   const reason = result.stderr.trim() || result.stdout.trim();
   throw new TenboxError(`gh ${args.slice(0, SUBCOMMAND_WORDS).join(" ")} failed: ${reason}`, "gh");

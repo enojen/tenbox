@@ -3,7 +3,7 @@ import { TenboxError } from "../domain/errors.ts";
 import type { ChangedFile } from "../domain/stats.ts";
 import { lastNonEmpty, MS_PER_SECOND } from "../domain/utils.ts";
 import { files } from "./files.ts";
-import { type Spawned, spawn } from "./spawn.ts";
+import { type ProcessResult, processes } from "./processes.ts";
 
 export interface AddWorktreeInput {
   mainDir: string;
@@ -41,31 +41,31 @@ const BINARY_COUNT = "-";
 const NOT_A_REPOSITORY = "not a git repository";
 
 /** Decides from a failed git result whether it is the expected "not found" answer. */
-type IsNotFound = (result: Spawned) => boolean;
+type IsNotFound = (result: ProcessResult) => boolean;
 
 const exitedWithOne: IsNotFound = (result) => result.code === 1;
 const outsideRepository: IsNotFound = (result) => result.stderr.includes(NOT_A_REPOSITORY);
 
 /** English messages in any locale, so `outsideRepository` can match git's stderr. */
-function spawnGit(args: string[], cwd: string): Promise<Spawned> {
-  return spawn(["git", ...args], { cwd, env: { LC_ALL: GIT_LOCALE } });
+function runRaw(args: string[], cwd: string): Promise<ProcessResult> {
+  return processes.run(["git", ...args], { cwd, env: { LC_ALL: GIT_LOCALE } });
 }
 
-function gitError(args: string[], result: Spawned): TenboxError {
+function gitError(args: string[], result: ProcessResult): TenboxError {
   const reason = result.stderr.trim() || result.stdout.trim();
   return new TenboxError(`git ${args.join(" ")} failed: ${reason}`, "git");
 }
 
 /** Trimmed stdout; throws on a non-zero exit. */
 async function run(args: string[], cwd: string): Promise<string> {
-  const result = await spawnGit(args, cwd);
+  const result = await runRaw(args, cwd);
   if (result.code !== 0) throw gitError(args, result);
   return result.stdout.trim();
 }
 
 /** Trimmed stdout, or null when `isNotFound` accepts the failure; any other failure throws. */
 async function find(args: string[], cwd: string, isNotFound: IsNotFound): Promise<string | null> {
-  const result = await spawnGit(args, cwd);
+  const result = await runRaw(args, cwd);
   if (result.code === 0) return result.stdout.trim();
   if (isNotFound(result)) return null;
   throw gitError(args, result);

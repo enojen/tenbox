@@ -140,12 +140,12 @@ describe("errors and debug", () => {
       await chmod(wt, 0o755);
     }
   });
-  test("TENBOX_DEBUG=1 logs each spawn and keeps stdout the same", async () => {
+  test("TENBOX_DEBUG=1 logs each run and keeps stdout the same", async () => {
     const args = ["start", "T-1", "--title", "First task", "--no-tmux", "--no-setup"];
     const plain = await tenbox(args, main);
     const debug = await tenbox(args, main, { TENBOX_DEBUG: "1" });
     expect(debug.json).toEqual(plain.json);
-    expect(debug.err).toMatch(/tenbox: spawn git .* \(cwd .*\) exit \d+ in \d+ ms/);
-    expect(plain.err).not.toContain("tenbox: spawn");
+    expect(debug.err).toMatch(/tenbox: run git .* \(cwd .*\) exit \d+ in \d+ ms/);
+    expect(plain.err).not.toContain("tenbox: run");
   });
 });
