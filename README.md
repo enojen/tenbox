@@ -94,7 +94,7 @@ It returns `ready-for-you` with the attention and nice-to-have lists, `needs-you
 | Role | Model | Does |
 |---|---|---|
 | planner | opus | Writes the plan, the parts and the questions; writes only under `.tenbox/` |
-| worker | sonnet | Builds one part with its tests, runs the checks, commits, fills the part file |
+| worker | sonnet | Builds one part with its tests, proves each change of behaviour with a test that fails first, runs the checks, commits, fills the part file |
 | reviewer | sonnet | Reviews the diff through one lens; returns `must_fix`, `nice_to_have`, `attention`; never edits |
 | runner | sonnet | Runs one `tenbox` command and returns its JSON unchanged |
 

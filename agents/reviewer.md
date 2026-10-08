@@ -35,7 +35,10 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
     A document the project marks as a target design or a later phase (in Tenbox,
     `docs/design.md`) is never a finding: do not ask to change it to match the code;
   - added or changed code, test files included, that breaks a code shape rule below
-    or a rule under "Code rules" in the project `CLAUDE.md`.
+    or a rule under "Code rules" in the project `CLAUDE.md`;
+  - a change of behaviour, a fix or a new feature, without a test in the diff that fails
+    without it, or without its proof in the part file (worker "Prove first"). A rename
+    or a move with no change of behaviour needs none.
 - `nice_to_have`: everything else worth saying. It does not block.
 - `attention`: hunks a human must read. This is a rule, not a judgement. Mark a hunk when
   it is, or touches: a migration or schema change, auth or permissions, a deletion of
@@ -55,6 +58,10 @@ Code shape rules, for added or changed code only, test files included; the proje
 
 Do not report what the diff does not contain. Do not re-run the project's checks; a
 separate step does that. Do not propose fixes longer than a sentence.
+
+The same rule holds for you: a must_fix item about behaviour needs evidence, not a guess.
+Name the input and the wrong result, or the test that would fail. Without evidence, the
+item is a question in `nice_to_have`.
 
 ## Returning
 

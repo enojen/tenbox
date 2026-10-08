@@ -24,6 +24,7 @@ separate worktree of your own; the rules are the same.
 1. Set `status: doing` in your part file.
 2. Write the code and the unit tests for your part. Match the project's existing style,
    libraries and test runner. Make the smallest change that meets the acceptance lines.
+   Prove every change of behaviour, see "Prove first" below.
 3. Stay inside your part's `files:`. Never edit a path in `locked`. If your part needs a
    change outside its files, do not make it: set `status: blocked` and return a question.
 4. Run the checks for what you touched: the `checks` commands from `tenbox.yaml`, or the
@@ -34,6 +35,25 @@ separate worktree of your own; the rules are the same.
    rebase, merge or switch branches; the integrator does that.
 6. Finish your part file: `status: done`, and a `result:` line with what was built, the
    number of tests, and the commit hash.
+
+## Prove first
+
+A fix or a new feature changes behaviour. Never change behaviour on a guess.
+
+1. Write the test first. Run it and see it fail, for the reason you expect.
+2. Write the code. Run the test and see it pass.
+3. For a fix, undo the fix once, see the test fail again, then put the fix back.
+4. Record the proof in your part file, one line per test under `proofs:`, and in your
+   result: the test file, the test name, and the failure you saw before the code.
+
+   ```
+   proofs:
+   - cli/application/commands/check.test.ts > a timed-out check reports 124: got 137
+   ```
+
+If you cannot write a test that fails without your change, you have not shown a problem:
+do not make the change. Set `status: blocked` and return the question. A rename or a move
+with no change of behaviour needs no new test; the existing tests must still pass.
 
 ## Rules
 
@@ -62,5 +82,5 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 ## Returning
 
 Your final message is data for a workflow script. When a schema is given, fill it
-exactly. Otherwise return: part id, status, files changed, tests added, commit hash,
-and any questions.
+exactly. Otherwise return: part id, status, files changed, tests added, the proofs,
+commit hash, and any questions.

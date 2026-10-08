@@ -72,6 +72,8 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   (creates when missing, keeps what exists), `save`, `update`, `remove`, `run`. One verb, one
   meaning.
 - Tests run against real temporary git repositories and directories, not fakes.
+- Prove first: no fix and no feature on a guess. Write the test, see it fail, write the code,
+  see it pass; for a fix, undo it once and see the test fail again (`agents/worker.md`).
 - No magic numbers: name the constant. No inline casts.
 - `await` only at the start of a statement or an assignment: `const x = await f();`. Never
   inside a condition, an argument, an object literal, a `??` or a spread.
