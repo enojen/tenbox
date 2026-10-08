@@ -4,7 +4,8 @@ import { type Task, renderTaskMd, tenboxDir } from "../domain/task.ts";
 import type { TaskStatus, Tracker } from "../domain/tracker.ts";
 import { errorMessage } from "../domain/utils.ts";
 import { files } from "../infra/files.ts";
-import type { ArchiveState } from "./commands/results.ts";
+
+export type ArchiveState = "archived" | "skipped";
 
 export interface TaskSource {
   id: TaskId;

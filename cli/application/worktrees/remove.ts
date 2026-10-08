@@ -1,7 +1,10 @@
 import type { Project } from "../../domain/project.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
-import type { BranchRemoveState, WorktreeRemoveState } from "../commands/results.ts";
+
+export type WorktreeRemoveState = "removed" | "skipped";
+
+export type BranchRemoveState = "deleted" | "skipped";
 
 export interface WorktreeRemoval {
   project: Project;

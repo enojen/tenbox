@@ -12,9 +12,9 @@ import { projects } from "../projects.ts";
 import { proofs } from "../proofs.ts";
 import { sessions } from "../sessions.ts";
 import { type StatsInput, stats } from "../stats.ts";
-import { tasks } from "../tasks.ts";
+import { type ArchiveState, tasks } from "../tasks.ts";
 import { worktrees } from "../worktrees/index.ts";
-import type { ArchiveState, CloseResult, StatsInfo } from "./results.ts";
+import type { CloseResult, StatsInfo } from "./results.ts";
 
 export interface CloseInput {
   id: TaskId;

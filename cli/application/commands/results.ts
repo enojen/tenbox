@@ -1,28 +1,12 @@
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/runs.ts";
+import type { SessionRemoveState, TmuxInfo } from "../sessions.ts";
+import type { SetupResult } from "../setups.ts";
+import type { ArchiveState } from "../tasks.ts";
+import type { BranchRemoveState, WorktreeRemoveState } from "../worktrees/index.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
-
-export type SetupResult =
-  | { state: "ran"; cmd: string; exit_code: number; duration_ms: number }
-  | { state: "skipped"; reason: string };
-
-export type TmuxState = "started" | "exists" | "skipped" | "unavailable";
-
-export type SessionRemoveState = "killed" | "skipped";
-
-export type ArchiveState = "archived" | "skipped";
-
-export type WorktreeRemoveState = "removed" | "skipped";
-
-export type BranchRemoveState = "deleted" | "skipped";
-
-export interface TmuxInfo {
-  session: string;
-  state: TmuxState;
-  attach: string;
-}
 
 export interface TrackerInfo {
   kind: TrackerKind;

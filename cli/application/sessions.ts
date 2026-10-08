@@ -1,6 +1,15 @@
 import { log } from "../infra/env.ts";
 import { tmux } from "../infra/tmux.ts";
-import type { SessionRemoveState, TmuxInfo, TmuxState } from "./commands/results.ts";
+
+export type TmuxState = "started" | "exists" | "skipped" | "unavailable";
+
+export type SessionRemoveState = "killed" | "skipped";
+
+export interface TmuxInfo {
+  session: string;
+  state: TmuxState;
+  attach: string;
+}
 
 /** The tmux session of a task, with `claude` in it. */
 export const sessions = { ensure, remove };

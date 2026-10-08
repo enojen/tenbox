@@ -2,7 +2,10 @@ import { TenboxError } from "../domain/errors.ts";
 import { elapsedMs } from "../domain/utils.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";
-import type { SetupResult } from "./commands/results.ts";
+
+export type SetupResult =
+  | { state: "ran"; cmd: string; exit_code: number; duration_ms: number }
+  | { state: "skipped"; reason: string };
 
 /** The manifest command that prepares a new task worktree. */
 export const setups = { run };
