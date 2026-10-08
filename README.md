@@ -250,7 +250,7 @@ Agents in one run do not talk to each other. They share files in the task worktr
   └ qa/                 one report per criterion + evidence (requests, screenshots, logs)
 ```
 
-The `attention` part of `review.json`, what goes to the top of the PR body:
+The `attention` part of `review.json`, as the reviewer writes it:
 
 ```json
 "attention": [
@@ -318,7 +318,7 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     agent(`Review feat/${task} through this lens: ${l}`, { agentType: 'reviewer', schema: REVIEW, phase: 'Review' })))
   const mustFix = reviews.filter(Boolean).flatMap(r => r.must_fix)
   const attention = reviews.filter(Boolean).flatMap(r => r.attention)   // merged into rounds/N/review.json
-  await agent(`Run \`tenbox pr ${task} --draft --round ${round}\` and return its JSON.`, { agentType: 'runner', schema: PR })
+  await agent(`Run \`tenbox pr ${task}\` and return its JSON.`, { agentType: 'runner', schema: PR })
   if (mustFix.length) { feedback = mustFix.join('\n'); continue }
 
   phase('Try')
