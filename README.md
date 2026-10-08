@@ -130,6 +130,7 @@ Inside the task worktree, excluded from git:
 ## The manifest: `tenbox.yaml`
 
 ```yaml
+id: k7f3qa                       # optional, read only; 6 characters, a-z and 0-9
 project: tenbox                  # optional; default: the main checkout's directory name, or its parent's when it is `main`
 base: main                       # optional: the branch tasks start from and merge into
 setup: bun install               # optional: runs in a new task worktree

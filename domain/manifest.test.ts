@@ -79,3 +79,18 @@ test("project name cannot leave the worktree root", () => {
     /project: letters, digits, _ and - only/,
   );
 });
+
+describe("id", () => {
+  const load = (id: unknown) => mergeManifest([{ file: "tenbox.yaml", value: { id } }]);
+  test("a valid id loads", () => {
+    expect(String(load("k7f3qa").id)).toBe("k7f3qa");
+  });
+  test("no id gives undefined", () => {
+    expect(mergeManifest([]).id).toBeUndefined();
+  });
+  test("a bad id fails with the key and the rule", () => {
+    for (const id of ["K7F3QA", "k7f3q", "k7f3qa1", "k7-3qa"]) {
+      expect(() => load(id)).toThrow(/id: 6 characters, a-z and 0-9/);
+    }
+  });
+});

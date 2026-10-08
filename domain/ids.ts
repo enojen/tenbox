@@ -18,6 +18,22 @@ export function taskId(raw: string): TaskId {
   return raw as TaskId;
 }
 
+/** A project's id in `tenbox.yaml`: 6 characters, a-z and 0-9, e.g. `k7f3qa`. */
+export type ProjectId = string & { readonly __brand: "ProjectId" };
+
+const PROJECT_ID_PATTERN = /^[a-z0-9]{6}$/;
+
+export function isProjectId(raw: string): boolean {
+  return PROJECT_ID_PATTERN.test(raw);
+}
+
+export function projectId(raw: string): ProjectId {
+  if (!isProjectId(raw)) {
+    throw new TenboxError(`project id "${raw}": 6 characters, a-z and 0-9`, "usage");
+  }
+  return raw as ProjectId;
+}
+
 const SHORT_SHA_LENGTH = 7;
 
 export function shortSha(sha: string): string {

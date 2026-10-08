@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TenboxError } from "./errors.ts";
-import { isSafeName } from "./ids.ts";
+import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject } from "./utils.ts";
 
 export const TrackerKindSchema = z.enum(["none", "linear"]);
@@ -47,6 +47,11 @@ function compiles(pattern: string): boolean {
 
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 export const ManifestSchema = z.object({
+  id: z
+    .string()
+    .refine(isProjectId, { message: "6 characters, a-z and 0-9" })
+    .transform(projectId)
+    .optional(),
   // Becomes a directory under the worktree root: `../x` would escape it.
   project: z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }).optional(),
   setup: z.string().min(1).optional(),

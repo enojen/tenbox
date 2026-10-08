@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shortSha, taskBranch, taskId, tmuxSessionName } from "./ids.ts";
+import { isProjectId, projectId, shortSha, taskBranch, taskId, tmuxSessionName } from "./ids.ts";
 import { NamesSchema } from "./manifest.ts";
 
 const defaults = NamesSchema.parse({});
@@ -20,6 +20,19 @@ describe("taskId", () => {
     const names = NamesSchema.parse({ branch: "task/{id}-work", tmux: "{id}" });
     expect(taskBranch(names, taskId("TEN-1"))).toBe("task/TEN-1-work");
     expect(tmuxSessionName(names, taskId("TEN-1"))).toBe("TEN-1");
+  });
+});
+
+describe("projectId", () => {
+  test("accepts 6 characters, a-z and 0-9", () => {
+    expect(String(projectId("k7f3qa"))).toBe("k7f3qa");
+    expect(isProjectId("000000")).toBe(true);
+  });
+  test("rejects anything else", () => {
+    for (const id of ["K7F3QA", "k7f3q", "k7f3qa1", "k7-3qa", ""]) {
+      expect(isProjectId(id)).toBe(false);
+      expect(() => projectId(id)).toThrow();
+    }
   });
 });
 

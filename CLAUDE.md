@@ -35,6 +35,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | task | One tracker item, worked on from start to merge. |
 | task id | The tracker's id, `TEN-301`; letters, digits, `_`, `-` (`TaskId`). |
 | project | One repository Tenbox works on; its name comes from `project:` or the directory (`Project`). |
+| project id | The project's id in `tenbox.yaml`: 6 characters, a-z and 0-9, e.g. `k7f3qa`; stays when the name changes (`ProjectId`). |
 | main checkout | The project's own clone, `~/wt/<project>/main` (`mainDir`). |
 | worktree root | The directory that holds every project's checkouts, `~/wt` (`wtRoot`). |
 | task worktree | The git worktree of one task, `~/wt/<project>/<id>` (`taskWorktree`). |
