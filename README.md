@@ -118,9 +118,8 @@ Three rules keep step 7 small:
    `feat/TEN-301-2`, one Linear sub-issue each, merged in order. You approve the split
    at the plan gate, so you never meet a 2000-line PR at the end.
 2. **An attention list, not a diff.** The reviewer panel marks the hunks that need a human
-   eye in `review.json` (`attention`) with a one-line reason. `tenbox pr` does not copy them
-   into the PR body yet; the body holds Risks and attention and Summary from `plan.md`.
-   What counts as attention is a rule, not a judgement:
+   eye in `review.json` (`attention`), and `tenbox pr` puts them at the top of the PR
+   body with a one-line reason. What counts as attention is a rule, not a judgement:
    migrations, auth, deletions, OpenAPI changes, files near `locked`, files not in the
    plan. Everything else is tests and plain code that the panel and CI cover.
 3. **Behaviour over code.** Your gate is the sandbox and the QA evidence: try the feature,
@@ -250,7 +249,7 @@ Agents in one run do not talk to each other. They share files in the task worktr
   └ qa/                 one report per criterion + evidence (requests, screenshots, logs)
 ```
 
-The `attention` part of `review.json`, as the reviewer writes it:
+The `attention` part of `review.json`, what goes to the top of the PR body:
 
 ```json
 "attention": [
@@ -317,8 +316,8 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   const reviews = await parallel(lenses.map(l => () =>
     agent(`Review feat/${task} through this lens: ${l}`, { agentType: 'reviewer', schema: REVIEW, phase: 'Review' })))
   const mustFix = reviews.filter(Boolean).flatMap(r => r.must_fix)
-  const attention = reviews.filter(Boolean).flatMap(r => r.attention)   // merged into rounds/N/review.json
-  await agent(`Run \`tenbox pr ${task}\` and return its JSON.`, { agentType: 'runner', schema: PR })
+  const attention = reviews.filter(Boolean).flatMap(r => r.attention)   // merged into rounds/N/review.json, PR body top
+  await agent(`Run \`tenbox pr ${task} --draft --round ${round}\` and return its JSON.`, { agentType: 'runner', schema: PR })
   if (mustFix.length) { feedback = mustFix.join('\n'); continue }
 
   phase('Try')
