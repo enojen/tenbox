@@ -25,10 +25,9 @@ interface CloseTarget {
   mainDir: string;
   taskWorktree: string;
   branch: string;
+  base: string;
   archive: string;
 }
-
-const CLOSE_BASE = "main";
 
 /**
  * Archives `.tenbox/`, kills the tmux session, removes the worktree and the branch, sets the
@@ -43,7 +42,8 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const branch = taskBranch(manifest.names, id);
   const session = tmuxSessionName(manifest.names, id);
   const archive = archiveDir(wtRoot, project.name, id);
-  await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, archive }, force);
+  const { base } = manifest;
+  await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base, archive }, force);
   const archiveState = await tasks.removeFiles(taskWorktree, archive);
   const statsInput: StatsInput = {
     id,
@@ -53,7 +53,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     taskWorktree,
     archive,
     branch,
-    base: CLOSE_BASE,
+    base,
   };
   const statsInfo = await writeStats(statsInput, archiveState);
   const tmuxState = await sessions.remove(session);
@@ -101,13 +101,13 @@ async function assertClean(target: CloseTarget): Promise<void> {
 }
 
 async function assertMerged(target: CloseTarget): Promise<void> {
-  const { mainDir, branch } = target;
+  const { mainDir, branch, base } = target;
   const exists = await git.branchExists(mainDir, branch);
   if (!exists) return;
-  const merged = await git.isMerged(mainDir, CLOSE_BASE, branch);
+  const merged = await git.isMerged(mainDir, base, branch);
   if (merged) return;
   throw new TenboxError(
-    `${branch} has changes that are not on ${CLOSE_BASE}; merge it or pass --force`,
+    `${branch} has changes that are not on ${base}; merge it or pass --force`,
     "unmerged",
   );
 }

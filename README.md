@@ -355,7 +355,7 @@ prints JSON so a `runner` agent can return it unchanged.
 | `tenbox check <TEN-xx>` | Runs the manifest checks; `wtbase` keeps only new failures; writes `checks.json` |
 | `tenbox sandbox up <TEN-xx> --profile try` | Pins `HEAD`, builds from that commit, `compose up`, seeds, waits for health, prints links |
 | `tenbox sandbox stop/down <TEN-xx>` | Pause (keep volumes) or remove |
-| `tenbox pr <TEN-xx> [--draft\|--ready]` | Push and create or update the PR; the body holds the attention list first, then plan, decisions, review, QA, links |
+| `tenbox pr <TEN-xx> [--ready]` | Refuse a dirty worktree or a branch with no commits ahead of the manifest `base`, push the branch, then create the PR (a draft; `--ready` marks it ready) or update the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox close <TEN-xx> [--force]` | Sandbox down, worktrees and branch removed, tmux killed, `.tenbox/` archived with a `stats.json` (timeline, minutes, plan, rounds, code size, and each workflow agent with its model, seconds and tokens; numbers and labels only) |
 | `tenbox ls` | All tasks: step, round, sandbox up or not, links |
 | `tenbox init` | Claude Code reads the repo (lockfiles, `package.json`, compose files) and writes a draft `tenbox.yaml`; the CLI never guesses a project's tooling itself |
@@ -441,6 +441,7 @@ failure_pattern: "(^|\\s)FAILED(\\s|$)"   # optional: what a failing line looks 
 locked: [openapi.yaml, e2e/, tenbox.yaml]
 budget: { max_rounds: 3, max_parallel_workers: 3, max_pr_lines: 400 }
 names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults
+base: main                               # optional: the branch tasks start from and merge into
 ```
 
 **`run`** has three forms:

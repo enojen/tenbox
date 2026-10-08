@@ -18,7 +18,6 @@ const KEY = { project: "demo", check: "unit" };
 const lines = (...xs: string[]) => xs.map(failureLine);
 const input = (round?: number) => ({
   id: taskId("T-1"),
-  base: "main",
   timeoutMs: TIMEOUT_MS,
   round,
 });

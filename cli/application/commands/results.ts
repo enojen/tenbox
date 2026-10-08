@@ -83,6 +83,23 @@ export interface CloseResult {
   tracker: TrackerInfo;
 }
 
+export type PrState = "created" | "updated";
+
+export interface PrInfo {
+  number: number;
+  url: string;
+  state: PrState;
+  draft: boolean;
+}
+
+export interface PrResult {
+  ok: true;
+  task: string;
+  branch: string;
+  commit: string;
+  pr: PrInfo;
+}
+
 export interface BaselineSummary {
   sha: string;
   source: BaselineSource;

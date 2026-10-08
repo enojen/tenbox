@@ -90,3 +90,20 @@ test("findBranchCreated reads the reflog; listChangedFiles lists the branch chan
     { added: 0, removed: 0, path: "c.bin" },
   ]);
 });
+
+test("push puts the branch on origin at HEAD and sets the upstream", async () => {
+  const origin = await mkdtemp(path.join(os.tmpdir(), "tenbox-origin-"));
+  try {
+    await git.run(["init", "-q", "--bare", origin], project.mainDir);
+    await git.run(["remote", "add", "origin", origin], project.mainDir);
+    await git.run(["checkout", "-q", "-b", "feat/x"], project.mainDir);
+    await git.push(project.mainDir, "feat/x");
+    const head = await git.findHead(project.mainDir);
+    const remote = await git.run(["rev-parse", "refs/heads/feat/x"], origin);
+    const upstream = await git.run(["rev-parse", "--abbrev-ref", "@{upstream}"], project.mainDir);
+    expect(remote).toBe(head ?? "");
+    expect(upstream).toBe("origin/feat/x");
+  } finally {
+    await rm(origin, { recursive: true, force: true });
+  }
+});

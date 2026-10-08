@@ -18,7 +18,8 @@ import type { BaselineSummary, CheckResult, CheckRun } from "./results.ts";
 export interface CheckInput {
   id: TaskId;
   round?: number;
-  base: string;
+  /** Default: the manifest's `base`. */
+  base?: string;
   timeoutMs: number;
 }
 
@@ -31,6 +32,7 @@ interface Round {
   checks: Record<string, string>;
   pattern: string;
   head: string;
+  base: string;
   baseSha: string;
   timeoutMs: number;
 }
@@ -79,12 +81,13 @@ export async function runChecks(input: CheckInput): Promise<CheckResult> {
 
 async function prepareRound(input: CheckInput): Promise<Round> {
   const taskWorktree = await worktrees.get(input.id);
-  const { project } = await projects.get(taskWorktree);
+  const { project, manifest } = await projects.get(taskWorktree);
+  const base = input.base ?? manifest.base;
   const { checks, pattern } = await getChecks(project.mainDir, taskWorktree);
   const { number, dir } = await ensureRound(taskWorktree, input.round);
-  const { head, baseSha } = await getCommits(taskWorktree, input.base);
+  const { head, baseSha } = await getCommits(taskWorktree, base);
   const timeoutMs = input.timeoutMs;
-  return { number, dir, taskWorktree, project, checks, pattern, head, baseSha, timeoutMs };
+  return { number, dir, taskWorktree, project, checks, pattern, head, base, baseSha, timeoutMs };
 }
 
 /** Tenbox runs only what the manifest says; it does not guess from the project. */
@@ -180,7 +183,7 @@ function buildResult(input: CheckInput, round: Round, results: CheckRun[]): Chec
     round: round.number,
     worktree: round.taskWorktree,
     commit: round.head,
-    base: { ref: input.base, sha: round.baseSha },
+    base: { ref: round.base, sha: round.baseSha },
     checks: results,
     summary: summarize(results),
     file: path.relative(round.taskWorktree, path.join(round.dir, "checks.json")),

@@ -17,7 +17,6 @@ const startPath = process.env.PATH;
 const input = (extra: Partial<StartInput> = {}): StartInput => ({
   id: taskId("T-1"),
   title: "Cancel",
-  base: "main",
   tmux: false,
   setup: true,
   ...extra,
