@@ -32,7 +32,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   - code that repeats an existing function, or repeats itself inside the diff;
   - a name that contradicts the project glossary, or one word used for two concepts;
   - a README or `CLAUDE.md` statement the diff makes untrue;
-  - added or changed code that breaks a code shape rule below.
+  - added or changed code, test files included, that breaks a code shape rule below
+    or a rule under "Code rules" in the project `CLAUDE.md`.
 - `nice_to_have`: everything else worth saying. It does not block.
 - `attention`: hunks a human must read. This is a rule, not a judgement. Mark a hunk when
   it is, or touches: a migration or schema change, auth or permissions, a deletion of
@@ -40,8 +41,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   to one, a file the plan does not mention, a secret or an external paid service. Give
   the reason in a few words, like "schema change, not reversible".
 
-Code shape rules, for added or changed code only; the project `CLAUDE.md` wins where it
-says otherwise:
+Code shape rules, for added or changed code only, test files included; the project
+`CLAUDE.md` wins where it says otherwise:
 
 - Parameters and return values have named types; no type built inline in a signature.
 - At most three parameters; more go into one named object.
