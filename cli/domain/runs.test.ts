@@ -68,3 +68,28 @@ test("summarizeRuns: a failed build has no review counts; no session files give 
     human_review: null,
   });
 });
+
+test("summarizeRuns lists the unproven items of every build run after opened, oldest first, skipping bad ones", () => {
+  const withResult = (started: string, result: unknown): WorkflowRun => ({
+    ...run("tenbox-build", started, 1),
+    result,
+  });
+  const runs = [
+    withResult("2026-01-01T00:20:00.000Z", {
+      status: "failed",
+      unproven: [{ part: "02", reason: "b" }, { part: 3, reason: "c" }, "x"],
+    }),
+    withResult("2026-01-01T00:10:00.000Z", { unproven: [{ part: "01", reason: "a" }] }),
+    withResult("2025-12-31T00:00:00.000Z", { unproven: [{ part: "09", reason: "old" }] }),
+    {
+      ...run("tenbox-plan", "2026-01-01T00:15:00.000Z", 1),
+      result: { unproven: [{ part: "08", reason: "p" }] },
+    },
+  ];
+  const summary = summarizeRuns(runs, "2026-01-01T00:00:00Z", "2026-01-01T01:00:00.000Z");
+  expect(summary.unproven).toEqual([
+    { part: "01", reason: "a" },
+    { part: "02", reason: "b" },
+  ]);
+  expect(summarizeRuns(null, null, "2026-01-01T01:00:00.000Z").unproven).toEqual([]);
+});

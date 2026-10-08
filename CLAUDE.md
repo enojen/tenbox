@@ -50,7 +50,10 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
-| stats | The record `tenbox close` writes to `<archive>/stats.json`: numbers and labels of one task (`TaskStats`). |
+| stats | The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
+| proof | One worker line under `proofs:` in a part file: `- <test file> > <test name>: got <failure>` (`StatsProof`). |
+| unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`RunUnproven`). |
+| points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item, plus `ignored_proofs` (`StatsPoints`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules

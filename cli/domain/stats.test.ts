@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { checksPassed, countPlan, sumCode } from "./stats.ts";
+import { checksPassed, countPlan, countPoints, parseProofs, partIdOf, sumCode } from "./stats.ts";
 
 test("countPlan lists each part's difficulty in order and the estimated lines", () => {
   const parts = ["# 01\nstatus: todo\ndifficulty: easy\n", "difficulty: hard\n", "no difficulty\n"];
@@ -26,4 +26,71 @@ test("checksPassed reads ok and gives null for anything else", () => {
   expect(checksPassed("{}")).toBeNull();
   expect(checksPassed("not json")).toBeNull();
   expect(checksPassed(null)).toBeNull();
+});
+
+test("partIdOf takes the NN prefix of a part file name", () => {
+  expect(partIdOf("01-proofs-points.md")).toBe("01");
+  expect(partIdOf("notes.md")).toBe("notes");
+});
+
+test("parseProofs reads well-formed lines in the proofs block and ignores the rest", () => {
+  const text = [
+    "# 01",
+    "- not: a > proof: got x",
+    "proofs:",
+    "- a/b.test.ts > first: got 137",
+    "- a/b.test.ts > name: with colon: got 1: bad",
+    "- malformed line",
+    "- a/b.test.ts > no failure",
+    "result: x",
+    "- c.test.ts > after: got 2",
+  ].join("\n");
+  expect(parseProofs("01", text)).toEqual({
+    proofs: [
+      { part: "01", file: "a/b.test.ts", test: "first", failure: "137" },
+      { part: "01", file: "a/b.test.ts", test: "name: with colon", failure: "1: bad" },
+    ],
+    ignored: 2,
+  });
+  expect(parseProofs("01", "status: done\n")).toEqual({ proofs: [], ignored: 0 });
+});
+
+test("countPoints gives +1 per proof and -1 per unproven item, per part in order", () => {
+  let count = 0;
+  const proof = (part: string) => ({ part, file: "f", test: `t${count++}`, failure: "x" });
+  const points = countPoints({
+    partIds: ["01", "02", "03"],
+    proofs: [proof("01"), proof("01"), proof("02")],
+    ignored: { "01": 2 },
+    unproven: [
+      { part: "02", reason: "r" },
+      { part: "07", reason: "r" },
+    ],
+  });
+  expect(points).toEqual([
+    { part: "01", points: 2, ignored_proofs: 2 },
+    { part: "02", points: 0, ignored_proofs: 0 },
+    { part: "03", points: 0, ignored_proofs: 0 },
+    { part: "07", points: -1, ignored_proofs: 0 },
+  ]);
+});
+
+test("proof lines with the same test file and test name count once", () => {
+  const line = (file: string, test: string, failure: string) =>
+    `- ${file} > ${test}: got ${failure}`;
+  const text = [
+    "proofs:",
+    line("a.test.ts", "one", "x"),
+    line("a.test.ts", "two", "x"),
+    line("a.test.ts", "three", "x"),
+    line("b.test.ts", "one", "x"),
+    line("b.test.ts", "four", "x"),
+    line("a.test.ts", "one", "rewritten"),
+    line("a.test.ts", "two", "rewritten"),
+    line("a.test.ts", "three", "rewritten"),
+  ].join("\n");
+  const { proofs } = parseProofs("01", text);
+  expect(proofs).toHaveLength(5);
+  const points = countPoints({ partIds: ["01"], proofs, ignored: {}, unproven: [] });
+  expect(points).toEqual([{ part: "01", points: 5, ignored_proofs: 0 }]);
 });

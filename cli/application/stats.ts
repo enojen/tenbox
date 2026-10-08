@@ -4,9 +4,11 @@ import { summarizeRuns } from "../domain/runs.ts";
 import {
   checksPassed,
   countPlan,
+  countPoints,
+  parseProofs,
+  partIdOf,
   STATS_SCHEMA,
   type StatsCode,
-  type StatsPlan,
   type StatsRound,
   statsFile,
   sumCode,
@@ -43,7 +45,15 @@ async function compute(input: StatsInput): Promise<TaskStats> {
   const tenbox = await git.findHead(env().tenboxRoot);
   const opened = await git.findBranchCreated(mainDir, branch);
   const closed = new Date().toISOString();
-  const plan = await readPlan(archive);
+  const planText = await files.read(path.join(archive, "plan.md"));
+  const parts = await readParts(archive);
+  const plan = countPlan(
+    planText,
+    parts.map((part) => part.text),
+  );
+  const parsed = parts.map((part) => parseProofs(part.id, part.text));
+  const proofs = parsed.flatMap((one) => one.proofs);
+  const ignored = Object.fromEntries(parts.map((part, i) => [part.id, parsed[i]?.ignored ?? 0]));
   const rounds = await readRounds(archive);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
@@ -61,6 +71,13 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     plan,
     rounds,
     review: summary.review,
+    proofs,
+    points: countPoints({
+      partIds: parts.map((part) => part.id),
+      proofs,
+      ignored,
+      unproven: summary.unproven,
+    }),
     code,
     agents: summary.agents,
   };
@@ -70,16 +87,21 @@ async function save(taskStats: TaskStats, archive: string): Promise<void> {
   await files.write(statsFile(archive), `${JSON.stringify(taskStats, null, 2)}\n`);
 }
 
-async function readPlan(dir: string): Promise<StatsPlan | null> {
-  const planText = await files.read(path.join(dir, "plan.md"));
+interface PartFile {
+  id: string;
+  text: string;
+}
+
+/** The part files in name order. */
+async function readParts(dir: string): Promise<PartFile[]> {
   const partsDir = path.join(dir, "parts");
   const names = await files.list(partsDir);
-  const partTexts: string[] = [];
+  const parts: PartFile[] = [];
   for (const name of names.filter((n) => n.endsWith(".md")).sort()) {
     const text = await files.read(path.join(partsDir, name));
-    partTexts.push(text ?? "");
+    parts.push({ id: partIdOf(name), text: text ?? "" });
   }
-  return countPlan(planText, partTexts);
+  return parts;
 }
 
 async function readRounds(dir: string): Promise<StatsRound[]> {

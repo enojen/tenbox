@@ -63,11 +63,17 @@ const REVIEW = {
     must_fix: { type: 'array', items: { type: 'string' } },
     nice_to_have: { type: 'array', items: { type: 'string' } },
     attention: { type: 'array', items: { type: 'string' } },
+    unproven: {
+      type: 'array',
+      items: { type: 'object', properties: { part: { type: 'string' }, reason: { type: 'string' } }, required: ['part', 'reason'] },
+    },
   },
-  required: ['must_fix', 'nice_to_have', 'attention'],
+  required: ['must_fix', 'nice_to_have', 'attention', 'unproven'],
 }
 
 let feedback = input.feedback ?? 'none'
+// Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
+const unproven = []
 for (let round = 1; round <= maxRounds; round++) {
   phase('Build')
   const { parts, lenses } = await agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses. Round feedback: ${feedback}`,
@@ -76,7 +82,7 @@ for (let round = 1; round <= maxRounds; round++) {
   for (const part of parts) {
     const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}`,
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
-    if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [] }
+    if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], unproven }
   }
 
   phase('Checks')
@@ -91,6 +97,13 @@ for (let round = 1; round <= maxRounds; round++) {
   const reviews = (await parallel(['base', ...lenses].map((key) => () =>
     agent(`Review task ${task} through this lens: ${LENSES[key].text}.`,
       { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${key}`, ...strongModelIf(LENSES[key].strong) })))).filter(Boolean)
+  // One -1 per part per round, however many lenses name it.
+  const roundParts = new Set()
+  for (const item of reviews.flatMap((r) => r.unproven)) {
+    if (roundParts.has(item.part)) continue
+    roundParts.add(item.part)
+    unproven.push(item)
+  }
   const mustFix = reviews.flatMap((r) => r.must_fix)
   if (mustFix.length) {
     feedback = mustFix.join('\n')
@@ -101,6 +114,7 @@ for (let round = 1; round <= maxRounds; round++) {
     round,
     attention: reviews.flatMap((r) => r.attention),
     nice_to_have: reviews.flatMap((r) => r.nice_to_have),
+    unproven,
   }
 }
-return { status: 'failed', rounds: maxRounds, feedback }
+return { status: 'failed', rounds: maxRounds, feedback, unproven }

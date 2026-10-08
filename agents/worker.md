@@ -44,7 +44,11 @@ A fix or a new feature changes behaviour. Never change behaviour on a guess.
 2. Write the code. Run the test and see it pass.
 3. For a fix, undo the fix once, see the test fail again, then put the fix back.
 4. Record the proof in your part file, one line per test under `proofs:`, and in your
-   result: the test file, the test name, and the failure you saw before the code.
+   result: the test file, the test name, and the failure you saw before the code. Write
+   each line exactly as `- <test file> > <test name>: got <failure>`. `tenbox close` splits
+   a line on the first ` > ` and on the last `: got `, and counts one point for each distinct
+   test (test file and test name) in this format; writing the same test again in a later
+   round gives no second point. A line in any other format gets no point and is counted as ignored.
 
    ```
    proofs:

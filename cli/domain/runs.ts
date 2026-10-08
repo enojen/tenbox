@@ -51,11 +51,19 @@ export interface RunReview {
   attention: number | null;
 }
 
+/** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
+export interface RunUnproven {
+  part: string;
+  reason: string;
+}
+
 /** What the runs add to the stats; agents are null without session files. */
 export interface RunSummary {
   timeline: RunTimeline;
   minutes: RunMinutes;
   review: RunReview | null;
+  /** Every build run's unproven items, oldest first. */
+  unproven: RunUnproven[];
   agents: RunAgent[] | null;
 }
 
@@ -83,6 +91,7 @@ export function summarizeRuns(
       human_review: minutesBetween(timeline.build_end, closed),
     },
     review: reviewCounts(build.at(-1)),
+    unproven: build.flatMap(unprovenItems),
     agents: all === null ? null : runs.flatMap((run) => run.agents),
   };
 }
@@ -121,4 +130,14 @@ function reviewCounts(run: WorkflowRun | undefined): RunReview | null {
     nice_to_have: lengthOrNull(result.nice_to_have),
     attention: lengthOrNull(result.attention),
   };
+}
+
+function unprovenItems(run: WorkflowRun): RunUnproven[] {
+  const items = isPlainObject(run.result) ? run.result.unproven : null;
+  if (!Array.isArray(items)) return [];
+  return items.filter(isUnproven);
+}
+
+function isUnproven(item: unknown): item is RunUnproven {
+  return isPlainObject(item) && typeof item.part === "string" && typeof item.reason === "string";
 }

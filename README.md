@@ -56,7 +56,13 @@ line is new.
 
 **`stats.json`** (in the archive): timeline, minutes per step (plan, wait for approval,
 build, human review), plan difficulty and estimated lines, rounds, review counts, code
-lines, and each workflow agent with its model, seconds and tokens. Numbers and labels only.
+lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
+`proofs` (part, test file, test name, failure text, read from the `proofs:` block of each part
+file) and `points` per part: +1 per distinct test (test file and test name) among its proofs, -1 per `unproven` item a reviewer returned in any
+build run of the task, at most one per part per build round. Each `points` entry also has
+`ignored_proofs`: the number of lines under `proofs:` that do not match
+`- <test file> > <test name>: got <failure>` (split on the first ` > ` and the last `: got `).
+The reviewer's sentences are not kept. Schema 2.
 
 | Variable | Does |
 |---|---|
@@ -87,7 +93,8 @@ review lenses and the questions.
    asks for them. Any `must_fix` item becomes the next round's feedback.
 
 It returns `ready-for-you` with the attention and nice-to-have lists, `needs-you`, or
-`failed` with the last feedback after the last round.
+`failed` with the last feedback after the last round. Every result, `needs-you` too, also
+has `unproven`: the reviewers' items from all rounds, one per part per round.
 
 ## Roles: `agents/`
 
@@ -95,7 +102,7 @@ It returns `ready-for-you` with the attention and nice-to-have lists, `needs-you
 |---|---|---|
 | planner | opus | Writes the plan, the parts and the questions; writes only under `.tenbox/` |
 | worker | sonnet | Builds one part with its tests, proves each change of behaviour with a test that fails first, runs the checks, commits, fills the part file |
-| reviewer | sonnet | Reviews the diff through one lens; returns `must_fix`, `nice_to_have`, `attention`; never edits |
+| reviewer | sonnet | Reviews the diff through one lens; returns `must_fix`, `nice_to_have`, `attention`, `unproven`; never edits |
 | runner | sonnet | Runs one `tenbox` command and returns its JSON unchanged |
 
 ## Task files: `.tenbox/`
