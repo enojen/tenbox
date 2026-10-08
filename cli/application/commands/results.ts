@@ -1,5 +1,6 @@
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
+import type { StatsProof } from "../../domain/runs.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
@@ -98,6 +99,13 @@ export interface PrResult {
   branch: string;
   commit: string;
   pr: PrInfo;
+}
+
+export interface ProofResult {
+  ok: true;
+  task: string;
+  proof: StatsProof;
+  file: string;
 }
 
 export interface BaselineSummary {

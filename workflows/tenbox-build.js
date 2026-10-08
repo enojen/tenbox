@@ -35,14 +35,23 @@ const PARTS = {
   },
   required: ['parts', 'lenses'],
 }
+const NON_BLANK = { type: 'string', pattern: '\\S' }
 const BUILT = {
   type: 'object',
   properties: {
     status: { enum: ['done', 'blocked'] },
     commit: { type: 'string' },
     questions: { type: 'array', items: { type: 'string' } },
+    proofs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { file: NON_BLANK, test: NON_BLANK, failure: NON_BLANK },
+        required: ['file', 'test', 'failure'],
+      },
+    },
   },
-  required: ['status'],
+  required: ['status', 'proofs'],
 }
 // Only the fields the loop reads; the full result is in .tenbox/rounds/N/checks.json.
 // `commit` and `file` come only from the CLI: without them the command did not run.
@@ -74,6 +83,9 @@ const REVIEW = {
 let feedback = input.feedback ?? 'none'
 // Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
 const unproven = []
+// Every round's worker proofs, each with its part id; `tenbox close` counts them.
+const proofs = []
+const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
 for (let round = 1; round <= maxRounds; round++) {
   phase('Build')
   const { parts, lenses } = await agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses. Round feedback: ${feedback}`,
@@ -82,7 +94,8 @@ for (let round = 1; round <= maxRounds; round++) {
   for (const part of parts) {
     const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}`,
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
-    if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], unproven }
+    proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
+    if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], unproven, proofs }
   }
 
   phase('Checks')
@@ -95,7 +108,7 @@ for (let round = 1; round <= maxRounds; round++) {
 
   phase('Review')
   const reviews = (await parallel(['base', ...lenses].map((key) => () =>
-    agent(`Review task ${task} through this lens: ${LENSES[key].text}.`,
+    agent(`Review task ${task} through this lens: ${LENSES[key].text}.\nWorker proofs so far:\n${proofLines()}`,
       { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${key}`, ...strongModelIf(LENSES[key].strong) })))).filter(Boolean)
   // One -1 per part per round, however many lenses name it.
   const roundParts = new Set()
@@ -115,6 +128,7 @@ for (let round = 1; round <= maxRounds; round++) {
     attention: reviews.flatMap((r) => r.attention),
     nice_to_have: reviews.flatMap((r) => r.nice_to_have),
     unproven,
+    proofs,
   }
 }
-return { status: 'failed', rounds: maxRounds, feedback, unproven }
+return { status: 'failed', rounds: maxRounds, feedback, unproven, proofs }

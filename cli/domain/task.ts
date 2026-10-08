@@ -12,6 +12,8 @@ export interface Task {
 }
 
 export const tenboxDir = (taskWorktree: string): string => path.join(taskWorktree, ".tenbox");
+/** `proofs.json` in a `.tenbox/` folder or its archive. */
+export const proofsFile = (dir: string): string => path.join(dir, "proofs.json");
 export const roundDir = (taskWorktree: string, round: number): string =>
   path.join(tenboxDir(taskWorktree), "rounds", String(round));
 

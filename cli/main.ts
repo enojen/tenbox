@@ -13,6 +13,7 @@ import { runChecks } from "./application/commands/check.ts";
 import { install } from "./application/commands/install.ts";
 import type { Failure } from "./application/commands/results.ts";
 import { openPr } from "./application/commands/pr.ts";
+import { recordProof } from "./application/commands/proof.ts";
 import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
 import { errorMessage, MS_PER_SECOND } from "./domain/utils.ts";
@@ -27,6 +28,7 @@ const START_USAGE = 'tenbox start <id> [--title "..."] [--base <branch>] [--no-s
 const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 600]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
+const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -80,6 +82,23 @@ const COMMANDS: Record<string, Command> = {
     options: { ready: { type: "boolean", default: false } },
     run: (positionals, values) =>
       openPr({ id: idArg(positionals, PR_USAGE), ready: flagValue(values, "ready") }),
+  },
+  proof: {
+    usage: PROOF_USAGE,
+    options: {
+      part: { type: "string" },
+      file: { type: "string" },
+      test: { type: "string" },
+      failure: { type: "string" },
+    },
+    run: (positionals, values) =>
+      recordProof({
+        id: idArg(positionals, PROOF_USAGE),
+        part: stringValue(values, "part"),
+        file: stringValue(values, "file"),
+        test: stringValue(values, "test"),
+        failure: stringValue(values, "failure"),
+      }),
   },
   install: {
     usage: "tenbox install",

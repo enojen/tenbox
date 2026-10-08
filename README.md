@@ -41,7 +41,8 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, `.tenbox/` with `task.md` from the tracker (or from `--title`), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
-| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves `.tenbox/` to the archive with a `stats.json`, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped |
+| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves `.tenbox/` to the archive with a `stats.json`, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything is moved |
+| `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`. Never overwrites a foreign file |
 
 The base is the manifest `base`, `main` by default; `--base` overrides it for `start` and
@@ -57,12 +58,12 @@ line is new.
 **`stats.json`** (in the archive): timeline, minutes per step (plan, wait for approval,
 build, human review), plan difficulty and estimated lines, rounds, review counts, code
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
-`proofs` (part, test file, test name, failure text, read from the `proofs:` block of each part
-file) and `points` per part: +1 per distinct test (test file and test name) among its proofs, -1 per `unproven` item a reviewer returned in any
-build run of the task, at most one per part per build round. Each `points` entry also has
-`ignored_proofs`: the number of lines under `proofs:` that do not match
-`- <test file> > <test name>: got <failure>` (split on the first ` > ` and the last `: got `).
-The reviewer's sentences are not kept. Schema 2.
+`proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from the
+`proofs` of every build run result, then from `proofs.json` (`tenbox proof`); a part file's
+Markdown text gives none. The same part, test file and test name counts once, the first one.
+Points: +1 per distinct proof, -1 per `unproven` item a reviewer returned in any
+build run of the task, at most one per part per build round.
+The reviewer's sentences are not kept. Schema 3.
 
 | Variable | Does |
 |---|---|
@@ -94,7 +95,9 @@ review lenses and the questions.
 
 It returns `ready-for-you` with the attention and nice-to-have lists, `needs-you`, or
 `failed` with the last feedback after the last round. Every result, `needs-you` too, also
-has `unproven`: the reviewers' items from all rounds, one per part per round.
+has `unproven`: the reviewers' items from all rounds, one per part per round. It also has
+`proofs`: the worker proofs `{ part, file, test, failure }` from all rounds; `tenbox close`
+counts them (see `stats.json`).
 
 ## Roles: `agents/`
 
@@ -116,6 +119,7 @@ Inside the task worktree, excluded from git:
 ├ questions.md     planner: open questions by kind (product, technical, contract, risk)
 ├ decisions.md     you: answered questions; every agent reads it first
 ├ parts/01-x.md    one per part: status, difficulty, files, acceptance, result
+├ proofs.json      tenbox proof: the proofs recorded by hand, a JSON array
 └ rounds/N/
   ├ checks.json    tenbox check
   └ checks/*.log   the output of each check

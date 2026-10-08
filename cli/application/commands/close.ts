@@ -9,6 +9,7 @@ import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
 import { makeTracker } from "../../infra/tracker/index.ts";
 import { projects } from "../projects.ts";
+import { proofs } from "../proofs.ts";
 import { sessions } from "../sessions.ts";
 import { type StatsInput, stats } from "../stats.ts";
 import { tasks } from "../tasks.ts";
@@ -44,6 +45,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const archive = archiveDir(wtRoot, project.name, id);
   const { base } = manifest;
   await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base, archive }, force);
+  const recordedProofs = await proofs.read(taskWorktree);
   const archiveState = await tasks.removeFiles(taskWorktree, archive);
   const statsInput: StatsInput = {
     id,
@@ -54,6 +56,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     archive,
     branch,
     base,
+    recordedProofs,
   };
   const statsInfo = await writeStats(statsInput, archiveState);
   const tmuxState = await sessions.remove(session);

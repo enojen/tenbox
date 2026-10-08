@@ -1,4 +1,4 @@
-import { isPlainObject, minutesBetween, toMinutes } from "./utils.ts";
+import { isFilled, isPlainObject, minutesBetween, toMinutes } from "./utils.ts";
 
 /* The plan and build workflow runs of one task, read from Claude Code's session files. */
 
@@ -57,6 +57,14 @@ export interface RunUnproven {
   reason: string;
 }
 
+/** One worker proof: the test that failed before the code, and how. */
+export interface StatsProof {
+  part: string;
+  file: string;
+  test: string;
+  failure: string;
+}
+
 /** What the runs add to the stats; agents are null without session files. */
 export interface RunSummary {
   timeline: RunTimeline;
@@ -64,6 +72,8 @@ export interface RunSummary {
   review: RunReview | null;
   /** Every build run's unproven items, oldest first. */
   unproven: RunUnproven[];
+  /** Every build run's proofs, oldest first. */
+  proofs: StatsProof[];
   agents: RunAgent[] | null;
 }
 
@@ -92,6 +102,7 @@ export function summarizeRuns(
     },
     review: reviewCounts(build.at(-1)),
     unproven: build.flatMap(unprovenItems),
+    proofs: build.flatMap(proofItems),
     agents: all === null ? null : runs.flatMap((run) => run.agents),
   };
 }
@@ -141,3 +152,24 @@ function unprovenItems(run: WorkflowRun): RunUnproven[] {
 function isUnproven(item: unknown): item is RunUnproven {
   return isPlainObject(item) && typeof item.part === "string" && typeof item.reason === "string";
 }
+
+function proofItems(run: WorkflowRun): StatsProof[] {
+  const items = isPlainObject(run.result) ? run.result.proofs : null;
+  if (!Array.isArray(items)) return [];
+  return items.filter(isProof);
+}
+
+const PROOF_FIELDS = ["part", "file", "test", "failure"] as const;
+
+/** Four non-blank strings: part, file, test and failure. */
+export function isProof(item: unknown): item is StatsProof {
+  return isPlainObject(item) && PROOF_FIELDS.every((field) => isFilled(item[field]));
+}
+
+/** The proof with every field trimmed, so padded and plain names are one test. */
+export const trimProof = (proof: StatsProof): StatsProof => ({
+  part: proof.part.trim(),
+  file: proof.file.trim(),
+  test: proof.test.trim(),
+  failure: proof.failure.trim(),
+});

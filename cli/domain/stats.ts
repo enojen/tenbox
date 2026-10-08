@@ -1,10 +1,17 @@
 import path from "node:path";
-import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
+import type {
+  RunAgent,
+  RunMinutes,
+  RunReview,
+  RunTimeline,
+  RunUnproven,
+  StatsProof,
+} from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
-/* The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels and the proof lines of the parts. */
+/* The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels and the worker proofs. */
 
-export const STATS_SCHEMA = 2;
+export const STATS_SCHEMA = 3;
 
 /** `<archive>/stats.json`. */
 export const statsFile = (archive: string): string => path.join(archive, "stats.json");
@@ -13,8 +20,6 @@ const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";
 const ESTIMATED_LINES = /^Estimated lines:\s*(\d+)/im;
 const DIFFICULTY_LINE = /^difficulty:\s*(\S+)/m;
-const PROOFS_HEADER = /^proofs:\s*$/;
-const PROOF_LINE = /^-\s+(.+?) > (.+): got (.+)$/;
 const PART_ID = /^[^-.]+/;
 
 export interface StatsTimeline extends RunTimeline {
@@ -53,32 +58,15 @@ export interface StatsCode {
   test_added: number;
 }
 
-/** One worker proof line: the test that failed before the code, and how. */
-export interface StatsProof {
-  part: string;
-  file: string;
-  test: string;
-  failure: string;
-}
-
-/** +1 per proof, -1 per unproven item; `ignored_proofs` counts the malformed lines under `proofs:`. */
+/** +1 per distinct proof, -1 per unproven item. */
 export interface StatsPoints {
   part: string;
   points: number;
-  ignored_proofs: number;
-}
-
-/** The proofs of one part file, and how many of its `proofs:` lines did not match the format. */
-export interface ParsedProofs {
-  proofs: StatsProof[];
-  ignored: number;
 }
 
 export interface PointsInput {
   partIds: string[];
   proofs: StatsProof[];
-  /** Ignored proof lines per part id. */
-  ignored: Record<string, number>;
   unproven: RunUnproven[];
 }
 
@@ -137,43 +125,23 @@ export function partIdOf(fileName: string): string {
   return PART_ID.exec(fileName)?.[0] ?? fileName;
 }
 
-/** True the first time a key is seen, false after. */
-function isFirstSighting(seen: Set<string>, key: string): boolean {
-  if (seen.has(key)) return false;
-  seen.add(key);
-  return true;
-}
-
-/** The `proofs:` block; it ends at the first line not starting with `-`. Other `-` lines are ignored. A test named twice counts once, the first line. */
-export function parseProofs(part: string, text: string): ParsedProofs {
-  const lines = text.split("\n");
-  const start = lines.findIndex((line) => PROOFS_HEADER.test(line));
-  const result: ParsedProofs = { proofs: [], ignored: 0 };
-  if (start === -1) return result;
+/** The proofs in order; a part, test file and test name seen again is dropped. */
+export function distinctProofs(proofs: StatsProof[]): StatsProof[] {
   const seen = new Set<string>();
-  for (const line of lines.slice(start + 1)) {
-    if (!line.startsWith("-")) break;
-    const [, file, test, failure] = PROOF_LINE.exec(line) ?? [];
-    if (!file || !test || !failure) {
-      result.ignored += 1;
-      continue;
-    }
-    if (!isFirstSighting(seen, `${file}\n${test}`)) continue;
-    result.proofs.push({ part, file, test, failure });
-  }
-  return result;
+  return proofs.filter((proof) => {
+    const key = [proof.part, proof.file, proof.test].join("\n");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** One entry per part id, then one per other part id an unproven item names. */
 export function countPoints(input: PointsInput): StatsPoints[] {
-  const { partIds, proofs, ignored, unproven } = input;
+  const { partIds, proofs, unproven } = input;
   const points = new Map<string, number>(partIds.map((part) => [part, 0]));
   const add = (part: string, delta: number) => points.set(part, (points.get(part) ?? 0) + delta);
   for (const proof of proofs) add(proof.part, 1);
   for (const item of unproven) add(item.part, -1);
-  return [...points].map(([part, total]) => ({
-    part,
-    points: total,
-    ignored_proofs: ignored[part] ?? 0,
-  }));
+  return [...points].map(([part, total]) => ({ part, points: total }));
 }

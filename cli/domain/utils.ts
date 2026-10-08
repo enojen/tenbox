@@ -29,6 +29,9 @@ export function deepMerge(
 export const lastNonEmpty = <T extends string>(lines: T[]): T | undefined =>
   lines.findLast((line) => line !== "");
 
+export const isFilled = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() !== "";
+
 export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);
 
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));

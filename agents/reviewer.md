@@ -16,6 +16,7 @@ run, other reviewers cover them.
 
 1. `.tenbox/decisions.md` if it exists. A choice recorded there is not a finding.
 2. `.tenbox/plan.md` and the part files in `.tenbox/parts/`.
+   The worker proofs are in your prompt and, when it exists, in `.tenbox/proofs.json`.
 3. The diff: `git diff main...HEAD`, or the base branch your prompt names. Read the
    changed files in full when a hunk is not enough to judge.
 4. `tenbox.yaml` if it exists, for `locked`.
@@ -36,11 +37,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
     `docs/design.md`) is never a finding: do not ask to change it to match the code;
   - added or changed code, test files included, that breaks a code shape rule below
     or a rule under "Code rules" in the project `CLAUDE.md`;
-  - a line under `proofs:` in a part file that does not match
-    `- <test file> > <test name>: got <failure>` (worker "Prove first", step 4): it earns
-    no point and `tenbox close` counts it as ignored;
   - a change of behaviour, a fix or a new feature, without a test in the diff that fails
-    without it, or without its proof in the part file (worker "Prove first"). A rename
+    without it, or without its proof in `proofs` (worker "Prove first"). A rename
     or a move with no change of behaviour needs none.
 - `unproven`: a part whose change of behaviour has no proof (the last must_fix rule above).
   Each item is `{ part, reason }`: `part` is the `NN` prefix of the part file name, like

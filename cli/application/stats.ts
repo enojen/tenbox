@@ -1,12 +1,11 @@
 import path from "node:path";
 import type { TaskId } from "../domain/ids.ts";
-import { summarizeRuns } from "../domain/runs.ts";
+import { type StatsProof, summarizeRuns, trimProof } from "../domain/runs.ts";
 import {
   checksPassed,
   countPlan,
   countPoints,
-  parseProofs,
-  partIdOf,
+  distinctProofs,
   STATS_SCHEMA,
   type StatsCode,
   type StatsRound,
@@ -20,6 +19,7 @@ import { claudeSessions } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { parts } from "./parts.ts";
 
 export interface StatsInput {
   id: TaskId;
@@ -32,6 +32,8 @@ export interface StatsInput {
   branch: string;
   /** The branch the diff starts from. */
   base: string;
+  /** From `.tenbox/proofs.json`. */
+  recordedProofs: StatsProof[];
 }
 
 /** Stats: the record of one closed task, `stats.json` in its archive. */
@@ -39,25 +41,23 @@ export const stats = { compute, save };
 
 /** Reads git, the task's `.tenbox/` files and its Claude Code sessions; a missing source gives null. */
 async function compute(input: StatsInput): Promise<TaskStats> {
-  const { id, project, forced, mainDir, taskWorktree, archive, branch } = input;
+  const { id, project, forced, mainDir, taskWorktree, archive, branch, recordedProofs } = input;
   const taskMd = await files.read(path.join(archive, "task.md"));
   const user = await git.findConfig(mainDir, "user.email");
   const tenbox = await git.findHead(env().tenboxRoot);
   const opened = await git.findBranchCreated(mainDir, branch);
   const closed = new Date().toISOString();
   const planText = await files.read(path.join(archive, "plan.md"));
-  const parts = await readParts(archive);
+  const partFiles = await parts.read(archive);
   const plan = countPlan(
     planText,
-    parts.map((part) => part.text),
+    partFiles.map((part) => part.text),
   );
-  const parsed = parts.map((part) => parseProofs(part.id, part.text));
-  const proofs = parsed.flatMap((one) => one.proofs);
-  const ignored = Object.fromEntries(parts.map((part, i) => [part.id, parsed[i]?.ignored ?? 0]));
   const rounds = await readRounds(archive);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
   const summary = summarizeRuns(runs, opened, closed);
+  const taskProofs = distinctProofs([...summary.proofs, ...recordedProofs].map(trimProof));
   return {
     schema: STATS_SCHEMA,
     project,
@@ -71,11 +71,10 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     plan,
     rounds,
     review: summary.review,
-    proofs,
+    proofs: taskProofs,
     points: countPoints({
-      partIds: parts.map((part) => part.id),
-      proofs,
-      ignored,
+      partIds: partFiles.map((part) => part.id),
+      proofs: taskProofs,
       unproven: summary.unproven,
     }),
     code,
@@ -85,23 +84,6 @@ async function compute(input: StatsInput): Promise<TaskStats> {
 
 async function save(taskStats: TaskStats, archive: string): Promise<void> {
   await files.write(statsFile(archive), `${JSON.stringify(taskStats, null, 2)}\n`);
-}
-
-interface PartFile {
-  id: string;
-  text: string;
-}
-
-/** The part files in name order. */
-async function readParts(dir: string): Promise<PartFile[]> {
-  const partsDir = path.join(dir, "parts");
-  const names = await files.list(partsDir);
-  const parts: PartFile[] = [];
-  for (const name of names.filter((n) => n.endsWith(".md")).sort()) {
-    const text = await files.read(path.join(partsDir, name));
-    parts.push({ id: partIdOf(name), text: text ?? "" });
-  }
-  return parts;
 }
 
 async function readRounds(dir: string): Promise<StatsRound[]> {

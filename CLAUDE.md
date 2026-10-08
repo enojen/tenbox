@@ -51,9 +51,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
-| proof | One worker line under `proofs:` in a part file: `- <test file> > <test name>: got <failure>` (`StatsProof`). |
+| proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It comes from a worker's build run result, or recorded by hand in `.tenbox/proofs.json` (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`RunUnproven`). |
-| points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item, plus `ignored_proofs` (`StatsPoints`). |
+| points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules
@@ -84,6 +84,7 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   code. Run `bunx biome format --write cli` before a commit.
 - A branded type has one constructor function, the only place with `as`.
 - Generic helpers live in `cli/domain/utils.ts`; search there before writing one.
+- Data that code counts comes from a schema or a JSON file, never from Markdown.
 - Less code is always better: no code for a later phase.
 
 ## Layout
@@ -93,7 +94,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   domain/       pure code: ids, failure lines, manifest schema, the Tracker port
   application/  use cases, and one module per glossary concept, named in the plural
     commands/     one file per CLI command, named after it; results.ts is their JSON output
-    manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats
+    manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker

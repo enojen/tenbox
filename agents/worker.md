@@ -43,17 +43,12 @@ A fix or a new feature changes behaviour. Never change behaviour on a guess.
 1. Write the test first. Run it and see it fail, for the reason you expect.
 2. Write the code. Run the test and see it pass.
 3. For a fix, undo the fix once, see the test fail again, then put the fix back.
-4. Record the proof in your part file, one line per test under `proofs:`, and in your
-   result: the test file, the test name, and the failure you saw before the code. Write
-   each line exactly as `- <test file> > <test name>: got <failure>`. `tenbox close` splits
-   a line on the first ` > ` and on the last `: got `, and counts one point for each distinct
-   test (test file and test name) in this format; writing the same test again in a later
-   round gives no second point. A line in any other format gets no point and is counted as ignored.
-
-   ```
-   proofs:
-   - cli/application/commands/check.test.ts > a timed-out check reports 124: got 137
-   ```
+4. Return the proof in your result, in `proofs`: one item `{ file, test, failure }` per
+   test, with the test file, the test name, and the failure you saw before the code. Each
+   field is a non-blank string. Do not write proofs in the part file: only `proofs` in your
+   result earns points. `tenbox close` counts one point for each distinct test (test file
+   and test name); the same test again in a later round gives no second point. Return
+   `proofs: []` when you changed no behaviour.
 
 If you cannot write a test that fails without your change, you have not shown a problem:
 do not make the change. Set `status: blocked` and return the question. A rename or a move
@@ -86,5 +81,5 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 ## Returning
 
 Your final message is data for a workflow script. When a schema is given, fill it
-exactly. Otherwise return: part id, status, files changed, tests added, the proofs,
+exactly. Otherwise return: part id, status, files changed, tests added, `proofs`,
 commit hash, and any questions.

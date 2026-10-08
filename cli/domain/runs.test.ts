@@ -93,3 +93,28 @@ test("summarizeRuns lists the unproven items of every build run after opened, ol
   ]);
   expect(summarizeRuns(null, null, "2026-01-01T01:00:00.000Z").unproven).toEqual([]);
 });
+
+test("summarizeRuns lists the proofs of every build run after opened, oldest first, skipping bad ones", () => {
+  const proof = (test: string) => ({ part: "01", file: "a.test.ts", test, failure: "got 1" });
+  const withResult = (workflow: string, started: string, result: unknown): WorkflowRun => ({
+    ...run(workflow, started, 1),
+    result,
+  });
+  const runs = [
+    withResult("tenbox-build", "2026-01-01T00:20:00.000Z", {
+      proofs: [
+        proof("b"),
+        { part: "01", file: "f", test: "t" },
+        { ...proof("c"), test: "" },
+        { ...proof("d"), failure: "  " },
+        "x",
+      ],
+    }),
+    withResult("tenbox-build", "2026-01-01T00:10:00.000Z", { proofs: [proof("a")] }),
+    withResult("tenbox-build", "2025-12-31T00:00:00.000Z", { proofs: [proof("old")] }),
+    withResult("tenbox-plan", "2026-01-01T00:15:00.000Z", { proofs: [proof("plan")] }),
+  ];
+  const summary = summarizeRuns(runs, "2026-01-01T00:00:00Z", "2026-01-01T01:00:00.000Z");
+  expect(summary.proofs).toEqual([proof("a"), proof("b")]);
+  expect(summarizeRuns(null, null, "2026-01-01T01:00:00.000Z").proofs).toEqual([]);
+});
