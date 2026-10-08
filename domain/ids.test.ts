@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { isProjectId, projectId, shortSha, taskBranch, taskId, tmuxSessionName } from "./ids.ts";
+import {
+  isProjectId,
+  newProjectId,
+  projectId,
+  shortSha,
+  taskBranch,
+  taskId,
+  tmuxSessionName,
+} from "./ids.ts";
 import { NamesSchema } from "./manifest.ts";
 
 const defaults = NamesSchema.parse({});
@@ -23,10 +31,17 @@ describe("taskId", () => {
   });
 });
 
+const SAMPLE_COUNT = 20;
+
 describe("projectId", () => {
   test("accepts 6 characters, a-z and 0-9", () => {
     expect(String(projectId("k7f3qa"))).toBe("k7f3qa");
     expect(isProjectId("000000")).toBe(true);
+  });
+  test("newProjectId makes a valid id each time", () => {
+    const ids = Array.from({ length: SAMPLE_COUNT }, () => newProjectId());
+    expect(ids.every(isProjectId)).toBe(true);
+    expect(new Set(ids).size).toBeGreaterThan(1);
   });
   test("rejects anything else", () => {
     for (const id of ["K7F3QA", "k7f3q", "k7f3qa1", "k7-3qa", ""]) {

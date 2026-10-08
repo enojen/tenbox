@@ -38,7 +38,7 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 
 | Command | Does |
 |---|---|
-| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, `.tenbox/` with `task.md` from the tracker (or from `--title`), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Safe to run twice |
+| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, `.tenbox/` with `task.md` from the tracker (or from `--title`), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves `.tenbox/` to the archive with a `stats.json`, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything is moved |
@@ -130,7 +130,7 @@ Inside the task worktree, excluded from git:
 ## The manifest: `tenbox.yaml`
 
 ```yaml
-id: k7f3qa                       # optional, read only; 6 characters, a-z and 0-9
+id: k7f3qa                       # 6 characters, a-z and 0-9; tenbox start adds it when missing; only in tenbox.yaml
 project: tenbox                  # optional; default: the main checkout's directory name, or its parent's when it is `main`
 base: main                       # optional: the branch tasks start from and merge into
 setup: bun install               # optional: runs in a new task worktree

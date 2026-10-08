@@ -21,7 +21,10 @@ export function taskId(raw: string): TaskId {
 /** A project's id in `tenbox.yaml`: 6 characters, a-z and 0-9, e.g. `k7f3qa`. */
 export type ProjectId = string & { readonly __brand: "ProjectId" };
 
-const PROJECT_ID_PATTERN = /^[a-z0-9]{6}$/;
+const PROJECT_ID_LENGTH = 6;
+const PROJECT_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+const PROJECT_ID_PATTERN = new RegExp(`^[${PROJECT_ID_ALPHABET}]{${PROJECT_ID_LENGTH}}$`);
 
 export function isProjectId(raw: string): boolean {
   return PROJECT_ID_PATTERN.test(raw);
@@ -32,6 +35,13 @@ export function projectId(raw: string): ProjectId {
     throw new TenboxError(`project id "${raw}": 6 characters, a-z and 0-9`, "usage");
   }
   return raw as ProjectId;
+}
+
+/** A random project id; `tenbox start` writes it once into `tenbox.yaml`. */
+export function newProjectId(): ProjectId {
+  const random = crypto.getRandomValues(new Uint8Array(PROJECT_ID_LENGTH));
+  const chars = Array.from(random, (n) => PROJECT_ID_ALPHABET[n % PROJECT_ID_ALPHABET.length]);
+  return projectId(chars.join(""));
 }
 
 const SHORT_SHA_LENGTH = 7;

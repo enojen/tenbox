@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
@@ -120,4 +120,43 @@ test("invalid settings.local.json fails with code settings naming the file", asy
     code: "settings",
     message: expect.stringContaining(settingsPath()),
   });
+});
+
+const COMMIT_MESSAGE = "commit tenbox.yaml";
+
+async function startCapturingStderr(extra: Partial<StartInput> = {}): Promise<string> {
+  let captured = "";
+  const spy = spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+    captured += String(chunk);
+    return true;
+  });
+  try {
+    await startTask(input({ setup: false, ...extra }));
+  } finally {
+    spy.mockRestore();
+  }
+  return captured;
+}
+
+test("the first start writes the project id and says to commit; the second changes nothing", async () => {
+  const before = "# keep me\nproject: demo\n";
+  await setup(before);
+  const yamlPath = path.join(project.mainDir, "tenbox.yaml");
+  const first = await startCapturingStderr();
+  const written = await files.read(yamlPath);
+  expect(written).toMatch(/^# keep me\nproject: demo\nid: [a-z0-9]{6}\n$/);
+  expect(first).toContain(COMMIT_MESSAGE);
+  const second = await startCapturingStderr({ id: taskId("T-2") });
+  const after = await files.read(yamlPath);
+  expect(after).toBe(written);
+  expect(second).not.toContain(COMMIT_MESSAGE);
+});
+
+test("start keeps a tenbox.yaml that already has an id", async () => {
+  const before = "project: demo\nid: k7f3qa\n";
+  await setup(before);
+  const stderr = await startCapturingStderr();
+  const text = await files.read(path.join(project.mainDir, "tenbox.yaml"));
+  expect(text).toBe(before);
+  expect(stderr).not.toContain(COMMIT_MESSAGE);
 });
