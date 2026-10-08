@@ -463,7 +463,7 @@ round's agents.
 {
   "event": "proof.added",
   "part": "k7f3qa/TEN-301/p01",
-  "file": "cli/domain/login.test.ts",
+  "file": "domain/login.test.ts",
   "test": "rejects an empty password",
   "failure": "expected 400, got 200",
   "source": "worker"

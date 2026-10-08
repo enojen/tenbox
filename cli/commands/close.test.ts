@@ -2,12 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { minutesBetween } from "../../domain/utils.ts";
-import { projectDir } from "../../infra/claudeSessions.ts";
-import { env } from "../../infra/env.ts";
-import { files } from "../../infra/files.ts";
-import { git } from "../../infra/git.ts";
-import { type CliRun, tenbox, tmuxTest } from "../../test/cli.ts";
-import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { projectDir } from "../infra/claudeSessions.ts";
+import { env } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
+import { type CliRun, tenbox, tmuxTest } from "../test/cli.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const SESSION = "tenbox-T-1";
 const MS_PER_MINUTE = 60_000;

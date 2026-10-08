@@ -62,9 +62,11 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 
 - Signatures use named types: `state: TmuxState`, not `StartResult["tmux"]["state"]`; no `Omit<>`,
   `Pick<>` or indexed types in a parameter. A shape used twice gets a name.
-- Layers and their direction: `domain/` imports nothing from `application/` or `infra/`;
-  `infra/` imports only `domain/`; `application/` imports both, directly: no ports bag, no
-  dependency injection. The one port is `Tracker`, because its adapter is chosen at run time.
+- Layers and their direction: `domain/` imports nothing outside itself; `cli/infra/` imports
+  only `domain/`; `cli/application/` imports both, directly: no ports bag, no dependency
+  injection; `cli/commands/` imports all three. The one port is `Tracker`, because its
+  adapter is chosen at run time. `cli/test/layers.test.ts` checks the `domain/` and
+  `cli/infra/` rules.
 - In `application/`, one module per glossary concept, named in the plural:
   `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
   exports the module object; other modules import only that. A function name does not repeat
@@ -80,25 +82,26 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - No magic numbers: name the constant. No inline casts.
 - `await` only at the start of a statement or an assignment: `const x = await f();`. Never
   inside a condition, an argument, an object literal, a `??` or a spread.
-- Biome formats `cli/` at 100 columns (`biome.json`); the `format` check fails on unformatted
-  code. Run `bunx biome format --write cli` before a commit.
+- Biome formats `cli/` and `domain/` at 100 columns (`biome.json`); the `format` check fails
+  on unformatted code. Run `bunx biome format --write cli domain` before a commit.
 - A branded type has one constructor function, the only place with `as`.
-- Generic helpers live in `cli/domain/utils.ts`; search there before writing one.
+- Generic helpers live in `domain/utils.ts`; search there before writing one.
 - Data that code counts comes from a schema or a JSON file, never from Markdown.
 - Less code is always better: no code for a later phase.
 
 ## Layout
 
 ```
+domain/     pure code: ids, failure lines, manifest schema, the Tracker port
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
-  domain/       pure code: ids, failure lines, manifest schema, the Tracker port
+  commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
-    commands/     one file per CLI command, named after it; results.ts is their JSON output
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker
-  test/         tempProject.ts, cli.ts (runs the real CLI) and the end-to-end test
+  test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
+                layers test
 agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js
 docs/       design.md (the target design), flow page and mockups

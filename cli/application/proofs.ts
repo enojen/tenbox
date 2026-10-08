@@ -1,7 +1,7 @@
-import { TenboxError } from "../domain/errors.ts";
-import { isProof, type StatsProof } from "../domain/proof.ts";
-import { proofsFile, tenboxDir } from "../domain/task.ts";
-import { errorMessage } from "../domain/utils.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import { isProof, type StatsProof } from "../../domain/proof.ts";
+import { proofsFile, tenboxDir } from "../../domain/task.ts";
+import { errorMessage } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 /** Proofs: the worker proofs `tenbox proof` records in `.tenbox/proofs.json`, a JSON array. */

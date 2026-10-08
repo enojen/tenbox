@@ -1,8 +1,8 @@
 import path from "node:path";
-import type { TaskId } from "../domain/ids.ts";
-import { type Task, renderTaskMd, tenboxDir } from "../domain/task.ts";
-import type { TaskStatus, Tracker } from "../domain/tracker.ts";
-import { errorMessage } from "../domain/utils.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import { type Task, renderTaskMd, tenboxDir } from "../../domain/task.ts";
+import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
+import { errorMessage } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 export type ArchiveState = "archived" | "skipped";

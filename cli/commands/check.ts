@@ -5,14 +5,14 @@ import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
 import { nextRound, roundDir, tenboxDir } from "../../domain/task.ts";
 import { elapsedMs } from "../../domain/utils.ts";
-import { env, log } from "../../infra/env.ts";
-import { files } from "../../infra/files.ts";
-import { git } from "../../infra/git.ts";
-import { type ShellResult, shell } from "../../infra/shell.ts";
-import { type BaselineHit, baselines } from "../baselines.ts";
-import { manifests } from "../manifests.ts";
-import { projects } from "../projects.ts";
-import { worktrees } from "../worktrees/index.ts";
+import { env, log } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
+import { type ShellResult, shell } from "../infra/shell.ts";
+import { type BaselineHit, baselines } from "../application/baselines.ts";
+import { manifests } from "../application/manifests.ts";
+import { projects } from "../application/projects.ts";
+import { worktrees } from "../application/worktrees/index.ts";
 import type { BaselineSummary, CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {

@@ -3,11 +3,11 @@ import { TenboxError } from "../../domain/errors.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
 import { roundDir, roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";
-import { files } from "../../infra/files.ts";
-import { gh, type OpenPr, type PrText } from "../../infra/gh.ts";
-import { git } from "../../infra/git.ts";
-import { projects } from "../projects.ts";
-import { worktrees } from "../worktrees/index.ts";
+import { files } from "../infra/files.ts";
+import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
+import { git } from "../infra/git.ts";
+import { projects } from "../application/projects.ts";
+import { worktrees } from "../application/worktrees/index.ts";
 import type { PrInfo, PrResult, PrState } from "./results.ts";
 
 export interface PrInput {

@@ -135,7 +135,7 @@ base: main                       # optional: the branch tasks start from and mer
 setup: bun install               # optional: runs in a new task worktree
 checks:                          # name: command; tenbox check runs them all
   types: bunx tsc --noEmit
-  unit: bun test cli
+  unit: bun test cli domain
 failure_pattern: "..."           # optional: a regex for a failure line; the default knows bun, vitest, jest and tsc
 tracker: { kind: linear }        # none (default) or linear; api_key here or LINEAR_API_KEY
 names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults
@@ -154,9 +154,10 @@ progress; `tenbox close` sets it to done.
 ## Repository layout
 
 ```
+domain/       pure code: ids, failure lines, manifest schema, stats, the Tracker port
 cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
-  domain/       pure code: ids, failure lines, manifest schema, stats, the Tracker port
-  application/  use cases; commands/ has one file per CLI command
+  commands/     one file per CLI command
+  application/  use cases
   infra/        git, gh, tmux, shell, files, env, baselines on disk, tracker/ adapters
   test/         temporary projects and the CLI runner for tests
 agents/       planner.md, worker.md, reviewer.md, runner.md

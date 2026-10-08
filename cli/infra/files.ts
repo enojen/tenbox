@@ -1,6 +1,6 @@
 import { lstat, mkdir, readdir, readlink, rename, stat, symlink } from "node:fs/promises";
 import path from "node:path";
-import { hasErrorCode } from "../domain/utils.ts";
+import { hasErrorCode } from "../../domain/utils.ts";
 
 const MISSING_CODES = ["ENOENT", "ENOTDIR"];
 

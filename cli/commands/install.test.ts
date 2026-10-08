@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { env } from "../../infra/env.ts";
-import { files } from "../../infra/files.ts";
-import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { env } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { install } from "./install.ts";
 
 let project: TempProject;

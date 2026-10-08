@@ -2,9 +2,9 @@ import { TenboxError } from "../../domain/errors.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { isProof, type StatsProof, trimProof } from "../../domain/proof.ts";
 import { tenboxDir } from "../../domain/task.ts";
-import { parts } from "../parts.ts";
-import { proofs } from "../proofs.ts";
-import { worktrees } from "../worktrees/index.ts";
+import { parts } from "../application/parts.ts";
+import { proofs } from "../application/proofs.ts";
+import { worktrees } from "../application/worktrees/index.ts";
 import type { ProofResult } from "./results.ts";
 
 /** The command-line flags as given; each one must be non-blank. */

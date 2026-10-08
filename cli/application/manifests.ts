@@ -1,7 +1,7 @@
 import path from "node:path";
-import { TenboxError } from "../domain/errors.ts";
-import { type Manifest, type ManifestLayer, mergeManifest } from "../domain/manifest.ts";
-import { errorMessage } from "../domain/utils.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifest.ts";
+import { errorMessage } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 /** The manifest of a project: `tenbox.yaml` and its local layers. */

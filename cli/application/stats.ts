@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { TaskId } from "../domain/ids.ts";
-import { type StatsProof, trimProof } from "../domain/proof.ts";
-import { summarizeRuns } from "../domain/runs.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import { type StatsProof, trimProof } from "../../domain/proof.ts";
+import { summarizeRuns } from "../../domain/runs.ts";
 import {
   checksPassed,
   countPlan,
@@ -13,9 +13,9 @@ import {
   statsFile,
   sumCode,
   type TaskStats,
-} from "../domain/stats.ts";
-import { roundNumbers, titleFromTaskMd } from "../domain/task.ts";
-import { minutesBetween } from "../domain/utils.ts";
+} from "../../domain/stats.ts";
+import { roundNumbers, titleFromTaskMd } from "../../domain/task.ts";
+import { minutesBetween } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";

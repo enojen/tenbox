@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { files } from "../../infra/files.ts";
-import { tenbox } from "../../test/cli.ts";
-import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { files } from "../infra/files.ts";
+import { tenbox } from "../test/cli.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
 

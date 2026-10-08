@@ -1,6 +1,6 @@
 import path from "node:path";
-import { env, log } from "../../infra/env.ts";
-import { files } from "../../infra/files.ts";
+import { env, log } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
 import type { InstallResult, LinkEntry, LinkState, LinkTarget } from "./results.ts";
 
 /** The checkout directories that `~/.claude/` gets a copy of, as symlinks. */

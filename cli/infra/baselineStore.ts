@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type Baseline, type FailureLine, failureLine } from "../domain/failures.ts";
+import { type Baseline, type FailureLine, failureLine } from "../../domain/failures.ts";
 import { env } from "./env.ts";
 import { files } from "./files.ts";
 

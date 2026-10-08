@@ -1,5 +1,5 @@
-import { TenboxError } from "../domain/errors.ts";
-import { elapsedMs, hasErrorCode } from "../domain/utils.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import { elapsedMs, hasErrorCode } from "../../domain/utils.ts";
 import { env, log } from "./env.ts";
 import { files } from "./files.ts";
 

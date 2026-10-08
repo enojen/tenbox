@@ -4,16 +4,16 @@ import { archiveDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { errorMessage } from "../../domain/utils.ts";
-import { env } from "../../infra/env.ts";
-import { files } from "../../infra/files.ts";
-import { git } from "../../infra/git.ts";
-import { makeTracker } from "../../infra/tracker/index.ts";
-import { projects } from "../projects.ts";
-import { proofs } from "../proofs.ts";
-import { sessions } from "../sessions.ts";
-import { type StatsInput, stats } from "../stats.ts";
-import { type ArchiveState, tasks } from "../tasks.ts";
-import { worktrees } from "../worktrees/index.ts";
+import { env } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
+import { makeTracker } from "../infra/tracker/index.ts";
+import { projects } from "../application/projects.ts";
+import { proofs } from "../application/proofs.ts";
+import { sessions } from "../application/sessions.ts";
+import { type StatsInput, stats } from "../application/stats.ts";
+import { type ArchiveState, tasks } from "../application/tasks.ts";
+import { worktrees } from "../application/worktrees/index.ts";
 import type { CloseResult, StatsInfo } from "./results.ts";
 
 export interface CloseInput {

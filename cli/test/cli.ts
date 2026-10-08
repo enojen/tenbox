@@ -1,6 +1,6 @@
 import { test } from "bun:test";
 import path from "node:path";
-import { isPlainObject } from "../domain/utils.ts";
+import { isPlainObject } from "../../domain/utils.ts";
 
 const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
 

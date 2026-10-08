@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type PartFile, partIdOf } from "../domain/part.ts";
+import { type PartFile, partIdOf } from "../../domain/part.ts";
 import { files } from "../infra/files.ts";
 
 /** Parts: the part files in `<dir>/parts/`, one per piece of the plan. */

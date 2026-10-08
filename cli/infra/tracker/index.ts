@@ -1,5 +1,5 @@
-import type { TrackerConfig } from "../../domain/manifest.ts";
-import type { Tracker } from "../../domain/tracker.ts";
+import type { TrackerConfig } from "../../../domain/manifest.ts";
+import type { Tracker } from "../../../domain/tracker.ts";
 import { linearTracker } from "./linear.ts";
 import { noneTracker } from "./none.ts";
 

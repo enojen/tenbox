@@ -1,6 +1,6 @@
 import path from "node:path";
-import type { RunAgent, WorkflowRun } from "../domain/runs.ts";
-import { isPlainObject, MS_PER_SECOND, parseObject } from "../domain/utils.ts";
+import type { RunAgent, WorkflowRun } from "../../domain/runs.ts";
+import { isPlainObject, MS_PER_SECOND, parseObject } from "../../domain/utils.ts";
 import { env } from "./env.ts";
 import { files } from "./files.ts";
 

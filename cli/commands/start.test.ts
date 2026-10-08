@@ -2,9 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
-import { files } from "../../infra/files.ts";
-import { tmuxTest } from "../../test/cli.ts";
-import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { files } from "../infra/files.ts";
+import { tmuxTest } from "../test/cli.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { startTask, type StartInput } from "./start.ts";
 
 const SESSION = "tenbox-T-1";

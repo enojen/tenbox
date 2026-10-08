@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { TenboxError } from "../../domain/errors.ts";
-import type { TrackerConfig } from "../../domain/manifest.ts";
+import { TenboxError } from "../../../domain/errors.ts";
+import type { TrackerConfig } from "../../../domain/manifest.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
-import type { TaskStatus, Tracker, TrackerTask } from "../../domain/tracker.ts";
+import type { TaskStatus, Tracker, TrackerTask } from "../../../domain/tracker.ts";
 
 const ENDPOINT = "https://api.linear.app/graphql";
 

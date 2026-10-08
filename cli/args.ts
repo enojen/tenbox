@@ -1,7 +1,7 @@
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
-import { TenboxError } from "./domain/errors.ts";
-import { type TaskId, taskId } from "./domain/ids.ts";
-import { errorMessage, isDigits } from "./domain/utils.ts";
+import { TenboxError } from "../domain/errors.ts";
+import { type TaskId, taskId } from "../domain/ids.ts";
+import { errorMessage, isDigits } from "../domain/utils.ts";
 
 type OptionValue = string | boolean | Array<string | boolean> | undefined;
 export type Values = Record<string, OptionValue>;

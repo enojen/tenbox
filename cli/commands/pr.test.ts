@@ -2,10 +2,10 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { files } from "../../infra/files.ts";
-import { git } from "../../infra/git.ts";
-import { tenbox } from "../../test/cli.ts";
-import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
+import { tenbox } from "../test/cli.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
 let origin: string;

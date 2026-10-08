@@ -1,4 +1,4 @@
-import type { Project } from "../../domain/project.ts";
+import type { Project } from "../../../domain/project.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
 

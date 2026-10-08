@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { DEFAULT_FAILURE_PATTERN } from "../domain/failures.ts";
+import { DEFAULT_FAILURE_PATTERN } from "../../domain/failures.ts";
 
 export interface Env {
   cwd: string;

@@ -8,15 +8,15 @@ import {
   stringValue,
   type Values,
 } from "./args.ts";
-import { closeTask } from "./application/commands/close.ts";
-import { runChecks } from "./application/commands/check.ts";
-import { install } from "./application/commands/install.ts";
-import type { Failure } from "./application/commands/results.ts";
-import { openPr } from "./application/commands/pr.ts";
-import { recordProof } from "./application/commands/proof.ts";
-import { startTask } from "./application/commands/start.ts";
-import { TenboxError } from "./domain/errors.ts";
-import { errorMessage, MS_PER_SECOND } from "./domain/utils.ts";
+import { closeTask } from "./commands/close.ts";
+import { runChecks } from "./commands/check.ts";
+import { install } from "./commands/install.ts";
+import type { Failure } from "./commands/results.ts";
+import { openPr } from "./commands/pr.ts";
+import { recordProof } from "./commands/proof.ts";
+import { startTask } from "./commands/start.ts";
+import { TenboxError } from "../domain/errors.ts";
+import { errorMessage, MS_PER_SECOND } from "../domain/utils.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 

@@ -1,12 +1,12 @@
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskWorktreeDir } from "../../domain/project.ts";
-import { env } from "../../infra/env.ts";
-import { makeTracker } from "../../infra/tracker/index.ts";
-import { projects } from "../projects.ts";
-import { sessions } from "../sessions.ts";
-import { setups } from "../setups.ts";
-import { tasks } from "../tasks.ts";
-import { worktrees } from "../worktrees/index.ts";
+import { env } from "../infra/env.ts";
+import { makeTracker } from "../infra/tracker/index.ts";
+import { projects } from "../application/projects.ts";
+import { sessions } from "../application/sessions.ts";
+import { setups } from "../application/setups.ts";
+import { tasks } from "../application/tasks.ts";
+import { worktrees } from "../application/worktrees/index.ts";
 import type { StartResult } from "./results.ts";
 
 export interface StartInput {

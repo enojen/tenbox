@@ -1,6 +1,6 @@
 import path from "node:path";
-import { noBaseError, TenboxError } from "../../domain/errors.ts";
-import { EXCLUDED_PATHS, type Project } from "../../domain/project.ts";
+import { noBaseError, TenboxError } from "../../../domain/errors.ts";
+import { EXCLUDED_PATHS, type Project } from "../../../domain/project.ts";
 import { claudeSettings } from "../../infra/claudeSettings.ts";
 import { log } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";

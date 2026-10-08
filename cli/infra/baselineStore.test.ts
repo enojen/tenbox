@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { failureLine } from "../domain/failures.ts";
+import { failureLine } from "../../domain/failures.ts";
 import { baselineStore } from "./baselineStore.ts";
 
 const KEY = { project: "demo", check: "unit" };

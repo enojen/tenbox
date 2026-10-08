@@ -1,6 +1,6 @@
 import path from "node:path";
-import { TenboxError } from "../domain/errors.ts";
-import { errorMessage, isPlainObject } from "../domain/utils.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import { errorMessage, isPlainObject } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 
 /** Claude Code's local settings in a checkout: `.claude/settings.local.json`. */

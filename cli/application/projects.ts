@@ -1,7 +1,7 @@
 import path from "node:path";
-import { TenboxError } from "../domain/errors.ts";
-import type { Manifest } from "../domain/manifest.ts";
-import { type Project, projectName } from "../domain/project.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import type { Manifest } from "../../domain/manifest.ts";
+import { type Project, projectName } from "../../domain/project.ts";
 import { git } from "../infra/git.ts";
 import { manifests } from "./manifests.ts";
 

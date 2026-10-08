@@ -1,7 +1,7 @@
 import path from "node:path";
-import { TenboxError } from "../domain/errors.ts";
-import type { ChangedFile } from "../domain/stats.ts";
-import { lastNonEmpty, MS_PER_SECOND } from "../domain/utils.ts";
+import { TenboxError } from "../../domain/errors.ts";
+import type { ChangedFile } from "../../domain/stats.ts";
+import { lastNonEmpty, MS_PER_SECOND } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 import { type ProcessResult, processes } from "./processes.ts";
 
