@@ -181,7 +181,7 @@ which, except one adapter in the CLI:
 ```ts
 interface Tracker {
   getTask(id): { id, title, description, url, status }
-  setStatus(id, status: 'in_progress' | 'in_review' | 'done')
+  updateStatus(id, status: 'in_progress' | 'in_review' | 'done')
   addComment(id, text)
   createSubtask(parent, title, description): { id }
 }

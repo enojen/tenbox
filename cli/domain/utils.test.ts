@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isDigits } from "./utils.ts";
+import { errorMessage, isDigits } from "./utils.ts";
 
 describe("isDigits", () => {
   test("accepts whole numbers", () => {
@@ -8,5 +8,12 @@ describe("isDigits", () => {
   });
   test("rejects everything else", () => {
     for (const s of ["", "-1", "1.5", "12a", " 1"]) expect(isDigits(s)).toBe(false);
+  });
+});
+
+describe("errorMessage", () => {
+  test("takes the message of an Error and stringifies anything else", () => {
+    expect(errorMessage(new Error("boom"))).toBe("boom");
+    expect(errorMessage("plain")).toBe("plain");
   });
 });

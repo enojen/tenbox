@@ -1,9 +1,8 @@
 import { lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
 import path from "node:path";
-import type { Files } from "../ports.ts";
 
-export const files: Files = {
-  async exists(p) {
+export const files = {
+  async exists(p: string): Promise<boolean> {
     try {
       await stat(p);
       return true;
@@ -11,40 +10,54 @@ export const files: Files = {
       return false;
     }
   },
-  async isDir(p) {
+
+  async isDir(p: string): Promise<boolean> {
     try {
-      return (await stat(p)).isDirectory();
+      const info = await stat(p);
+      return info.isDirectory();
     } catch {
       return false;
     }
   },
-  async read(p) {
-    const f = Bun.file(p);
-    return (await f.exists()) ? f.text() : null;
+
+  async read(p: string): Promise<string | null> {
+    const file = Bun.file(p);
+    const exists = await file.exists();
+    return exists ? file.text() : null;
   },
-  async write(p, text) {
+
+  async write(p: string, text: string): Promise<void> {
     await mkdir(path.dirname(p), { recursive: true });
     await Bun.write(p, text);
   },
-  async mkdir(p) {
+
+  async mkdir(p: string): Promise<void> {
     await mkdir(p, { recursive: true });
   },
-  async list(p) {
+
+  async list(p: string): Promise<string[]> {
     try {
       return await readdir(p);
     } catch {
       return [];
     }
   },
-  async mtime(p) {
-    return (await stat(p)).mtimeMs;
+
+  async mtime(p: string): Promise<number> {
+    const info = await stat(p);
+    return info.mtimeMs;
   },
-  async symlink(source, link) {
+
+  /** Creates `link` pointing at `source`. */
+  async symlink(source: string, link: string): Promise<void> {
     await symlink(source, link);
   },
-  async readLink(p) {
+
+  /** Null when `p` is missing or not a symlink. */
+  async readLink(p: string): Promise<string | null> {
     try {
-      if (!(await lstat(p)).isSymbolicLink()) return null;
+      const info = await lstat(p);
+      if (!info.isSymbolicLink()) return null;
       return await readlink(p);
     } catch {
       return null;

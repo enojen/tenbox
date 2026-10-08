@@ -1,107 +1,125 @@
 #!/usr/bin/env bun
-import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
-import { install } from "./app/install.ts";
-import { runChecks } from "./app/runChecks.ts";
-import { startTask } from "./app/startTask.ts";
+import {
+  type ArgSpec,
+  flagValue,
+  idArg,
+  intValue,
+  parseCommandArgs,
+  stringValue,
+  type Values,
+} from "./args.ts";
+import { runChecks } from "./application/commands/check.ts";
+import { install } from "./application/commands/install.ts";
+import type { Failure } from "./application/commands/results.ts";
+import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
-import { taskId } from "./domain/ids.ts";
-import { isDigits } from "./domain/utils.ts";
-import type { Failure } from "./app/results.ts";
-import { realPorts } from "./infra/index.ts";
-import type { Ports } from "./ports.ts";
+import { errorMessage } from "./domain/utils.ts";
+import { stopAll } from "./infra/spawn.ts";
 
-type Values = Record<string, string | boolean | undefined>;
-
-interface Command {
-  usage: string;
-  options: ParseArgsOptionsConfig;
-  run(ports: Ports, positionals: string[], values: Values): Promise<unknown>;
+interface Command extends ArgSpec {
+  run(positionals: string[], values: Values): Promise<unknown>;
 }
 
-function intValue(values: Values, name: string): number | undefined {
-  const v = values[name];
-  if (v === undefined) return undefined;
-  if (typeof v !== "string" || !isDigits(v)) throw new TenboxError(`--${name} must be a whole number`, "usage");
-  return Number(v);
-}
-
-function idArg(positionals: string[], usage: string) {
-  const raw = positionals[0];
-  if (!raw) throw new TenboxError(`usage: ${usage}`, "usage");
-  return taskId(raw);
-}
+const START_USAGE = 'tenbox start <id> [--title "..."] [--base main] [--no-setup] [--no-tmux]';
+const CHECK_USAGE = "tenbox check <id> [--round N] [--base main] [--timeout 600]";
+const DEFAULT_BASE = "main";
+const DEFAULT_TIMEOUT_SECONDS = 600;
+const MS_PER_SECOND = 1000;
+const USAGE_EXIT_CODE = 2;
+const FAILURE_EXIT_CODE = 1;
+/** 128 + the signal number, as shells report it. */
+const STOP_SIGNALS = [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+] as const;
 
 const COMMANDS: Record<string, Command> = {
   start: {
-    usage: 'tenbox start <id> [--title "..."] [--base main] [--no-setup] [--no-tmux]',
+    usage: START_USAGE,
     options: {
       title: { type: "string" },
-      base: { type: "string", default: "main" },
+      base: { type: "string", default: DEFAULT_BASE },
       setup: { type: "boolean", default: true },
       tmux: { type: "boolean", default: true },
     },
-    run: (ports, positionals, v) =>
-      startTask(ports, {
-        id: idArg(positionals, COMMANDS.start!.usage),
-        title: v.title as string | undefined,
-        base: v.base as string,
-        setup: v.setup as boolean,
-        tmux: v.tmux as boolean,
+    run: (positionals, values) =>
+      startTask({
+        id: idArg(positionals, START_USAGE),
+        title: stringValue(values, "title"),
+        base: stringValue(values, "base") ?? DEFAULT_BASE,
+        setup: flagValue(values, "setup"),
+        tmux: flagValue(values, "tmux"),
       }),
   },
   check: {
-    usage: "tenbox check <id> [--round N] [--base main] [--timeout 600]",
+    usage: CHECK_USAGE,
     options: {
       round: { type: "string" },
-      base: { type: "string", default: "main" },
-      timeout: { type: "string", default: "600" },
+      base: { type: "string", default: DEFAULT_BASE },
+      timeout: { type: "string", default: String(DEFAULT_TIMEOUT_SECONDS) },
     },
-    run: (ports, positionals, v) =>
-      runChecks(ports, {
-        id: idArg(positionals, COMMANDS.check!.usage),
-        round: intValue(v, "round"),
-        base: v.base as string,
-        timeoutMs: intValue(v, "timeout")! * 1000,
+    run: (positionals, values) =>
+      runChecks({
+        id: idArg(positionals, CHECK_USAGE),
+        round: intValue(values, "round"),
+        base: stringValue(values, "base") ?? DEFAULT_BASE,
+        timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
       }),
   },
   install: {
     usage: "tenbox install",
     options: {},
-    run: (ports) => install(ports),
+    run: () => install(),
   },
 };
+
+async function main(argv: string[]): Promise<void> {
+  const [name, ...rest] = argv;
+  if (!name || name === "help" || name === "--help") {
+    printHelp();
+    return;
+  }
+  const command = COMMANDS[name];
+  if (!command) throw new TenboxError(`unknown command: ${name}`, "usage");
+  const parsed = parseCommandArgs(command, rest);
+  const result = await command.run(parsed.positionals, parsed.values);
+  emit(result);
+}
 
 function emit(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function main(argv: string[]): Promise<number> {
-  const [name, ...rest] = argv;
-  if (!name || name === "help" || name === "--help") {
-    for (const c of Object.values(COMMANDS)) process.stderr.write(`  ${c.usage}\n`);
-    emit({ ok: true, commands: Object.fromEntries(Object.entries(COMMANDS).map(([k, c]) => [k, c.usage])) });
-    return 0;
-  }
-  const command = COMMANDS[name];
-  if (!command) throw new TenboxError(`unknown command: ${name}`, "usage");
-  let parsed: ReturnType<typeof parseArgs>;
-  try {
-    parsed = parseArgs({ args: rest, options: command.options, allowPositionals: true, allowNegative: true, strict: true });
-  } catch (e) {
-    throw new TenboxError(`${(e as Error).message}\nusage: ${command.usage}`, "usage");
-  }
-  emit(await command.run(realPorts(), parsed.positionals, parsed.values as Values));
-  return 0;
+function printHelp(): void {
+  const usages = Object.entries(COMMANDS).map(([name, command]) => [name, command.usage]);
+  for (const [, usage] of usages) process.stderr.write(`  ${usage}\n`);
+  emit({ ok: true, commands: Object.fromEntries(usages) });
 }
 
-main(process.argv.slice(2)).then(
-  (code) => process.exit(code),
-  (e: unknown) => {
-    const failure: Failure =
-      e instanceof TenboxError
-        ? { ok: false, error: e.message, code: e.code, ...(e.details !== undefined ? { details: e.details } : {}) }
-        : { ok: false, error: e instanceof Error ? e.message : String(e), code: "internal" };
-    emit(failure);
-    process.exit(failure.code === "usage" ? 2 : 1);
-  },
-);
+function toFailure(e: unknown): Failure {
+  if (!(e instanceof TenboxError)) return { ok: false, error: errorMessage(e), code: "internal" };
+  const details = e.details !== undefined ? { details: e.details } : {};
+  return { ok: false, error: e.message, code: e.code, ...details };
+}
+
+function exitWithFailure(e: unknown): never {
+  const failure = toFailure(e);
+  emit(failure);
+  process.exit(failure.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE);
+}
+
+function exitOnStop(): void {
+  for (const [signal, code] of STOP_SIGNALS) {
+    process.on(signal, () => {
+      stopAll();
+      process.exit(code);
+    });
+  }
+}
+
+exitOnStop();
+try {
+  await main(process.argv.slice(2));
+} catch (e) {
+  exitWithFailure(e);
+}

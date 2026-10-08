@@ -3,7 +3,14 @@ import { taskId } from "./ids.ts";
 import { nextRound, renderTaskMd } from "./task.ts";
 
 test("renderTaskMd", () => {
-  const md = renderTaskMd({ id: taskId("T-1"), title: "Cancel", description: "", url: "", status: "todo", tracker: "none" });
+  const md = renderTaskMd({
+    id: taskId("T-1"),
+    title: "Cancel",
+    description: "",
+    url: "",
+    status: "todo",
+    tracker: "none",
+  });
   expect(md).toBe("# T-1 · Cancel\n\nstatus: todo\ntracker: none\nurl: -\n\n(no description)\n");
 });
 

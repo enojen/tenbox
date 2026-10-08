@@ -1,0 +1,30 @@
+import { log } from "../infra/env.ts";
+import { tmux } from "../infra/tmux.ts";
+import type { TmuxInfo, TmuxState } from "./commands/results.ts";
+
+/** The tmux session of a task, with `claude` in it. */
+export const sessions = { ensure };
+
+/** Starts the task's tmux session with `claude` in it; null `taskWorktree` means not asked for. */
+async function ensure(session: string, taskWorktree: string | null): Promise<TmuxInfo> {
+  const attach = `tmux attach -t ${session}`;
+  if (taskWorktree === null) return { session, state: "skipped", attach };
+  const state = await startSession(session, taskWorktree);
+  return { session, state, attach };
+}
+
+async function startSession(session: string, taskWorktree: string): Promise<TmuxState> {
+  const exists = await tmux.hasSession(session);
+  if (exists) return logTmux(`session ${session} exists`, "exists");
+  const claude = Bun.which("claude");
+  if (claude === null) {
+    return logTmux("claude not found in PATH, session not started", "unavailable");
+  }
+  await tmux.newSession(session, taskWorktree, [claude]);
+  return logTmux(`session ${session} started`, "started");
+}
+
+function logTmux(message: string, state: TmuxState): TmuxState {
+  log(`tenbox start: tmux ${message}`);
+  return state;
+}

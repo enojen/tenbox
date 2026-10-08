@@ -50,7 +50,11 @@ export const ManifestSchema = z.object({
   // Becomes a directory under the worktree root: `../x` would escape it.
   project: z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }).optional(),
   setup: z.string().min(1).optional(),
-  failure_pattern: z.string().min(1).refine(compiles, { message: "not a valid regular expression" }).optional(),
+  failure_pattern: z
+    .string()
+    .min(1)
+    .refine(compiles, { message: "not a valid regular expression" })
+    .optional(),
   checks: z.record(z.string(), z.string().min(1)).default({}),
   tracker: TrackerConfigSchema.prefault({}),
   names: NamesSchema.prefault({}),
@@ -71,7 +75,8 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
   let merged: Record<string, unknown> = {};
   for (const layer of layers) {
     if (layer.value === null || layer.value === undefined) continue;
-    if (!isPlainObject(layer.value)) throw new TenboxError(`${layer.file}: expected a YAML mapping at the top`, "manifest");
+    if (!isPlainObject(layer.value))
+      throw new TenboxError(`${layer.file}: expected a YAML mapping at the top`, "manifest");
     merged = deepMerge(merged, layer.value);
   }
   const parsed = ManifestSchema.safeParse(merged);

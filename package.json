@@ -12,6 +12,7 @@
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/bun": "latest",
     "typescript": "^5"
   },

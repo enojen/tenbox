@@ -9,7 +9,8 @@ describe("taskId", () => {
     for (const id of ["TEN-301", "86abc123", "DEMO-1", "a_b"]) expect(String(taskId(id))).toBe(id);
   });
   test("rejects ids unsafe for git, tmux or the shell", () => {
-    for (const id of ["", "-x", "a b", "a/b", "a;b", "a.b", "a:b"]) expect(() => taskId(id)).toThrow();
+    for (const id of ["", "-x", "a b", "a/b", "a;b", "a.b", "a:b"])
+      expect(() => taskId(id)).toThrow();
   });
   test("derives names from the defaults", () => {
     expect(taskBranch(defaults, taskId("TEN-1"))).toBe("feat/TEN-1");

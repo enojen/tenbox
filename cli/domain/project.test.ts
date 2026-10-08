@@ -15,5 +15,7 @@ describe("projectName", () => {
 });
 
 test("taskWorktreeDir sits next to main", () => {
-  expect(taskWorktreeDir("/home/u/wt", "tenbox-demo", taskId("DEMO-1"))).toBe("/home/u/wt/tenbox-demo/DEMO-1");
+  expect(taskWorktreeDir("/home/u/wt", "tenbox-demo", taskId("DEMO-1"))).toBe(
+    "/home/u/wt/tenbox-demo/DEMO-1",
+  );
 });

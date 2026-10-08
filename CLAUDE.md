@@ -51,12 +51,26 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 
 The roles carry the general code shape rules (`agents/worker.md`). For this repo also:
 
-- Signatures use named types: `files: Files`, not `files: Ports["files"]`; no `Omit<>`,
+- Signatures use named types: `state: TmuxState`, not `StartResult["tmux"]["state"]`; no `Omit<>`,
   `Pick<>` or indexed types in a parameter. A shape used twice gets a name.
-- `app/` imports `infra/` directly; no ports bag, no dependency injection. Only the tracker
-  is an interface, because its adapter is chosen at run time.
+- Layers and their direction: `domain/` imports nothing from `application/` or `infra/`;
+  `infra/` imports only `domain/`; `application/` imports both, directly: no ports bag, no
+  dependency injection. The one port is `Tracker`, because its adapter is chosen at run time.
+- In `application/`, one module per glossary concept, named in the plural:
+  `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
+  exports the module object; other modules import only that. A function name does not repeat
+  the module name.
+- `application/` never runs raw git commands (`git.run`): it calls the named ones in
+  `infra/git.ts`. A tool's file format or command line lives in `infra/`.
+- Verbs in module APIs: `get` (throws when missing), `find` (null when missing), `ensure`
+  (creates when missing, keeps what exists), `save`, `update`, `remove`, `run`. One verb, one
+  meaning.
 - Tests run against real temporary git repositories and directories, not fakes.
 - No magic numbers: name the constant. No inline casts.
+- `await` only at the start of a statement or an assignment: `const x = await f();`. Never
+  inside a condition, an argument, an object literal, a `??` or a spread.
+- Biome formats `cli/` at 100 columns (`biome.json`); the `format` check fails on unformatted
+  code. Run `bunx biome format --write cli` before a commit.
 - A branded type has one constructor function, the only place with `as`.
 - Generic helpers live in `cli/domain/utils.ts`; search there before writing one.
 - Less code is always better: no code for a later phase.
@@ -64,7 +78,14 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 ## Layout
 
 ```
-cli/        tenbox CLI, entry cli/main.ts; cli/tracker/ holds the tracker adapters
+cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
+  domain/       pure code: ids, failure lines, manifest schema, the Tracker port
+  application/  use cases, and one module per glossary concept, named in the plural
+    commands/     one file per CLI command, named after it; results.ts is their JSON output
+    manifests  projects  worktrees/  tasks  setups  sessions  baselines
+  infra/        the outside world: files, git, shell, tmux, spawn, env, baselineStore, claudeSettings, http, graphql
+    tracker/      the Tracker adapters and makeTracker
+  test/         tempProject.ts and the end-to-end test
 agents/     planner.md, worker.md, integrator.md, reviewer.md, qa.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
 hooks/      locked-paths.ts, qa-no-code.ts

@@ -18,6 +18,9 @@ export function failureLine(raw: string): FailureLine {
 }
 
 /** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */
+/** Where a check's baseline came from: the base commit, the newest stored, taken in main, or none. */
+export type BaselineSource = "exact" | "newest" | "main" | "none";
+
 export interface Baseline {
   sha: string;
   lines: FailureLine[];
@@ -30,7 +33,11 @@ export interface FailureComparison {
 }
 
 /** A failing exit with no matching line still yields one line, so a crash cannot pass silently. */
-export function parseFailures(commandOutput: string, exitCode: number, failurePattern = DEFAULT_FAILURE_PATTERN): FailureLine[] {
+export function parseFailures(
+  commandOutput: string,
+  exitCode: number,
+  failurePattern = DEFAULT_FAILURE_PATTERN,
+): FailureLine[] {
   const lines = commandOutput.split("\n").map(failureLine);
   const matched = lines.filter(isFailureLine(failurePattern));
   const failures = unique(matched).sort();
@@ -38,7 +45,10 @@ export function parseFailures(commandOutput: string, exitCode: number, failurePa
   return failures;
 }
 
-export function compareWithBaseline(baseline: FailureLine[], current: FailureLine[]): FailureComparison {
+export function compareWithBaseline(
+  baseline: FailureLine[],
+  current: FailureLine[],
+): FailureComparison {
   const inBaseline = new Set(baseline);
   const inCurrent = new Set(current);
   return {
