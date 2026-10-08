@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { TenboxError } from "../domain/errors.ts";
 import { spawn } from "./spawn.ts";
 
@@ -21,11 +22,10 @@ export interface OpenPr {
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
 export const gh = { findOpen, create, edit, markReady };
 
-interface PrListItem {
-  number: number;
-  url: string;
-  isDraft: boolean;
-}
+/** The output of `gh pr list --json number,url,isDraft`. */
+const PrListSchema = z.array(
+  z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }),
+);
 
 async function run(args: string[], cwd: string): Promise<string> {
   const result = await spawn(["gh", ...args], { cwd });
@@ -38,8 +38,7 @@ async function run(args: string[], cwd: string): Promise<string> {
 async function findOpen(dir: string, branch: string): Promise<OpenPr | null> {
   const args = ["pr", "list", "--head", branch, "--state", "open", "--json", "number,url,isDraft"];
   const out = await run(args, dir);
-  const items: PrListItem[] = JSON.parse(out);
-  const first = items[0];
+  const first = PrListSchema.parse(JSON.parse(out))[0];
   if (first === undefined) return null;
   return { number: first.number, url: first.url, draft: first.isDraft };
 }

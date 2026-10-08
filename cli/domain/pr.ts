@@ -1,8 +1,12 @@
+import type { TaskId } from "./ids.ts";
+import { parseObject } from "./utils.ts";
+
 const SECTION_START = /^## /;
+const PLAN_SECTIONS = ["Risks and attention", "Summary"];
 
 /** `<id> · <title>`, or just the id when the task has no title. */
-export function prTitle(id: string, title: string | null): string {
-  return title === null || title === "" ? id : `${id} · ${title}`;
+export function prTitle(id: TaskId, title: string | null): string {
+  return title ? `${id} · ${title}` : id;
 }
 
 /** The text under `## <heading>` up to the next `## `; null when missing or empty. */
@@ -18,12 +22,19 @@ export function planSection(planText: string, heading: string): string | null {
 
 /** Risks and attention, Summary, Checks; a part with no text is left out. */
 export function prBody(planText: string | null, checksSummary: string | null): string {
-  const risks = planText === null ? null : planSection(planText, "Risks and attention");
-  const summary = planText === null ? null : planSection(planText, "Summary");
-  const parts = [
-    risks === null ? null : `## Risks and attention\n\n${risks}`,
-    summary === null ? null : `## Summary\n\n${summary}`,
-    checksSummary === null || checksSummary === "" ? null : `## Checks\n\n${checksSummary}`,
-  ];
+  const plan = planText ?? "";
+  const parts = PLAN_SECTIONS.map((heading) => bodyPart(heading, planSection(plan, heading)));
+  parts.push(bodyPart("Checks", checksSummary));
   return parts.filter((part) => part !== null).join("\n\n");
+}
+
+/** `summary` from a round's `checks.json`; null when the text is missing or not JSON. */
+export function checksSummary(text: string | null): string | null {
+  if (text === null) return null;
+  const parsed = parseObject(text);
+  return typeof parsed?.summary === "string" ? parsed.summary : null;
+}
+
+function bodyPart(heading: string, text: string | null): string | null {
+  return text ? `## ${heading}\n\n${text}` : null;
 }

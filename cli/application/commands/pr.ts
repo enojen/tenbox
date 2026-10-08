@@ -1,9 +1,8 @@
 import path from "node:path";
 import { TenboxError } from "../../domain/errors.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
-import { prBody, prTitle } from "../../domain/pr.ts";
-import { roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";
-import { parseObject } from "../../domain/utils.ts";
+import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
+import { roundDir, roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";
 import { files } from "../../infra/files.ts";
 import { gh, type OpenPr, type PrText } from "../../infra/gh.ts";
 import { git } from "../../infra/git.ts";
@@ -48,7 +47,7 @@ async function readPrText(id: TaskId, taskWorktree: string): Promise<PrText> {
   const dir = tenboxDir(taskWorktree);
   const taskText = await files.read(path.join(dir, "task.md"));
   const planText = await files.read(path.join(dir, "plan.md"));
-  const summary = await latestChecksSummary(dir);
+  const summary = await latestChecksSummary(taskWorktree);
   return {
     title: prTitle(id, titleFromTaskMd(taskText)),
     body: prBody(planText, summary),
@@ -56,15 +55,12 @@ async function readPrText(id: TaskId, taskWorktree: string): Promise<PrText> {
 }
 
 /** The `summary` of the highest round's `checks.json`; null when there is none. */
-async function latestChecksSummary(tenbox: string): Promise<string | null> {
-  const roundsDir = path.join(tenbox, "rounds");
-  const names = await files.list(roundsDir);
+async function latestChecksSummary(taskWorktree: string): Promise<string | null> {
+  const names = await files.list(path.join(tenboxDir(taskWorktree), "rounds"));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;
-  const text = await files.read(path.join(roundsDir, String(latest), "checks.json"));
-  const checks = text === null ? null : parseObject(text);
-  const summary = checks?.summary;
-  return typeof summary === "string" ? summary : null;
+  const text = await files.read(path.join(roundDir(taskWorktree, latest), "checks.json"));
+  return checksSummary(text);
 }
 
 interface CreateOrUpdateInput {
