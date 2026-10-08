@@ -14,7 +14,7 @@ import { install } from "./application/commands/install.ts";
 import type { Failure } from "./application/commands/results.ts";
 import { startTask } from "./application/commands/start.ts";
 import { TenboxError } from "./domain/errors.ts";
-import { errorMessage } from "./domain/utils.ts";
+import { errorMessage, MS_PER_SECOND } from "./domain/utils.ts";
 import { env, log } from "./infra/env.ts";
 import { stopAll } from "./infra/spawn.ts";
 
@@ -27,7 +27,6 @@ const CHECK_USAGE = "tenbox check <id> [--round N] [--base main] [--timeout 600]
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const DEFAULT_BASE = "main";
 const DEFAULT_TIMEOUT_SECONDS = 600;
-const MS_PER_SECOND = 1000;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
 /** 128 + the signal number, as shells report it. */

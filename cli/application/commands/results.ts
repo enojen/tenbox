@@ -63,12 +63,20 @@ export interface BranchRemoveInfo {
   state: BranchRemoveState;
 }
 
+export type StatsState = "written" | "skipped" | `failed: ${string}`;
+
+export interface StatsInfo {
+  path: string;
+  state: StatsState;
+}
+
 export interface CloseResult {
   ok: true;
   task: string;
   project: string;
   forced: boolean;
   archive: ArchiveInfo;
+  stats: StatsInfo;
   tmux: SessionRemoveInfo;
   worktree: WorktreeRemoveInfo;
   branch: BranchRemoveInfo;

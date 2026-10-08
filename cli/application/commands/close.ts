@@ -1,16 +1,19 @@
 import { TenboxError } from "../../domain/errors.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { archiveDir, taskWorktreeDir } from "../../domain/project.ts";
+import { statsFile } from "../../domain/stats.ts";
 import { tenboxDir } from "../../domain/task.ts";
+import { errorMessage } from "../../domain/utils.ts";
 import { env } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
 import { makeTracker } from "../../infra/tracker/index.ts";
 import { projects } from "../projects.ts";
 import { sessions } from "../sessions.ts";
+import { type StatsInput, stats } from "../stats.ts";
 import { tasks } from "../tasks.ts";
 import { worktrees } from "../worktrees/index.ts";
-import type { CloseResult } from "./results.ts";
+import type { ArchiveState, CloseResult, StatsInfo } from "./results.ts";
 
 export interface CloseInput {
   id: TaskId;
@@ -42,6 +45,17 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const archive = archiveDir(wtRoot, project.name, id);
   await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, archive }, force);
   const archiveState = await tasks.removeFiles(taskWorktree, archive);
+  const statsInput: StatsInput = {
+    id,
+    project: project.name,
+    forced: force,
+    mainDir: project.mainDir,
+    taskWorktree,
+    archive,
+    branch,
+    base: CLOSE_BASE,
+  };
+  const statsInfo = await writeStats(statsInput, archiveState);
   const tmuxState = await sessions.remove(session);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id }, tracker, "done");
@@ -51,6 +65,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     project: project.name,
     forced: force,
     archive: { path: archive, state: archiveState },
+    stats: statsInfo,
     tmux: { session, state: tmuxState },
     worktree: { path: taskWorktree, state: removed.worktree },
     branch: { name: branch, state: removed.branch },
@@ -95,4 +110,17 @@ async function assertMerged(target: CloseTarget): Promise<void> {
     `${branch} has changes that are not on ${CLOSE_BASE}; merge it or pass --force`,
     "unmerged",
   );
+}
+
+/** Runs after the archive move and before the branch is gone; a failure never stops the close. */
+async function writeStats(input: StatsInput, archiveState: ArchiveState): Promise<StatsInfo> {
+  const file = statsFile(input.archive);
+  if (archiveState === "skipped") return { path: file, state: "skipped" };
+  try {
+    const computed = await stats.compute(input);
+    await stats.save(computed, input.archive);
+    return { path: file, state: "written" };
+  } catch (e) {
+    return { path: file, state: `failed: ${errorMessage(e)}` };
+  }
 }

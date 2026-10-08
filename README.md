@@ -356,7 +356,7 @@ prints JSON so a `runner` agent can return it unchanged.
 | `tenbox sandbox up <TEN-xx> --profile try` | Pins `HEAD`, builds from that commit, `compose up`, seeds, waits for health, prints links |
 | `tenbox sandbox stop/down <TEN-xx>` | Pause (keep volumes) or remove |
 | `tenbox pr <TEN-xx> [--draft\|--ready]` | Push and create or update the PR; the body holds the attention list first, then plan, decisions, review, QA, links |
-| `tenbox close <TEN-xx> [--force]` | Sandbox down, worktrees and branch removed, tmux killed, `.tenbox/` archived |
+| `tenbox close <TEN-xx> [--force]` | Sandbox down, worktrees and branch removed, tmux killed, `.tenbox/` archived with a `stats.json` (timeline, minutes, plan, rounds, code size, and each workflow agent with its model, seconds and tokens; numbers and labels only) |
 | `tenbox ls` | All tasks: step, round, sandbox up or not, links |
 | `tenbox init` | Claude Code reads the repo (lockfiles, `package.json`, compose files) and writes a draft `tenbox.yaml`; the CLI never guesses a project's tooling itself |
 | `tenbox validate` | Checks `tenbox.yaml`: schema, kinds, `${...}` references, `depends_on` cycles |

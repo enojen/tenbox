@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
-import { nextRound, renderTaskMd } from "./task.ts";
+import { nextRound, renderTaskMd, titleFromTaskMd } from "./task.ts";
 
 test("renderTaskMd", () => {
   const md = renderTaskMd({
@@ -17,4 +17,10 @@ test("renderTaskMd", () => {
 test("nextRound", () => {
   expect(nextRound([])).toBe(1);
   expect(nextRound(["1", "2", "junk", "10"])).toBe(11);
+});
+
+test("titleFromTaskMd reads the first line", () => {
+  expect(titleFromTaskMd("# TB-6 · Task stats at close\n\nbody\n")).toBe("Task stats at close");
+  expect(titleFromTaskMd("no heading")).toBeNull();
+  expect(titleFromTaskMd(null)).toBeNull();
 });

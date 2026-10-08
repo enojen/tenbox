@@ -5,6 +5,7 @@ import path from "node:path";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { files } from "./files.ts";
 import { git } from "./git.ts";
+import { spawn } from "./spawn.ts";
 
 let project: TempProject;
 
@@ -51,4 +52,41 @@ test("a missing ref and unrelated histories are null", async () => {
   await git.run(["commit", "-q", "--allow-empty", "-m", "unrelated"], project.mainDir);
   const mergeBase = await git.findMergeBase(project.mainDir, "main");
   expect(mergeBase).toBeNull();
+});
+
+test("findConfig answers null for an unset key", async () => {
+  const unset = await git.findConfig(project.mainDir, "tenbox.unset");
+  await git.run(["config", "user.email", "me@example.com"], project.mainDir);
+  const set = await git.findConfig(project.mainDir, "user.email");
+  expect(set).toBe("me@example.com");
+  expect(unset).toBeNull();
+});
+
+test("findBranchCreated is the branch creation time, not the commit time", async () => {
+  const old = "2020-01-01T00:00:00Z";
+  await files.write(path.join(project.mainDir, "old.txt"), "x\n");
+  await git.run(["add", "old.txt"], project.mainDir);
+  const env = { GIT_AUTHOR_DATE: old, GIT_COMMITTER_DATE: old };
+  await spawn(["git", "commit", "-q", "-m", "old"], { cwd: project.mainDir, env });
+  await git.run(["branch", "feat/old"], project.mainDir);
+  const created = await git.findBranchCreated(project.mainDir, "feat/old");
+  expect(Date.now() - Date.parse(created ?? "")).toBeLessThan(60_000);
+});
+
+test("findBranchCreated reads the reflog; listChangedFiles lists the branch changes", async () => {
+  await git.run(["branch", "feat/x"], project.mainDir);
+  const created = await git.findBranchCreated(project.mainDir, "feat/x");
+  const missing = await git.findBranchCreated(project.mainDir, "feat/none");
+  expect(Date.now() - Date.parse(created ?? "")).toBeLessThan(60_000);
+  expect(missing).toBeNull();
+  await git.run(["checkout", "-q", "feat/x"], project.mainDir);
+  await files.write(path.join(project.mainDir, "b.txt"), "1\n2\n");
+  await files.write(path.join(project.mainDir, "c.bin"), "\0\0");
+  await git.run(["add", "b.txt", "c.bin"], project.mainDir);
+  await git.run(["commit", "-q", "-m", "b"], project.mainDir);
+  const changed = await git.listChangedFiles(project.mainDir, "main", "feat/x");
+  expect(changed).toEqual([
+    { added: 2, removed: 0, path: "b.txt" },
+    { added: 0, removed: 0, path: "c.bin" },
+  ]);
 });

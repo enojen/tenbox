@@ -1,5 +1,7 @@
 import path from "node:path";
 import { TenboxError } from "../domain/errors.ts";
+import type { ChangedFile } from "../domain/stats.ts";
+import { lastNonEmpty, MS_PER_SECOND } from "../domain/utils.ts";
 import { files } from "./files.ts";
 import { type Spawned, spawn } from "./spawn.ts";
 
@@ -18,6 +20,9 @@ export const git = {
   findMergeBase,
   findTopLevel,
   findBranch,
+  findConfig,
+  findBranchCreated,
+  listChangedFiles,
   findCommonDir,
   refExists,
   branchExists,
@@ -30,6 +35,8 @@ export const git = {
 };
 
 const GIT_LOCALE = "C";
+const REFLOG_TIME = /@\{(\d+)\}$/;
+const BINARY_COUNT = "-";
 const NOT_A_REPOSITORY = "not a git repository";
 
 /** Decides from a failed git result whether it is the expected "not found" answer. */
@@ -87,6 +94,36 @@ async function findCommonDir(dir: string): Promise<string | null> {
   const common = await find(["rev-parse", "--git-common-dir"], dir, outsideRepository);
   return common === null ? null : path.resolve(dir, common);
 }
+
+/** Null when the key is not set. */
+function findConfig(dir: string, key: string): Promise<string | null> {
+  return find(["config", "--get", key], dir, exitedWithOne);
+}
+
+/** ISO time of the oldest reflog entry of the branch; null without a branch or a reflog. */
+async function findBranchCreated(dir: string, branch: string): Promise<string | null> {
+  const exists = await branchExists(dir, branch);
+  if (!exists) return null;
+  const log = await run(["log", "-g", "--date=unix", "--format=%gd", `refs/heads/${branch}`], dir);
+  const oldest = lastNonEmpty(log.split("\n"));
+  const seconds = oldest === undefined ? undefined : REFLOG_TIME.exec(oldest)?.[1];
+  return seconds === undefined ? null : new Date(Number(seconds) * MS_PER_SECOND).toISOString();
+}
+
+/** What the branch changed since it left `base`, from `git diff --numstat base...branch`. */
+async function listChangedFiles(dir: string, base: string, branch: string): Promise<ChangedFile[]> {
+  const numstat = await run(["diff", "--numstat", `${base}...${branch}`], dir);
+  const lines = numstat.split("\n").filter((line) => line !== "");
+  return lines.map(parseNumstatLine);
+}
+
+/** `added<TAB>removed<TAB>path`; a binary file shows `-` for both counts. */
+function parseNumstatLine(line: string): ChangedFile {
+  const [added = "", removed = "", ...rest] = line.split("\t");
+  return { added: lineCount(added), removed: lineCount(removed), path: rest.join("\t") };
+}
+
+const lineCount = (count: string): number => (count === BINARY_COUNT ? 0 : Number(count));
 
 async function refExists(dir: string, ref: string): Promise<boolean> {
   const sha = await find(["rev-parse", "--verify", "--quiet", ref], dir, exitedWithOne);

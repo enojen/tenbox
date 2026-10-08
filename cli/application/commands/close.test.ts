@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import { minutesBetween } from "../../domain/utils.ts";
+import { projectDir } from "../../infra/claudeSessions.ts";
+import { env } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
 import { type CliRun, tenbox, tmuxTest } from "../../test/cli.ts";
 import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
 
 const SESSION = "tenbox-T-1";
+const MS_PER_MINUTE = 60_000;
+const DAY_MS = 86_400_000;
+const MARKER = "SECRET-MARKER";
 
 let project: TempProject;
 let taskWorktree: string;
@@ -26,6 +32,12 @@ const commitOn = async (dir: string, name: string) => {
   await git.run(["add", name], dir);
   await git.run(["commit", "-q", "-m", name], dir);
 };
+
+/** The archived `stats.json` text; `"null"` when it is missing. */
+async function readStatsText(): Promise<string> {
+  const text = await files.read(path.join(archive, "stats.json"));
+  return text ?? "null";
+}
 
 async function expectUntouched(run: CliRun): Promise<void> {
   expect([run.code, run.json.ok]).toEqual([1, false]);
@@ -163,5 +175,179 @@ describe("tenbox close", () => {
     expect(archivedTaskExists).toBe(true);
     expect(worktreeExists).toBe(false);
     expect(branches).toBe("");
+  });
+
+  test("writes stats.json with git and task file numbers", async () => {
+    await setup();
+    const dir = path.join(taskWorktree, ".tenbox");
+    await files.write(path.join(dir, "plan.md"), "Estimated lines: 120\n");
+    await files.write(path.join(dir, "parts", "01-a.md"), "difficulty: easy\n");
+    await files.write(path.join(dir, "parts", "02-b.md"), "difficulty: hard\n");
+    await files.write(path.join(dir, "rounds", "1", "checks.json"), '{"ok":false}');
+    await files.write(path.join(dir, "rounds", "2", "checks.json"), '{"ok":true}');
+    await files.write(path.join(taskWorktree, "src", "a.ts"), "1\n2\n3\n");
+    await files.write(path.join(taskWorktree, "src", "a.test.ts"), "1\n2\n");
+    await files.write(path.join(taskWorktree, "test", "b.ts"), "1\n");
+    await git.run(["add", "src", "test"], taskWorktree);
+    await git.run(["commit", "-q", "-m", "code"], taskWorktree);
+    await git.run(["rm", "-q", "a.txt"], taskWorktree);
+    await git.run(["commit", "-q", "-m", "rm"], taskWorktree);
+    await git.run(["config", "user.email", "me@example.com"], project.mainDir);
+    const run = await closeT1("--force");
+    const text = await readStatsText();
+    const written = JSON.parse(text);
+    expect(run.json).toMatchObject({
+      stats: { path: path.join(archive, "stats.json"), state: "written" },
+    });
+    expect(written).toMatchObject({
+      schema: 1,
+      project: "demo",
+      task: "T-1",
+      title: "x",
+      user: "me@example.com",
+      forced: true,
+      code: { added: 6, removed: 1, files: 4, test_added: 3 },
+      plan: { parts: 2, difficulty: ["easy", "hard"], estimated_lines: 120 },
+      rounds: [
+        { number: 1, checks_passed: false },
+        { number: 2, checks_passed: true },
+      ],
+    });
+    expect(Date.parse(written.timeline.closed)).toBeGreaterThanOrEqual(
+      Date.parse(written.timeline.opened),
+    );
+    expect(written.minutes.total).toBeGreaterThanOrEqual(0);
+    expect(written.tenbox).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  test("a task with no plan or rounds still gets stats with null fields", async () => {
+    await setup();
+    const run = await closeT1();
+    const text = await readStatsText();
+    const written = JSON.parse(text);
+    expect(run.json).toMatchObject({ ok: true, stats: { state: "written" } });
+    expect(written).toMatchObject({ plan: null, rounds: [], timeline: { plan_start: null } });
+  });
+
+  test("a stats write failure does not stop the close", async () => {
+    await setup();
+    await files.mkdir(path.join(taskWorktree, ".tenbox", "stats.json", "keep"));
+    const run = await closeT1();
+    const worktreeExists = await files.exists(taskWorktree);
+    expect(run.json).toMatchObject({ ok: true });
+    expect(String((run.json.stats as { state: string }).state)).toStartWith("failed: ");
+    expect(worktreeExists).toBe(false);
+    const branches = await branchList();
+    expect(branches).toBe("");
+  });
+
+  test("a task without .tenbox skips the stats", async () => {
+    await setup();
+    await rm(path.join(taskWorktree, ".tenbox"), { recursive: true });
+    const run = await closeT1();
+    const archiveExists = await files.exists(archive);
+    expect(run.json).toMatchObject({ stats: { state: "skipped" } });
+    expect(archiveExists).toBe(false);
+  });
+});
+
+interface RunFixture {
+  name: string;
+  workflow: string;
+  startMs: number;
+  minutes: number;
+}
+
+/** One workflow run with one worker agent in the task worktree's Claude Code session files. */
+async function writeRun(fixture: RunFixture): Promise<void> {
+  const sessionDir = path.join(projectDir(env().claudeDir, taskWorktree), "session-1");
+  const result = {
+    status: "ready-for-you",
+    nice_to_have: ["a", "b", "c"],
+    attention: [MARKER, "b"],
+  };
+  const agent = {
+    type: "workflow_agent",
+    label: "round 1: 01",
+    phaseTitle: "Build",
+    agentId: `agent-of-${fixture.name}`,
+    agentType: "worker",
+    model: "claude-sonnet-5-5",
+    startedAt: fixture.startMs,
+    durationMs: fixture.minutes * MS_PER_MINUTE,
+    tokens: 1000,
+    toolCalls: 3,
+    promptPreview: MARKER,
+  };
+  const run = {
+    workflowName: fixture.workflow,
+    startTime: fixture.startMs,
+    durationMs: fixture.minutes * MS_PER_MINUTE,
+    script: MARKER,
+    result,
+    workflowProgress: [agent],
+  };
+  await files.write(
+    path.join(sessionDir, "workflows", `${fixture.name}.json`),
+    JSON.stringify(run),
+  );
+}
+
+describe("tenbox close stats from Claude Code session files", () => {
+  test("counts the plan and build runs after opened, without prompt, result or output text", async () => {
+    await setup();
+    const start = Date.now();
+    await writeRun({
+      name: "wf_old",
+      workflow: "tenbox-build",
+      startMs: start - DAY_MS,
+      minutes: 9,
+    });
+    await writeRun({ name: "wf_plan", workflow: "tenbox-plan", startMs: start, minutes: 1 });
+    const buildStart = start + 2 * MS_PER_MINUTE;
+    await writeRun({ name: "wf_build", workflow: "tenbox-build", startMs: buildStart, minutes: 3 });
+    const run = await closeT1();
+    const text = await readStatsText();
+    const written = JSON.parse(text);
+    const iso = (ms: number) => new Date(ms).toISOString();
+    expect(run.json).toMatchObject({ ok: true, stats: { state: "written" } });
+    expect(written.timeline).toMatchObject({
+      plan_start: iso(start),
+      plan_end: iso(start + MS_PER_MINUTE),
+      build_start: iso(buildStart),
+      build_end: iso(buildStart + 3 * MS_PER_MINUTE),
+    });
+    const humanReview = minutesBetween(written.timeline.build_end, written.timeline.closed);
+    expect(written.minutes).toMatchObject({
+      plan: 1,
+      wait_approval: 1,
+      build: 3,
+      human_review: humanReview,
+    });
+    expect(written.review).toEqual({ must_fix: 0, nice_to_have: 3, attention: 2 });
+    expect(written.agents).toEqual(
+      ["tenbox-plan", "tenbox-build"].map((workflow, i) => ({
+        workflow,
+        label: "round 1: 01",
+        phase: "Build",
+        role: "worker",
+        model: "claude-sonnet-5-5",
+        started: iso(i === 0 ? start : buildStart),
+        seconds: i === 0 ? 60 : 180,
+        tokens: 1000,
+        tool_calls: 3,
+      })),
+    );
+    expect(text).not.toContain(MARKER);
+    expect(text).not.toContain("cost");
+  });
+
+  test("without session files the run fields are null", async () => {
+    await setup();
+    await closeT1();
+    const text = await readStatsText();
+    const written = JSON.parse(text);
+    expect(written).toMatchObject({ review: null, agents: null });
+    expect(written.minutes).toMatchObject({ plan: null, build: null, human_review: null });
   });
 });
