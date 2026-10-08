@@ -5,3 +5,5 @@ checks:
   types: bunx tsc --noEmit
   unit: bun test cli
   format: bunx biome format cli
+
+tracker: { kind: linear }
