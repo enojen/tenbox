@@ -27,11 +27,14 @@ const PrListSchema = z.array(
   z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }),
 );
 
+/** `pr create`, `api --method`: enough to name the command in an error without its long arguments. */
+const SUBCOMMAND_WORDS = 2;
+
 async function run(args: string[], cwd: string): Promise<string> {
   const result = await spawn(["gh", ...args], { cwd });
   if (result.code === 0) return result.stdout.trim();
   const reason = result.stderr.trim() || result.stdout.trim();
-  throw new TenboxError(`gh ${args.join(" ")} failed: ${reason}`, "gh");
+  throw new TenboxError(`gh ${args.slice(0, SUBCOMMAND_WORDS).join(" ")} failed: ${reason}`, "gh");
 }
 
 /** The open PR of the branch, or null. */
@@ -49,8 +52,11 @@ async function create(dir: string, input: CreatePrInput): Promise<void> {
   await run(input.draft ? [...args, "--draft"] : args, dir);
 }
 
+/** Through the REST API: `gh pr edit` in gh 2.45 queries the removed classic Projects and fails. */
 async function edit(dir: string, number: number, text: PrText): Promise<void> {
-  await run(["pr", "edit", String(number), "--title", text.title, "--body", text.body], dir);
+  const endpoint = `repos/{owner}/{repo}/pulls/${number}`;
+  const fields = ["-f", `title=${text.title}`, "-f", `body=${text.body}`];
+  await run(["api", "--method", "PATCH", endpoint, ...fields], dir);
 }
 
 async function markReady(dir: string, number: number): Promise<void> {
