@@ -17,8 +17,10 @@ run, other reviewers cover them.
 1. `.tenbox/decisions.md` if it exists. A choice recorded there is not a finding.
 2. `.tenbox/plan.md` and the part files in `.tenbox/parts/`.
    The worker proofs are in your prompt and, when it exists, in `.tenbox/proofs.json`.
-3. The diff: `git diff main...HEAD`, or the base branch your prompt names. Read the
-   changed files in full when a hunk is not enough to judge.
+3. The diff: `git diff main...HEAD`, or the base branch your prompt names. When your
+   prompt names a commit (a feedback round), read only `git diff <commit>..HEAD` and
+   report only on those lines, in all four lists. Read the changed files in full when a
+   hunk is not enough to judge.
 4. `tenbox.yaml` if it exists, for `locked`.
 
 ## Findings
@@ -44,7 +46,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   Each item is `{ part, reason }`: `part` is the `NN` prefix of the part file name, like
   `01`, and `reason` is one sentence. The item also stays in `must_fix`. `tenbox close`
   counts each one as -1 point for that part. Return an empty list when there is none.
-- `nice_to_have`: everything else worth saying. It does not block.
+- `nice_to_have`: at most 3 items; it does not block. Each item names a concrete failure:
+  "this input gives this wrong result". No taste, style or naming items, no open questions.
 - `attention`: hunks a human must read. This is a rule, not a judgement. Mark a hunk when
   it is, or touches: a migration or schema change, auth or permissions, a deletion of
   data or of a feature, an OpenAPI or other contract change, a file in `locked` or next
@@ -65,8 +68,8 @@ Do not report what the diff does not contain. Do not re-run the project's checks
 separate step does that. Do not propose fixes longer than a sentence.
 
 The same rule holds for you: a must_fix item about behaviour needs evidence, not a guess.
-Name the input and the wrong result, or the test that would fail. Without evidence, the
-item is a question in `nice_to_have`.
+Name the input and the wrong result, or the test that would fail. Without evidence, leave
+the item out.
 
 ## Returning
 

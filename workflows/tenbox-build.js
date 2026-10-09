@@ -66,11 +66,12 @@ const CHECKS = {
   },
   required: ['ok'],
 }
+const MAX_NICE_TO_HAVE = 3
 const REVIEW = {
   type: 'object',
   properties: {
     must_fix: { type: 'array', items: { type: 'string' } },
-    nice_to_have: { type: 'array', items: { type: 'string' } },
+    nice_to_have: { type: 'array', items: { type: 'string' }, maxItems: MAX_NICE_TO_HAVE },
     attention: { type: 'array', items: { type: 'string' } },
     unproven: {
       type: 'array',
@@ -83,6 +84,14 @@ const REVIEW = {
 let feedback = input.feedback ?? 'none'
 // Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
 const unproven = []
+// Every reviewed round's attention and nice_to_have items: a scoped review no longer sees older hunks.
+const attention = []
+const niceToHave = []
+// The checks commit of the last round that ran a review; a feedback round reviews only the lines after it.
+let reviewedCommit = null
+const scopeLine = () => reviewedCommit
+  ? `\nThis is a feedback round: review only the lines changed since ${reviewedCommit}: \`git diff ${reviewedCommit}..HEAD\`.`
+  : ''
 // Every round's worker proofs, each with its part id; `tenbox close` counts them.
 const proofs = []
 const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
@@ -108,7 +117,7 @@ for (let round = 1; round <= maxRounds; round++) {
 
   phase('Review')
   const reviews = (await parallel(['base', ...lenses].map((key) => () =>
-    agent(`Review task ${task} through this lens: ${LENSES[key].text}.\nWorker proofs so far:\n${proofLines()}`,
+    agent(`Review task ${task} through this lens: ${LENSES[key].text}.\nWorker proofs so far:\n${proofLines()}${scopeLine()}`,
       { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${key}`, ...strongModelIf(LENSES[key].strong) })))).filter(Boolean)
   // One -1 per part per round, however many lenses name it.
   const roundParts = new Set()
@@ -117,6 +126,9 @@ for (let round = 1; round <= maxRounds; round++) {
     roundParts.add(item.part)
     unproven.push(item)
   }
+  reviewedCommit = checks.commit
+  attention.push(...reviews.flatMap((r) => r.attention))
+  niceToHave.push(...reviews.flatMap((r) => r.nice_to_have))
   const mustFix = reviews.flatMap((r) => r.must_fix)
   if (mustFix.length) {
     feedback = mustFix.join('\n')
@@ -125,8 +137,8 @@ for (let round = 1; round <= maxRounds; round++) {
   return {
     status: 'ready-for-you',
     round,
-    attention: reviews.flatMap((r) => r.attention),
-    nice_to_have: reviews.flatMap((r) => r.nice_to_have),
+    attention,
+    nice_to_have: niceToHave,
     unproven,
     proofs,
   }

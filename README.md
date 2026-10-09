@@ -91,13 +91,16 @@ review lenses and the questions.
 2. **Checks**: a runner runs `tenbox check <id>`. New failures become the next round's
    feedback.
 3. **Review**: the `base` lens always runs; `security` and `contract` run when the plan
-   asks for them. Any `must_fix` item becomes the next round's feedback.
+   asks for them. Any `must_fix` item becomes the next round's feedback. A reviewer
+   returns at most 3 `nice_to_have` items, each a concrete failure. In a feedback round
+   the reviewer reads only `git diff <commit>..HEAD`, where `<commit>` is the checks
+   commit of the last reviewed round.
 
-It returns `ready-for-you` with the attention and nice-to-have lists, `needs-you`, or
-`failed` with the last feedback after the last round. Every result, `needs-you` too, also
-has `unproven`: the reviewers' items from all rounds, one per part per round. It also has
-`proofs`: the worker proofs `{ part, file, test, failure }` from all rounds; `tenbox close`
-counts them (see `stats.json`).
+It returns `ready-for-you` with the attention and nice-to-have lists of all reviewed
+rounds, `needs-you`, or `failed` with the last feedback after the last round. Every result,
+`needs-you` too, also has `unproven`: the reviewers' items from all rounds, one per part
+per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all
+rounds; `tenbox close` counts them (see `stats.json`).
 
 ## Roles: `agents/`
 
