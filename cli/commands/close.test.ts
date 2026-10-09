@@ -474,4 +474,38 @@ describe("tenbox close proofs and points", () => {
     const written = await proofsOf();
     expect(written.points).toEqual([{ part: "01", points: 0 }]);
   });
+
+  test("a build-run proof named by part file slug and a proofs.json proof named by number are one row", async () => {
+    await setup();
+    await writePart("01-x.md", "status: done\n");
+    await writeProofs([proof("recorded")]);
+    await writeRun(buildRunWith([proof("built", "01-x")]));
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.proofs).toEqual([proof("built"), proof("recorded")]);
+    expect(written.points).toEqual([{ part: "01", points: 2 }]);
+  });
+
+  test("the same test from a run (01-x) and proofs.json (01) counts once", async () => {
+    await setup();
+    await writePart("01-x.md", "status: done\n");
+    await writeProofs([proof("same")]);
+    await writeRun(buildRunWith([proof("same", "01-x")]));
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.proofs).toEqual([proof("same")]);
+    expect(written.points).toEqual([{ part: "01", points: 1 }]);
+  });
+
+  test("an unproven item named 01-x lowers the 01 row", async () => {
+    await setup();
+    await writePart("01-x.md", "status: done\n");
+    await writeRun({
+      ...unprovenRun("r"),
+      result: { status: "failed", unproven: [{ part: "01-x", reason: "r" }] },
+    });
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.points).toEqual([{ part: "01", points: -1 }]);
+  });
 });

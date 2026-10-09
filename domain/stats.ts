@@ -1,4 +1,5 @@
 import path from "node:path";
+import { partIdOf } from "./part.ts";
 import type { StatsProof } from "./proof.ts";
 import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
 import { parseObject } from "./utils.ts";
@@ -113,10 +114,11 @@ export function checksPassed(text: string | null): boolean | null {
   return typeof parsed?.ok === "boolean" ? parsed.ok : null;
 }
 
-/** The proofs in order; a part, test file and test name seen again is dropped. */
+/** The proofs in order with the part number as part; a part, file and test seen again is dropped. */
 export function distinctProofs(proofs: StatsProof[]): StatsProof[] {
   const seen = new Set<string>();
-  return proofs.filter((proof) => {
+  const numbered = proofs.map((proof) => ({ ...proof, part: partIdOf(proof.part) }));
+  return numbered.filter((proof) => {
     const key = [proof.part, proof.file, proof.test].join("\n");
     if (seen.has(key)) return false;
     seen.add(key);
@@ -130,6 +132,6 @@ export function countPoints(input: PointsInput): StatsPoints[] {
   const points = new Map<string, number>(partIds.map((part) => [part, 0]));
   const add = (part: string, delta: number) => points.set(part, (points.get(part) ?? 0) + delta);
   for (const proof of proofs) add(proof.part, 1);
-  for (const item of unproven) add(item.part, -1);
+  for (const item of unproven) add(partIdOf(item.part), -1);
   return [...points].map(([part, total]) => ({ part, points: total }));
 }

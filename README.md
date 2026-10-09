@@ -62,7 +62,8 @@ build, human review), plan difficulty and estimated lines, rounds, review counts
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
 `proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from the
 `proofs` of every build run result, then from `proofs.json` (`tenbox proof`); a part file's
-Markdown text gives none. The same part, test file and test name counts once, the first one.
+Markdown text gives none. `proofs[].part` and `points[].part` hold the part number (`01`, not
+`01-users`). The same part number, test file and test name counts once, the first one.
 Points: +1 per distinct proof, -1 per `unproven` item a reviewer returned in any
 build run of the task, at most one per part per build round.
 The reviewer's sentences are not kept. Schema 3.

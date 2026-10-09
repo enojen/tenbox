@@ -70,3 +70,24 @@ test("distinctProofs keeps the first proof of each part, test file and test name
     { part: "02", points: 1 },
   ]);
 });
+
+test("distinctProofs and countPoints group a part file slug and its number as one part", () => {
+  const proof = (part: string, test: string, failure: string) => ({
+    part,
+    file: "a.test.ts",
+    test,
+    failure,
+  });
+  const distinct = distinctProofs([
+    proof("01-x", "same", "from the run"),
+    proof("01", "same", "recorded"),
+    proof("01", "other", "recorded"),
+  ]);
+  expect(distinct).toEqual([proof("01", "same", "from the run"), proof("01", "other", "recorded")]);
+  const points = countPoints({
+    partIds: ["01"],
+    proofs: distinct,
+    unproven: [{ part: "01-x", reason: "r" }],
+  });
+  expect(points).toEqual([{ part: "01", points: 1 }]);
+});
