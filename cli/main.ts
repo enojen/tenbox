@@ -8,6 +8,7 @@ import {
   stringValue,
   type Values,
 } from "./args.ts";
+import { approveTask } from "./commands/approve.ts";
 import { closeTask } from "./commands/close.ts";
 import { runChecks } from "./commands/check.ts";
 import { install } from "./commands/install.ts";
@@ -29,6 +30,7 @@ const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
+const APPROVE_USAGE = "tenbox approve <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -99,6 +101,11 @@ const COMMANDS: Record<string, Command> = {
         test: stringValue(values, "test"),
         failure: stringValue(values, "failure"),
       }),
+  },
+  approve: {
+    usage: APPROVE_USAGE,
+    options: {},
+    run: (positionals) => approveTask(idArg(positionals, APPROVE_USAGE)),
   },
   install: {
     usage: "tenbox install",

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
 export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -53,4 +55,9 @@ export const toMinutes = (ms: number): number =>
 export function minutesBetween(from: string | null, to: string | null): number | null {
   if (from === null || to === null) return null;
   return toMinutes(Date.parse(to) - Date.parse(from));
+}
+
+/** The SHA-256 of a text, in hex. */
+export function sha256Hex(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
 }

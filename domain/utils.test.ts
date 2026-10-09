@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { errorMessage, isDigits, minutesBetween } from "./utils.ts";
+import { errorMessage, isDigits, minutesBetween, sha256Hex } from "./utils.ts";
 
 describe("isDigits", () => {
   test("accepts whole numbers", () => {
@@ -21,4 +21,12 @@ describe("errorMessage", () => {
 test("minutesBetween rounds to one decimal and is null without a time", () => {
   expect(minutesBetween("2026-01-01T00:00:00Z", "2026-01-01T00:01:30Z")).toBe(1.5);
   expect(minutesBetween(null, "2026-01-01T00:00:00Z")).toBeNull();
+});
+
+describe("sha256Hex", () => {
+  test("gives the SHA-256 of the text in hex", () => {
+    expect(sha256Hex("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
 });

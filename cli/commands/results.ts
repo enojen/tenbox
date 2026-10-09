@@ -1,3 +1,4 @@
+import type { Approval } from "../../domain/approval.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
@@ -83,6 +84,12 @@ export interface ProofResult {
   ok: true;
   task: string;
   proof: StatsProof;
+  file: string;
+}
+
+export interface ApproveResult extends Approval {
+  ok: true;
+  task: string;
   file: string;
 }
 

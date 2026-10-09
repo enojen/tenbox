@@ -47,6 +47,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | baseline | The failure lines a check has on `main` at one commit (`Baseline`). |
 | new failure | A failure line not in the baseline; the only thing that fails a check. |
 | fixed | A baseline failure line that no longer appears. |
+| approval | `approved.json` in the task dir, written by `tenbox approve`: the time and the sha of `plan.md` (`Approval`). |
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
@@ -98,6 +99,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs
+    approvals
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker
