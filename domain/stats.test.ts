@@ -2,12 +2,19 @@ import { expect, test } from "bun:test";
 import { checksPassed, countPlan, countPoints, distinctProofs, sumCode } from "./stats.ts";
 
 test("countPlan lists each part's difficulty in order and the estimated lines", () => {
-  const parts = ["# 01\nstatus: todo\ndifficulty: easy\n", "difficulty: hard\n", "no difficulty\n"];
-  const plan = countPlan("## Size\nEstimated lines: 120 (tests included)\n", parts);
-  expect(plan).toEqual({ parts: 3, difficulty: ["easy", "hard", null], estimated_lines: 120 });
-  const noSize = countPlan("no size", []);
-  expect(noSize?.estimated_lines).toBeNull();
-  expect(countPlan(null, parts)).toBeNull();
+  const plan = countPlan({
+    summary: "s",
+    estimated_lines: 120,
+    parts: [
+      { id: "01", difficulty: "easy" },
+      { id: "02", difficulty: "hard" },
+    ],
+    criteria: [],
+    lenses: [],
+    questions: [],
+  });
+  expect(plan).toEqual({ parts: 2, difficulty: ["easy", "hard"], estimated_lines: 120 });
+  expect(countPlan(null)).toBeNull();
 });
 
 test("sumCode counts test files apart", () => {

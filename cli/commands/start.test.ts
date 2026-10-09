@@ -201,6 +201,24 @@ test("a second start keeps the link and an edited task.md", async () => {
   expect([target, taskMd]).toEqual([taskDirPath(), "# T-1 · Edited\n"]);
 });
 
+test("task.json holds the task, and a second start keeps an edited one", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  const taskJson = path.join(taskDirPath(), "task.json");
+  const first = await files.read(taskJson);
+  expect(JSON.parse(first ?? "null")).toEqual({
+    id: "T-1",
+    title: "Cancel",
+    status: "todo",
+    tracker: "none",
+    url: null,
+  });
+  await files.write(taskJson, '{"edited":true}');
+  await startTask(input({ setup: false }));
+  const second = await files.read(taskJson);
+  expect(second).toBe('{"edited":true}');
+});
+
 test("a link whose task dir is gone gets the task dir back", async () => {
   await setup(ID_MANIFEST);
   await startTask(input({ setup: false }));

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { z } from "zod";
 
 export const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
@@ -37,6 +38,10 @@ export const isFilled = (value: unknown): value is string =>
 export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);
 
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** One line per zod issue, `path: message`; `(root)` for the value itself. */
+export const issueLines = (error: z.ZodError): string[] =>
+  error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
 
 export const elapsedMs = (started: number): number => Math.round(performance.now() - started);
 

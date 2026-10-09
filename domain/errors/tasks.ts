@@ -38,6 +38,10 @@ export function badProofsError(file: string, problem: string): TenboxError {
   return new TenboxError(`${file} ${problem}`, "bad-proofs");
 }
 
+export function badPlanError(issues: string[]): TenboxError {
+  return new TenboxError(`the plan result is not valid: ${issues.join("; ")}`, "bad-plan", issues);
+}
+
 export function setupError(exitCode: number, cmd: string, output: string): TenboxError {
   return new TenboxError(`setup failed (exit ${exitCode}): ${cmd}`, "setup", { output });
 }

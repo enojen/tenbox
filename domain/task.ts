@@ -1,6 +1,8 @@
 import path from "node:path";
+import { z } from "zod";
 import type { TaskId } from "./ids.ts";
-import type { TrackerKind } from "./manifest.ts";
+import { type TrackerKind, TrackerKindSchema } from "./manifest.ts";
+import { parseObject } from "./utils.ts";
 
 export interface Task {
   id: TaskId;
@@ -25,13 +27,28 @@ export function renderTaskMd(t: Task): string {
   return `# ${t.id} · ${t.title}\n\nstatus: ${t.status}\ntracker: ${t.tracker}\nurl: ${t.url || "-"}\n\n${body}\n`;
 }
 
-const TITLE_LINE = /^#\s+\S+\s+·\s+(.+)$/;
+/** `task.json` in a `.tenbox/` folder: the task as `tenbox start` saw it. */
+export const taskFile = (dir: string): string => path.join(dir, "task.json");
 
-/** The title in the first line of `task.md`, `# TEN-1 · title`; the reverse of `renderTaskMd`. */
-export function titleFromTaskMd(text: string | null): string | null {
-  if (text === null) return null;
-  const match = TITLE_LINE.exec(text.split("\n")[0] ?? "");
-  return match?.[1]?.trim() ?? null;
+const TaskFileSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  tracker: TrackerKindSchema,
+  url: z.string().nullable(),
+});
+
+export type TaskFile = z.infer<typeof TaskFileSchema>;
+
+/** The task without its description; a task with no url gets null. */
+export function taskFileOf(t: Task): TaskFile {
+  return { id: t.id, title: t.title, status: t.status, tracker: t.tracker, url: t.url || null };
+}
+
+/** The task in `task.json` text; null when it is not a JSON object or does not match. */
+export function readTaskFile(text: string): TaskFile | null {
+  const parsed = TaskFileSchema.safeParse(parseObject(text));
+  return parsed.success ? parsed.data : null;
 }
 
 /** The round numbers among directory names, lowest first; other names are left out. */

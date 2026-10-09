@@ -16,8 +16,8 @@ Your prompt names one of two jobs. Do that job only.
 1. **Write the plan**: `.tenbox/plan.md`, the part files under `.tenbox/parts/`, and
    `.tenbox/questions.md`.
 2. **Answer a build-round question**: list the parts still to build after reading the
-   part files and the round feedback, each with its `difficulty`, and the extra review
-   lenses from `plan.md`; or list the acceptance criteria from `plan.md`.
+   part files and the round feedback, each with its `difficulty` from `.tenbox/plan.json`,
+   and the extra review lenses from `plan.md`; or list the acceptance criteria from `plan.md`.
 
 ## Read first, in this order
 
@@ -88,7 +88,7 @@ to the plan, the glossary and repeated code are always reviewed; add a lens only
 the task touches it.
 
 ## Size
-Estimated lines: N. PR split: none | feat/<id>-1 ..., feat/<id>-2 ...
+PR split: none | feat/<id>-1 ..., feat/<id>-2 ...
 
 ## Overlap with other active tasks
 Task and files, or "none".
@@ -99,7 +99,6 @@ One part file per part, `.tenbox/parts/<NN>-<slug>.md`:
 ```markdown
 # 01 · Cancel endpoint
 status: todo            # todo | doing | done | blocked
-difficulty: easy        # easy | hard: hard only for concurrency, tricky logic or wide refactors
 files: src/order/*
 acceptance:
 - POST /orders/{id}/cancel returns 200 and sets status=cancelled
@@ -124,6 +123,12 @@ Kinds: `technical` you decide yourself and record in `decisions.md`; `product`,
 exists. A non-blocking question states the default you will follow.
 
 ## Returning
+
+The plan result has, besides the summary, criteria, lenses and questions, `estimated_lines`
+(your estimate of the whole diff, a whole number) and `parts`, one `{ id, difficulty }` per
+part. `id` is the two-digit part number of the part file, `01`. `difficulty` is `easy` or
+`hard`: `hard` only for concurrency, tricky logic or wide refactors. The workflow validates
+the result with `tenbox plan done` and saves it as `.tenbox/plan.json`.
 
 Your final message is data for a workflow script, not a message for a human. When a
 schema is given, fill it exactly. Otherwise return a short plain summary: the files you

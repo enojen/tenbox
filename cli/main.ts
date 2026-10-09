@@ -14,6 +14,7 @@ import { closeTask } from "./commands/close.ts";
 import { runChecks } from "./commands/check.ts";
 import { install } from "./commands/install.ts";
 import type { Failure } from "./commands/results.ts";
+import { planDone } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
 import { startTask } from "./commands/start.ts";
@@ -31,6 +32,7 @@ const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
+const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const APPROVE_USAGE = "tenbox approve <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
@@ -104,6 +106,16 @@ const COMMANDS: Record<string, Command> = {
         test: stringValue(values, "test"),
         failure: stringValue(values, "failure"),
       }),
+  },
+  plan: {
+    usage: PLAN_USAGE,
+    options: { json: { type: "string" } },
+    run: (positionals, values) => {
+      const [action, ...rest] = positionals;
+      const json = stringValue(values, "json");
+      if (action !== "done" || !json) throw usageError(`usage: ${PLAN_USAGE}`);
+      return planDone({ id: idArg(rest, PLAN_USAGE), json });
+    },
   },
   approve: {
     usage: APPROVE_USAGE,

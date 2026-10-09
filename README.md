@@ -39,10 +39,11 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 
 | Command | Does |
 |---|---|
-| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
+| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` and `task.json` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox approve <id>` | Refuses a task with no `.tenbox/plan.md` (`no-plan`, exit 1). Writes `.tenbox/approved.json` `{ at, plan_sha }`: the ISO time and the SHA-256 hex of `plan.md`. A second run overwrites it. Prints `{ ok, task, file, at, plan_sha }`. Nothing reads it yet |
-| `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
+| `tenbox plan done <id> --json '<result>'` | Run by `/tenbox-plan` through the runner; by hand only when the plan was made without the workflow. Validates the planner result with zod and writes it to `.tenbox/plan.json`. A result that is not JSON, or has a wrong `estimated_lines` (a whole number), a part without `id` or a `difficulty` other than `easy` or `hard`, gives `bad-plan` (exit 1) and writes nothing; a missing `--json` or another sub-command gives `usage` (exit 2). Prints `{ ok, task, file }` |
+| `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
@@ -58,7 +59,7 @@ that sits at the base commit, and saves the result. Without any baseline, every 
 line is new.
 
 **`stats.json`** (in the task dir): timeline, minutes per step (plan, wait for approval,
-build, human review), plan difficulty and estimated lines, rounds, review counts, code
+build, human review), plan difficulty and estimated lines (from `plan.json`, null without it), the title (from `task.json`), rounds, review counts, code
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
 `proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from the
 `proofs` of every build run result, then from `proofs.json` (`tenbox proof`); a part file's
@@ -86,13 +87,14 @@ Plain JavaScript Claude Code workflows, linked by `tenbox install`.
 
 **`/tenbox-plan <id>`**, or `{ task, deep: true }` to run the planner on the strongest
 model. One planner reads the task and the code and writes `.tenbox/plan.md`, one part file
-per part and `questions.md`. It returns the summary, parts, acceptance criteria, the extra
-review lenses and the questions.
+per part and `questions.md`. It returns the summary, the estimated lines, the parts (`id` and
+`difficulty`), acceptance criteria, the extra review lenses and the questions. A runner then
+saves the result with `tenbox plan done`; the workflow adds its JSON as `recorded`.
 
 **`/tenbox-build <id>`**, or `{ task, feedback, maxRounds }` (default 3 rounds). Each round:
 
 1. **Build**: the planner lists the parts still to build and the extra lenses; one worker
-   per part, one after another, in the task worktree. A part marked `hard` gets the strong
+   per part, one after another, in the task worktree. A part marked `hard` in `plan.json` gets the strong
    model. A blocked worker ends the run with `needs-you` and its questions.
 2. **Checks**: a runner runs `tenbox check <id>`. New failures become the next round's
    feedback.
@@ -125,11 +127,13 @@ symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a l
 ```
 .tenbox/
 ├ task.md          tenbox start: id, title, status, tracker, url, description
+├ task.json        tenbox start: id, title, status, tracker, url (null without one)
 ├ plan.md          planner: summary, approach, parts, acceptance criteria, risks, size
+├ plan.json        tenbox plan done: the validated planner result, read by close
 ├ approved.json    tenbox approve: { at, plan_sha } of the approved plan
 ├ questions.md     planner: open questions by kind (product, technical, contract, risk)
 ├ decisions.md     you: answered questions; every agent reads it first
-├ parts/01-x.md    one per part: status, difficulty, files, acceptance, result
+├ parts/01-x.md    one per part: status, files, acceptance, result
 ├ proofs.json      tenbox proof: the proofs recorded by hand, a JSON array
 └ rounds/N/
   ├ checks.json    tenbox check

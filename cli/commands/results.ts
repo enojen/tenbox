@@ -87,6 +87,12 @@ export interface ProofResult {
   file: string;
 }
 
+export interface PlanDoneResult {
+  ok: true;
+  task: string;
+  file: string;
+}
+
 export interface ApproveResult extends Approval {
   ok: true;
   task: string;

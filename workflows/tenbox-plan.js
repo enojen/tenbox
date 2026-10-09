@@ -14,7 +14,16 @@ const PLAN = {
   type: 'object',
   properties: {
     summary: { type: 'string' },
-    parts: { type: 'array', items: { type: 'string' } },
+    estimated_lines: { type: 'integer', minimum: 0 },
+    // id is the two-digit part number of the part file, for example "01"
+    parts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { id: { type: 'string' }, difficulty: { enum: ['easy', 'hard'] } },
+        required: ['id', 'difficulty'],
+      },
+    },
     criteria: { type: 'array', items: { type: 'string' } },
     lenses: { type: 'array', items: { enum: ['security', 'contract'] } },
     questions: {
@@ -30,8 +39,27 @@ const PLAN = {
       },
     },
   },
-  required: ['summary', 'parts', 'criteria', 'lenses', 'questions'],
+  required: ['summary', 'estimated_lines', 'parts', 'criteria', 'lenses', 'questions'],
 }
 
-return agent(`Task ${task}. Write the plan: .tenbox/plan.md, the part files and .tenbox/questions.md.`,
+// `file` comes only from the CLI; `code` and `error` say why plan.json was not written.
+const RECORDED = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    file: { type: 'string' },
+    code: { type: 'string' },
+    error: { type: 'string' },
+  },
+  required: ['ok'],
+}
+
+const plan = await agent(`Task ${task}. Write the plan: .tenbox/plan.md, the part files and .tenbox/questions.md.`,
   { agentType: 'planner', schema: PLAN, label: 'plan', ...(input.deep ? { model: DEEP_MODEL } : {}) })
+
+// A quoted heredoc: a quote in the summary cannot break the shell.
+const recorded = await agent(
+  `Run this command and return its JSON:\n\ntenbox plan done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(plan)}\nEOF\n)"`,
+  { agentType: 'runner', schema: RECORDED, label: 'record plan' })
+
+return { ...plan, recorded }

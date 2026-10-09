@@ -14,13 +14,15 @@ import {
   sumCode,
   type TaskStats,
 } from "../../domain/stats.ts";
-import { roundNumbers, titleFromTaskMd } from "../../domain/task.ts";
+import { roundNumbers } from "../../domain/task.ts";
 import { minutesBetween } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { parts } from "./parts.ts";
+import { plans } from "./plans.ts";
+import { tasks } from "./tasks.ts";
 
 export interface StatsInput {
   id: TaskId;
@@ -43,17 +45,14 @@ export const stats = { compute, save };
 /** Reads git, the task's `.tenbox/` files and its Claude Code sessions; a missing source gives null. */
 async function compute(input: StatsInput): Promise<TaskStats> {
   const { id, project, forced, mainDir, taskWorktree, taskDir, branch, recordedProofs } = input;
-  const taskMd = await files.read(path.join(taskDir, "task.md"));
+  const task = await tasks.find(taskDir);
   const user = await git.findConfig(mainDir, "user.email");
   const tenbox = await git.findHead(env().tenboxRoot);
   const opened = await git.findBranchCreated(mainDir, branch);
   const closed = new Date().toISOString();
-  const planText = await files.read(path.join(taskDir, "plan.md"));
-  const partFiles = await parts.read(taskDir);
-  const plan = countPlan(
-    planText,
-    partFiles.map((part) => part.text),
-  );
+  const partIds = await parts.read(taskDir);
+  const planResult = await plans.find(taskDir);
+  const plan = countPlan(planResult);
   const rounds = await readRounds(taskDir);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
@@ -63,7 +62,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     schema: STATS_SCHEMA,
     project,
     task: id,
-    title: titleFromTaskMd(taskMd),
+    title: task?.title ?? null,
     user,
     tenbox,
     forced,
@@ -74,7 +73,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     review: summary.review,
     proofs: taskProofs,
     points: countPoints({
-      partIds: partFiles.map((part) => part.id),
+      partIds,
       proofs: taskProofs,
       unproven: summary.unproven,
     }),

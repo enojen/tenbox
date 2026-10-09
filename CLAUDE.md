@@ -51,6 +51,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
+| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions (`PlanResult`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It comes from a worker's build run result, or recorded by hand in `.tenbox/proofs.json` (`tenbox proof`) (`StatsProof`). |
@@ -107,7 +108,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs
-    approvals
+    approvals  plans
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker

@@ -17,6 +17,17 @@ const MS_PER_MINUTE = 60_000;
 const DAY_MS = 86_400_000;
 const EXECUTABLE = 0o755;
 const MARKER = "SECRET-MARKER";
+const PLAN_RESULT = JSON.stringify({
+  summary: "s",
+  estimated_lines: 120,
+  parts: [
+    { id: "01", difficulty: "easy" },
+    { id: "02", difficulty: "hard" },
+  ],
+  criteria: [],
+  lenses: [],
+  questions: [],
+});
 
 let project: TempProject;
 let taskWorktree: string;
@@ -277,9 +288,11 @@ describe("tenbox close", () => {
   test("writes stats.json with git and task file numbers", async () => {
     await setup();
     const dir = path.join(taskWorktree, ".tenbox");
-    await files.write(path.join(dir, "plan.md"), "Estimated lines: 120\n");
-    await files.write(path.join(dir, "parts", "01-a.md"), "difficulty: easy\n");
-    await files.write(path.join(dir, "parts", "02-b.md"), "difficulty: hard\n");
+    await files.write(path.join(dir, "plan.md"), "# plan\n");
+    await files.write(path.join(dir, "parts", "01-a.md"), "status: todo\n");
+    await files.write(path.join(dir, "parts", "02-b.md"), "status: todo\n");
+    const done = await tenbox(["plan", "done", "T-1", "--json", PLAN_RESULT], project.mainDir);
+    expect(done.json.ok).toBe(true);
     await files.write(path.join(dir, "rounds", "1", "checks.json"), '{"ok":false}');
     await files.write(path.join(dir, "rounds", "2", "checks.json"), '{"ok":true}');
     await files.write(path.join(taskWorktree, "src", "a.ts"), "1\n2\n3\n");
@@ -327,6 +340,27 @@ describe("tenbox close", () => {
     await closeT1("--force");
     const text = await readStatsText();
     expect(JSON.parse(text).code).toEqual({ added: 2, removed: 0, files: 2, test_added: 0 });
+  });
+
+  test("a plan.md and part files without plan.json give plan null", async () => {
+    await setup();
+    const dir = path.join(taskWorktree, ".tenbox");
+    await files.write(path.join(dir, "plan.md"), "Estimated lines: 120\n");
+    await files.write(path.join(dir, "parts", "01-a.md"), "difficulty: easy\n");
+    await closeT1();
+    const text = await readStatsText();
+    expect(JSON.parse(text).plan).toBeNull();
+  });
+
+  test("the title in stats.json comes from task.json, not task.md", async () => {
+    await setup();
+    const dir = path.join(taskWorktree, ".tenbox");
+    const taskText = await files.read(path.join(dir, "task.json"));
+    const taskJson = JSON.parse(taskText ?? "null");
+    await files.write(path.join(dir, "task.json"), JSON.stringify({ ...taskJson, title: "y" }));
+    await closeT1();
+    const text = await readStatsText();
+    expect(JSON.parse(text).title).toBe("y");
   });
 
   test("a task with no plan or rounds still gets stats with null fields", async () => {

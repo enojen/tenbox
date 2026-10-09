@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { files } from "../infra/files.ts";
@@ -40,4 +40,31 @@ test("a branch with no commits ahead of main is refused and nothing is pushed", 
   const branches = await originBranches();
   expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "no-commits"]);
   expect(branches).toBe("");
+});
+
+test("the PR title comes from task.json, not task.md", async () => {
+  const dir = path.join(taskWorktree, ".tenbox");
+  const taskText = await files.read(path.join(dir, "task.json"));
+  const taskJson = JSON.parse(taskText ?? "null");
+  await files.write(path.join(dir, "task.json"), JSON.stringify({ ...taskJson, title: "y" }));
+  await files.write(path.join(taskWorktree, "b.txt"), "b\n");
+  await git.run(["add", "b.txt"], taskWorktree);
+  await git.run(["commit", "-q", "-m", "b"], taskWorktree);
+  const bin = path.join(project.root, "bin");
+  const log = path.join(project.root, "gh.log");
+  const script = `#!/bin/sh
+printf '%s\\n' "$@" >> "${log}"
+if [ "$1 $2" = "pr list" ]; then
+  if [ -f "${log}.created" ]; then echo '[{"number":1,"url":"u","isDraft":true}]'; else echo '[]'; fi
+fi
+if [ "$1 $2" = "pr create" ]; then touch "${log}.created"; fi
+`;
+  await files.write(path.join(bin, "gh"), script);
+  await chmod(path.join(bin, "gh"), 0o755);
+  const run = await tenbox(["pr", "T-1"], project.mainDir, {
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+  });
+  const logged = await files.read(log);
+  expect([run.code, run.json.ok]).toEqual([0, true]);
+  expect((logged ?? "").split("\n")).toContain("T-1 · y");
 });

@@ -1,6 +1,14 @@
 import path from "node:path";
 import type { TaskId } from "../../domain/ids.ts";
-import { type Task, renderTaskMd, tenboxDir } from "../../domain/task.ts";
+import {
+  readTaskFile,
+  renderTaskMd,
+  type Task,
+  type TaskFile,
+  taskFile,
+  taskFileOf,
+  tenboxDir,
+} from "../../domain/task.ts";
 import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
@@ -12,7 +20,7 @@ interface TaskSource {
 }
 
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
-export const tasks = { get, ensureFiles, updateStatus };
+export const tasks = { get, find, ensureFiles, updateStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
@@ -22,7 +30,13 @@ async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
   return { ...found, id, tracker: tracker.kind };
 }
 
-/** Makes the task files through `.tenbox` and returns the path of `task.md`; an existing one is kept. */
+/** The task in `task.json` of `dir`; null when it is missing or not valid. */
+async function find(dir: string): Promise<TaskFile | null> {
+  const text = await files.read(taskFile(dir));
+  return text === null ? null : readTaskFile(text);
+}
+
+/** Makes the task files through `.tenbox` and returns the path of `task.md`; existing ones are kept. */
 async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   const dir = tenboxDir(taskWorktree);
   for (const sub of ["parts", "rounds"]) {
@@ -31,6 +45,9 @@ async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   const taskMd = path.join(dir, "task.md");
   const kept = await files.exists(taskMd);
   if (!kept) await files.write(taskMd, renderTaskMd(task));
+  const taskJson = taskFile(dir);
+  const jsonKept = await files.exists(taskJson);
+  if (!jsonKept) await files.write(taskJson, `${JSON.stringify(taskFileOf(task), null, 2)}\n`);
   return taskMd;
 }
 

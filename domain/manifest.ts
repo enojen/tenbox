@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
-import { deepMerge, isPlainObject } from "./utils.ts";
+import { deepMerge, isPlainObject, issueLines } from "./utils.ts";
 
-const TrackerKindSchema = z.enum(["none", "linear"]);
+export const TrackerKindSchema = z.enum(["none", "linear"]);
 
 const TrackerConfigSchema = z.object({
   kind: TrackerKindSchema.default("none"),
@@ -89,7 +89,7 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
   const parsed = ManifestSchema.safeParse(merged);
   if (!parsed.success) {
     const where = layers.map((l) => l.file).join(", ") || "manifest";
-    const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
+    const issues = issueLines(parsed.error);
     throw manifestError(`${where}: ${issues.join("; ")}`, issues);
   }
   return parsed.data;

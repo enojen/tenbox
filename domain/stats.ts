@@ -1,5 +1,6 @@
 import path from "node:path";
 import { partIdOf } from "./part.ts";
+import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
 import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
 import { parseObject } from "./utils.ts";
@@ -13,8 +14,6 @@ export const statsFile = (dir: string): string => path.join(dir, "stats.json");
 
 const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";
-const ESTIMATED_LINES = /^Estimated lines:\s*(\d+)/im;
-const DIFFICULTY_LINE = /^difficulty:\s*(\S+)/m;
 
 interface StatsTimeline extends RunTimeline {
   opened: string | null;
@@ -27,9 +26,9 @@ interface StatsMinutes extends RunMinutes {
 
 export interface StatsPlan {
   parts: number;
-  /** Each part's `difficulty:` line, in part order; null when a part has none. */
-  difficulty: (string | null)[];
-  estimated_lines: number | null;
+  /** Each part's difficulty, in the order of the plan result. */
+  difficulty: string[];
+  estimated_lines: number;
 }
 
 export interface StatsRound {
@@ -83,13 +82,11 @@ export interface TaskStats {
   agents: RunAgent[] | null;
 }
 
-/** Null without `plan.md`; `partTexts` are the part files in their order. */
-export function countPlan(planText: string | null, partTexts: string[]): StatsPlan | null {
-  if (planText === null) return null;
-  const difficulty = partTexts.map((text) => DIFFICULTY_LINE.exec(text)?.[1] ?? null);
-  const lines = ESTIMATED_LINES.exec(planText)?.[1];
-  const estimated_lines = lines === undefined ? null : Number(lines);
-  return { parts: difficulty.length, difficulty, estimated_lines };
+/** Null without a plan result. */
+export function countPlan(plan: PlanResult | null): StatsPlan | null {
+  if (plan === null) return null;
+  const difficulty = plan.parts.map((part) => part.difficulty);
+  return { parts: difficulty.length, difficulty, estimated_lines: plan.estimated_lines };
 }
 
 export function sumCode(changed: ChangedFile[]): StatsCode {

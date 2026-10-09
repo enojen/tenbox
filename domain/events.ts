@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BaselineSourceSchema } from "./failures.ts";
+import { PlanPartSchema } from "./plan.ts";
 
 const EVENT_SCHEMA_VERSION = 1;
 
@@ -58,7 +59,7 @@ export const EventSchema = z.discriminatedUnion("event", [
   taskEvent("plan.done").extend({
     plan_sha: planSha,
     estimated_lines: count,
-    parts: z.array(z.object({ id: text, difficulty: text })),
+    parts: z.array(PlanPartSchema),
     criteria: count,
     questions: z.object({ total: count, blocking: count }),
     lenses: z.array(z.enum(["security", "contract"])),

@@ -3,11 +3,12 @@ import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
-import { roundDir, roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";
+import { roundDir, roundNumbers, tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { projects } from "../application/projects.ts";
+import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import type { PrInfo, PrResult, PrState } from "./results.ts";
 
@@ -44,11 +45,11 @@ async function assertPushable(taskWorktree: string, branch: string, base: string
 
 async function readPrText(id: TaskId, taskWorktree: string): Promise<PrText> {
   const dir = tenboxDir(taskWorktree);
-  const taskText = await files.read(path.join(dir, "task.md"));
+  const task = await tasks.find(dir);
   const planText = await files.read(path.join(dir, "plan.md"));
   const summary = await latestChecksSummary(taskWorktree);
   return {
-    title: prTitle(id, titleFromTaskMd(taskText)),
+    title: prTitle(id, task?.title ?? null),
     body: prBody(planText, summary),
   };
 }

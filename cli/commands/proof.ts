@@ -37,7 +37,7 @@ function readProof(input: ProofInput): StatsProof {
 
 async function assertPartExists(taskWorktree: string, part: string): Promise<void> {
   const known = await parts.read(tenboxDir(taskWorktree));
-  if (!known.some((p) => p.id === part)) {
+  if (!known.includes(part)) {
     throw unknownPartError(part);
   }
 }
