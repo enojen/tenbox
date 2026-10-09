@@ -160,7 +160,7 @@ progress; `tenbox close` sets it to done.
 ## Repository layout
 
 ```
-domain/       pure code: ids, failure lines, manifest schema, stats, the Tracker port
+domain/       pure code: ids, failure lines, manifest schema, stats, events, the Tracker port
 cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
   commands/     one file per CLI command
   application/  use cases

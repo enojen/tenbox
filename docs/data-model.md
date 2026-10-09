@@ -375,6 +375,7 @@ Risks:
 {
   "event": "plan.done",
   "task": "k7f3qa/TEN-301",
+  "plan_sha": "3f9c…",
   "estimated_lines": 300,
   "parts": [
     { "id": "p01", "difficulty": "easy" },
@@ -386,12 +387,14 @@ Risks:
 }
 ```
 
-The plan text is not sent; it reaches GitHub in the PR body.
+The plan text is not sent; it reaches GitHub in the PR body. `plan_sha` is the SHA-256 of
+`plan.md` in hex. A plan run again gives one more `plan.done`; a plan changed by hand
+before approval shows as a `plan.approved` with a different `plan_sha`.
 
 ### plan.approved (`tenbox approve`)
 
 ```json
-{ "event": "plan.approved", "task": "k7f3qa/TEN-301" }
+{ "event": "plan.approved", "task": "k7f3qa/TEN-301", "plan_sha": "7b21…" }
 ```
 
 The user runs `tenbox approve <id>` after reading the plan. Today this moment is not

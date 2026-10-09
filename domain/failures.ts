@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { lastNonEmpty, unique } from "./utils.ts";
 
 /** vitest/jest `FAIL × ✕ ✗`, bun `(fail)`, tsc `error TS1234`: the devbox `wtbase` default. */
@@ -19,7 +20,8 @@ export function failureLine(raw: string): FailureLine {
 
 /** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */
 /** Where a check's baseline came from: the base commit, the newest stored, taken in main, or none. */
-export type BaselineSource = "exact" | "newest" | "main" | "none";
+export const BaselineSourceSchema = z.enum(["exact", "newest", "main", "none"]);
+export type BaselineSource = z.infer<typeof BaselineSourceSchema>;
 
 export interface Baseline {
   sha: string;

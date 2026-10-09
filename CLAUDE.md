@@ -94,7 +94,7 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 ## Layout
 
 ```
-domain/     pure code: ids, failure lines, manifest schema, the Tracker port
+domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
