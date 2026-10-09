@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "workflows/*.js",
+    "rules/*/{bad,good}.ts"
+  ],
+  "project": [
+    "cli/**/*.ts",
+    "domain/**/*.ts",
+    "server/**/*.ts",
+    "rules/**/*.ts",
+    "workflows/*.js"
+  ],
+  "ignoreDependencies": [
+    "@biomejs/biome"
+  ]
+}

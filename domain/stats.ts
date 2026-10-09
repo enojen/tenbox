@@ -15,12 +15,12 @@ const TEST_DIR = "test";
 const ESTIMATED_LINES = /^Estimated lines:\s*(\d+)/im;
 const DIFFICULTY_LINE = /^difficulty:\s*(\S+)/m;
 
-export interface StatsTimeline extends RunTimeline {
+interface StatsTimeline extends RunTimeline {
   opened: string | null;
   closed: string;
 }
 
-export interface StatsMinutes extends RunMinutes {
+interface StatsMinutes extends RunMinutes {
   total: number | null;
 }
 

@@ -8,7 +8,7 @@ import type { BranchRemoveState, WorktreeRemoveState } from "../application/work
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
-export interface TrackerInfo {
+interface TrackerInfo {
   kind: TrackerKind;
   status: string;
 }
@@ -28,22 +28,22 @@ export interface StartResult {
   tmux: TmuxInfo;
 }
 
-export interface SessionRemoveInfo {
+interface SessionRemoveInfo {
   session: string;
   state: SessionRemoveState;
 }
 
-export interface WorktreeRemoveInfo {
+interface WorktreeRemoveInfo {
   path: string;
   state: WorktreeRemoveState;
 }
 
-export interface BranchRemoveInfo {
+interface BranchRemoveInfo {
   name: string;
   state: BranchRemoveState;
 }
 
-export type StatsState = "written" | "skipped" | `failed: ${string}`;
+type StatsState = "written" | "skipped" | `failed: ${string}`;
 
 export interface StatsInfo {
   /** Null when the stats were skipped. */
@@ -112,7 +112,7 @@ export interface CheckRun {
   log: string;
 }
 
-export interface BaseInfo {
+interface BaseInfo {
   ref: string;
   sha: string;
 }

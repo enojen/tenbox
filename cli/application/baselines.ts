@@ -13,7 +13,7 @@ export interface BaselineHit extends Baseline {
   source: BaselineSource;
 }
 
-export interface BaselineRequest {
+interface BaselineRequest {
   project: Project;
   taskWorktree: string;
   check: string;

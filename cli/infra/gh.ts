@@ -7,7 +7,7 @@ export interface PrText {
   body: string;
 }
 
-export interface CreatePrInput extends PrText {
+interface CreatePrInput extends PrText {
   branch: string;
   base: string;
   draft: boolean;

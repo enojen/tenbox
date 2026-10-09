@@ -2,7 +2,7 @@ import { log } from "../infra/env.ts";
 import { processes } from "../infra/processes.ts";
 import { tmux } from "../infra/tmux.ts";
 
-export type TmuxState = "started" | "exists" | "skipped" | "unavailable";
+type TmuxState = "started" | "exists" | "skipped" | "unavailable";
 
 export type SessionRemoveState = "killed" | "skipped";
 

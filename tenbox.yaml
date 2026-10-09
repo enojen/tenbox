@@ -6,6 +6,7 @@ checks:
   unit: bun test cli domain server rules
   format: bunx biome format cli domain server rules
   lint: bunx biome lint cli domain server rules
+  unused: bunx knip
 
 tracker: { kind: linear }
 id: xathah

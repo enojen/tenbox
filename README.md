@@ -199,7 +199,7 @@ workflows/    tenbox-plan.js, tenbox-build.js
 docs/         design.md (the target design), flow page and mockups
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck and the tests on Ubuntu and macOS.
+CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on Ubuntu and macOS.
 
 ## Roadmap
 

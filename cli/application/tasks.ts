@@ -5,7 +5,7 @@ import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
-export interface TaskSource {
+interface TaskSource {
   id: TaskId;
   /** With a title, no tracker is needed. */
   title?: string;

@@ -9,7 +9,7 @@ export interface BaselineKey {
   check: string;
 }
 
-export interface BaselineMeta {
+interface BaselineMeta {
   date: string;
   cmd: string;
   exit_code: number;

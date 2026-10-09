@@ -3,9 +3,9 @@ import { TenboxError } from "./errors/index.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject } from "./utils.ts";
 
-export const TrackerKindSchema = z.enum(["none", "linear"]);
+const TrackerKindSchema = z.enum(["none", "linear"]);
 
-export const TrackerConfigSchema = z.object({
+const TrackerConfigSchema = z.object({
   kind: TrackerKindSchema.default("none"),
   api_key: z.string().optional(),
 });
@@ -46,7 +46,7 @@ function compiles(pattern: string): boolean {
 }
 
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
-export const ManifestSchema = z.object({
+const ManifestSchema = z.object({
   id: z
     .string()
     .refine(isProjectId, { message: "6 characters, a-z and 0-9" })

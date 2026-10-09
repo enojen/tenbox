@@ -3,7 +3,7 @@ import { elapsedMs, hasErrorCode } from "../../domain/utils.ts";
 import { env, log } from "./env.ts";
 import { files } from "./files.ts";
 
-export interface ProcessOptions {
+interface ProcessOptions {
   cwd?: string;
   timeoutMs?: number;
   /** Variables set on top of the current environment. */

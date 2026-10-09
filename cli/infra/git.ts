@@ -5,7 +5,7 @@ import { lastNonEmpty, MS_PER_SECOND } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 import { type ProcessResult, processes } from "./processes.ts";
 
-export interface AddWorktreeInput {
+interface AddWorktreeInput {
   mainDir: string;
   path: string;
   branch: string;

@@ -2,7 +2,7 @@ import type { MembershipType } from "../../../domain/membership.ts";
 import type { Queryable } from "../db/index.ts";
 import { memberships } from "../db/schema.ts";
 
-export interface Membership {
+interface Membership {
   orgId: string;
   userId: string;
   type: MembershipType;

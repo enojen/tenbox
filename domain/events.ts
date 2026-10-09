@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BaselineSourceSchema } from "./failures.ts";
 
-export const EVENT_SCHEMA_VERSION = 1;
+const EVENT_SCHEMA_VERSION = 1;
 
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
@@ -116,5 +116,5 @@ export const EventSchema = z.discriminatedUnion("event", [
   }),
 ]);
 
-export type TenboxEvent = z.infer<typeof EventSchema>;
+type TenboxEvent = z.infer<typeof EventSchema>;
 export type EventName = TenboxEvent["event"];

@@ -10,7 +10,7 @@ import { manifests } from "./manifests.ts";
 /** Projects on disk, found from any checkout in them. */
 export const projects = { get, save };
 
-export interface ProjectAndManifest {
+interface ProjectAndManifest {
   project: Project;
   /** The main checkout's manifest, without task layers. */
   manifest: Manifest;
@@ -28,7 +28,7 @@ async function get(cwd: string): Promise<ProjectAndManifest> {
   return { project, manifest };
 }
 
-export interface ProjectRecord {
+interface ProjectRecord {
   id: ProjectId;
   name: string;
 }

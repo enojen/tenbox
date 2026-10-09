@@ -9,7 +9,7 @@ export interface User {
   github: string;
 }
 
-export interface UserRow extends User {
+interface UserRow extends User {
   tokenHash: string;
 }
 
