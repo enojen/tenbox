@@ -22,12 +22,23 @@ export interface OpenPr {
 }
 
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
-export const gh = { findPr, isMergedAt, findOpen, create, edit, markReady };
+export const gh = { findPr, isMergedAt, findOpen, listOpen, create, edit, markReady };
 
 /** The output of `gh pr list --json number,url,isDraft`. */
 const PrListSchema = z.array(
   z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }),
 );
+
+/** The output of `gh pr list --json number,headRefName`. */
+const PrBranchListSchema = z.array(z.object({ number: z.number(), headRefName: z.string() }));
+
+export interface PrBranch {
+  number: number;
+  branch: string;
+}
+
+/** `gh pr list` shows 30 by default. */
+const LIST_LIMIT = "100";
 
 /** The output of `gh pr view --json state,headRefOid`. */
 const PrViewSchema = z.object({
@@ -72,6 +83,16 @@ async function findOpen(dir: string, branch: string): Promise<OpenPr | null> {
   const first = PrListSchema.parse(parseJson(out))[0];
   if (first === undefined) return null;
   return { number: first.number, url: first.url, draft: first.isDraft };
+}
+
+/** Every open PR into `base`. */
+async function listOpen(dir: string, base: string): Promise<PrBranch[]> {
+  const args = ["pr", "list", "--state", "open", "--base", base, "--limit", LIST_LIMIT];
+  const out = await run([...args, "--json", "number,headRefName"], dir);
+  return PrBranchListSchema.parse(parseJson(out)).map((pr) => ({
+    number: pr.number,
+    branch: pr.headRefName,
+  }));
 }
 
 async function create(dir: string, input: CreatePrInput): Promise<void> {

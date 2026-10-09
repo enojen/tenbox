@@ -12,9 +12,10 @@ the README.
 
 Phase 1 is done: roles, `/tenbox-plan`, `/tenbox-build` without the Try phase,
 `tenbox start`, `check`, `install`, the Linear tracker. Phase 2 has `tenbox close` (the
-cleanup only, no sandbox and no merge) and `tenbox pr` (push, then create or update the PR
-with `gh`), and `tenbox build` (types `/tenbox-build` into the task's `claude` session on
-the task's own tmux server); next is `/tenbox-close`. No sandbox yet.
+cleanup only, no sandbox and no merge), `tenbox pr` (push, then create or update the PR
+with `gh`), `tenbox build` (types `/tenbox-build` into the task's `claude` session on the
+task's own tmux server) and `tenbox merge-check` (merge the open task PRs in a temporary
+worktree and run the checks); next is `/tenbox-close`. No sandbox yet.
 
 ## Rules
 
@@ -119,7 +120,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans
+    approvals  plans  checks
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql
     tracker/      the Tracker adapters and makeTracker

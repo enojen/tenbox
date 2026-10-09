@@ -17,6 +17,7 @@ import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { install } from "./commands/install.ts";
+import { mergeCheck } from "./commands/mergeCheck.ts";
 import { planDone } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
@@ -32,6 +33,7 @@ interface Command extends ArgSpec {
 
 const START_USAGE = 'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]';
 const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 600]";
+const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
@@ -83,6 +85,15 @@ const COMMANDS: Record<string, Command> = {
         round: intValue(values, "round"),
         base: stringValue(values, "base"),
         timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
+      }),
+  },
+  "merge-check": {
+    usage: MERGE_CHECK_USAGE,
+    options: { base: { type: "string" } },
+    run: (_positionals, values) =>
+      mergeCheck({
+        base: stringValue(values, "base"),
+        timeoutMs: DEFAULT_TIMEOUT_SECONDS * MS_PER_SECOND,
       }),
   },
   close: {

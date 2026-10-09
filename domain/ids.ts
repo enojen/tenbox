@@ -69,6 +69,13 @@ export function taskBranch(names: Names, id: TaskId): string {
   return fillName(names.branch, id);
 }
 
+/** True when `branch` is what `names.branch` makes of some task id. */
+export function isTaskBranch(names: Names, branch: string): boolean {
+  const [prefix = "", suffix = ""] = names.branch.split("{id}");
+  if (!branch.startsWith(prefix) || !branch.endsWith(suffix)) return false;
+  return isSafeName(branch.slice(prefix.length, branch.length - suffix.length));
+}
+
 export function tmuxSessionName(names: Names, id: TaskId): string {
   return fillName(names.tmux, id);
 }

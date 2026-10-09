@@ -5,6 +5,7 @@ import type { StatsProof } from "../../domain/proof.ts";
 import type { SessionRemoveState, TmuxInfo } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
+import type { PrBranch } from "../infra/gh.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
@@ -108,13 +109,13 @@ export interface ApproveResult extends Approval {
   file: string;
 }
 
-export interface BaselineSummary {
+interface BaselineSummary {
   sha: string;
   source: BaselineSource;
   failures: number;
 }
 
-export interface CheckRun {
+export interface CheckOutcome {
   name: string;
   cmd: string;
   exit_code: number;
@@ -124,6 +125,9 @@ export interface CheckRun {
   new_failures: string[];
   fixed: string[];
   baseline: BaselineSummary;
+}
+
+export interface CheckRun extends CheckOutcome {
   log: string;
 }
 
@@ -142,6 +146,17 @@ export interface CheckResult {
   checks: CheckRun[];
   summary: string;
   file: string;
+}
+
+export interface MergeCheckResult {
+  ok: boolean;
+  base: BaseInfo;
+  /** The open task PRs, as `gh` lists them. */
+  prs: PrBranch[];
+  /** Their branches in the order they were merged: lowest PR number first. */
+  order: string[];
+  checks: CheckOutcome[];
+  summary: string;
 }
 
 export interface LinkTarget {

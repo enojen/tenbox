@@ -37,6 +37,9 @@ export const git = {
   hasChanges,
   isMerged,
   push,
+  fetch,
+  addDetachedWorktree,
+  merge,
   ensureExcludes,
 };
 
@@ -206,6 +209,29 @@ async function isMerged(dir: string, base: string, branch: string): Promise<bool
 /** Pushes the branch to `origin` and sets it as the upstream. A rejected push throws. */
 async function push(dir: string, branch: string): Promise<void> {
   await run(["push", "-u", "origin", branch], dir);
+}
+
+/** Updates the remote-tracking branches of `origin`; nothing local moves. */
+async function fetch(dir: string): Promise<void> {
+  await run(["fetch", "--quiet", "origin"], dir);
+}
+
+/** A worktree with no branch, checked out at `ref`. */
+async function addDetachedWorktree(mainDir: string, worktree: string, ref: string): Promise<void> {
+  await run(["worktree", "add", "--detach", worktree, ref], mainDir);
+}
+
+/** A merge commit needs an author; the user's own git config is not required. */
+const MERGE_IDENTITY = ["-c", "user.name=Tenbox", "-c", "user.email=tenbox@localhost"];
+
+/** Merges `ref` into HEAD. Returns the conflicted files, empty after a clean merge. */
+async function merge(dir: string, ref: string): Promise<string[]> {
+  const args = [...MERGE_IDENTITY, "merge", "--no-edit", ref];
+  const result = await runRaw(args, dir);
+  if (result.code === 0) return [];
+  const out = await run(["diff", "--name-only", "--diff-filter=U"], dir);
+  if (out === "") throw gitError(args, result);
+  return out.split("\n");
 }
 
 /** Adds the missing patterns to `<commonDir>/info/exclude`; returns the ones added. */

@@ -9,7 +9,7 @@ import { shell } from "../infra/shell.ts";
 /** The failure lines a check already has at the base commit. */
 export const baselines = { find };
 
-export interface BaselineHit extends Baseline {
+interface BaselineHit extends Baseline {
   source: BaselineSource;
 }
 

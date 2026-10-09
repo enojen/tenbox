@@ -1,4 +1,16 @@
-import { lstat, mkdir, readdir, readlink, realpath, rename, stat, symlink } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { hasErrorCode } from "../../domain/utils.ts";
 
@@ -50,6 +62,16 @@ export const files = {
 
   async mkdir(p: string): Promise<void> {
     await mkdir(p, { recursive: true });
+  },
+
+  /** A new empty directory under the OS temp dir, outside the worktree root. */
+  async makeTempDir(prefix: string): Promise<string> {
+    return await mkdtemp(path.join(os.tmpdir(), prefix));
+  },
+
+  /** Removes the file or directory with what is in it; a missing path is fine. */
+  async remove(p: string): Promise<void> {
+    await rm(p, { recursive: true, force: true });
   },
 
   async list(p: string): Promise<string[]> {

@@ -9,8 +9,8 @@ This README describes what is built and how it runs today. Every statement here 
 true of the code. The target design (sandbox, QA, parallel workers, the panel) is in
 [`docs/design.md`](docs/design.md); it describes later phases, not today's behaviour.
 
-**Status**: phase 1 is done; phase 2 has `tenbox close` and `tenbox pr`. See
-[Roadmap](#roadmap).
+**Status**: phase 1 is done; phase 2 has `tenbox close`, `tenbox pr` and
+`tenbox merge-check`. See [Roadmap](#roadmap).
 
 ## How a task runs today
 
@@ -51,6 +51,7 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox build done <id> --json '<result>'` | Run by `/tenbox-build` through the runner at every end status. Validates the build result with zod and writes it to `.tenbox/build.json`; its `proofs` are appended to `.tenbox/proofs.json`. A second run keeps the earlier `unproven` items first; `status`, `round`, `attention` and `nice_to_have` are the new ones. A result that is not JSON, or has an unknown `status`, a `round` that is not a whole number or a proof with a blank field, gives `bad-build` (exit 1) and writes nothing; a missing `--json` gives `usage` (exit 2). Prints `{ ok, task, file }` |
 | `tenbox wait <id> --for plan\|build [--timeout 600]` | Checks once a second for `.tenbox/plan.json` or `.tenbox/build.json` and prints `{ ok, task, file }` as soon as it exists. Fails with `wait-timeout` (exit 1) after `--timeout` seconds; a missing or other `--for` gives `usage` (exit 2). An earlier `build.json` makes it return at once |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
+| `tenbox merge-check [--base <branch>]` | Run in the project. Runs `git fetch origin`, lists the open PRs into the base whose head branch fits `names.branch` (others are left out), and merges `origin/<branch>` of each onto `origin/<base>` in a temporary detached worktree, lowest PR number first. Then it runs `setup` and every check there and judges them as `tenbox check` does: only new failures against the baseline fail a check (it writes no log files). The worktree is removed on every way out. With no open task PR it prints `ok: true` with empty lists. A failed `setup` gives `setup` (exit 1). A conflict gives `merge-conflict` (exit 1) with `{ base, prs, order, conflict: { branch, files } }` in `details`; a new failure gives `new-failures` (exit 1) with the whole result in `details`. Prints `{ ok, base: { ref, sha }, prs: [{ number, branch }], order, checks, summary }`. It never pushes and never moves a local branch |
 | `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the task's tmux server (a project with no `id` has none: `skipped`), removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
@@ -231,7 +232,8 @@ CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on Ubuntu
 
 1. **Done**: roles, `/tenbox-plan`, `/tenbox-build` with Build, Checks and Review,
    `tenbox start`, `check`, `install`.
-2. **Now**: `tenbox close` and `tenbox pr` are built. Next: `/tenbox-close` (after you
-   merge: pull, close, delete the remote branch), the ClickUp adapter.
+2. **Now**: `tenbox close`, `tenbox pr` and `tenbox merge-check` are built. Next:
+   `/tenbox-close` (after you merge: pull, close, delete the remote branch), the ClickUp
+   adapter.
 3. Later, see [`docs/design.md`](docs/design.md): the full manifest and the sandbox, the
    Try phase with QA, fakes from API docs, the live pane, the panel.

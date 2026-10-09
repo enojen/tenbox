@@ -2,20 +2,17 @@ import path from "node:path";
 import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
-import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
 import { checksFile, nextRound, roundDir, roundsDir, tenboxDir } from "../../domain/task.ts";
-import { elapsedMs } from "../../domain/utils.ts";
-import { type BaselineHit, baselines } from "../application/baselines.ts";
+import { checks } from "../application/checks.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
 import { worktrees } from "../application/worktrees/index.ts";
-import { env, log } from "../infra/env.ts";
+import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type ShellResult, shell } from "../infra/shell.ts";
-import type { BaselineSummary, CheckResult, CheckRun } from "./results.ts";
+import type { CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {
   id: TaskId;
@@ -59,12 +56,6 @@ interface NamedCheck {
   cmd: string;
 }
 
-interface ExecutedCheck extends NamedCheck {
-  ran: ShellResult;
-  durationMs: number;
-  logFile: string;
-}
-
 /**
  * Runs every check in the task worktree and keeps only failures the base commit did
  * not already have: the devbox `wtbase` algorithm. Writes `.tenbox/rounds/N/checks.json`.
@@ -85,11 +76,11 @@ async function prepareRound(input: CheckInput): Promise<Round> {
   const taskWorktree = await worktrees.get(input.id);
   const { project, manifest } = await projects.get(taskWorktree);
   const base = input.base ?? manifest.base;
-  const { checks, pattern } = await getChecks(project.mainDir, taskWorktree);
+  const setup = await getChecks(project.mainDir, taskWorktree);
   const { number, dir } = await ensureRound(taskWorktree, input.round);
   const { head, baseSha } = await getCommits(taskWorktree, base);
   const timeoutMs = input.timeoutMs;
-  return { number, dir, taskWorktree, project, checks, pattern, head, base, baseSha, timeoutMs };
+  return { number, dir, taskWorktree, project, ...setup, head, base, baseSha, timeoutMs };
 }
 
 /** Tenbox runs only what the manifest says; it does not guess from the project. */
@@ -123,60 +114,12 @@ async function getCommits(taskWorktree: string, base: string): Promise<Commits> 
 }
 
 async function runCheck(round: Round, check: NamedCheck): Promise<CheckRun> {
-  const executed = await executeCheck(round, check);
-  return judgeCheck(round, executed);
-}
-
-async function executeCheck(round: Round, check: NamedCheck): Promise<ExecutedCheck> {
-  log(`tenbox check: ${check.name}: ${check.cmd}`);
-  const started = performance.now();
-  const ran = await shell.run(check.cmd, { cwd: round.taskWorktree, timeoutMs: round.timeoutMs });
-  const durationMs = elapsedMs(started);
+  const { project, taskWorktree, pattern, baseSha, timeoutMs } = round;
+  const request = { ...check, project, cwd: taskWorktree, pattern, baseSha, timeoutMs };
+  const { outcome, output } = await checks.run(request);
   const logFile = path.join(round.dir, "checks", `${check.name}.log`);
-  await files.write(logFile, ran.output);
-  return { ...check, ran, durationMs, logFile };
-}
-
-async function judgeCheck(round: Round, executed: ExecutedCheck): Promise<CheckRun> {
-  const { name, cmd, ran, durationMs } = executed;
-  const exitCode = shell.exitCode(ran);
-  const current = parseFailures(ran.output, exitCode, round.pattern);
-  const hit = await baselines.find({ ...round, check: name, cmd });
-  const { newFailures, fixed } = compareWithBaseline(hit?.lines ?? [], current);
-  log(
-    `tenbox check: ${name}: ${current.length} failures, ${newFailures.length} new, ${fixed.length} fixed (${durationMs} ms)`,
-  );
-  return {
-    name,
-    cmd,
-    exit_code: exitCode,
-    duration_ms: durationMs,
-    timed_out: ran.timedOut,
-    failures: current.length,
-    new_failures: newFailures,
-    fixed,
-    baseline: summarizeBaseline(hit, round.baseSha),
-    log: path.relative(round.taskWorktree, executed.logFile),
-  };
-}
-
-function summarizeBaseline(hit: BaselineHit | null, baseSha: string): BaselineSummary {
-  return {
-    sha: hit?.sha ?? baseSha,
-    source: hit?.source ?? "none",
-    failures: hit?.lines.length ?? 0,
-  };
-}
-
-function summarize(results: CheckRun[]): string {
-  const failing = results.filter((r) => r.new_failures.length > 0);
-  if (failing.length === 0) return `all ${results.length} check(s) pass with no new failures`;
-  return failing.map(describeNewFailures).join("\n");
-}
-
-function describeNewFailures(run: CheckRun): string {
-  const lines = run.new_failures.map((line) => `  ${line}`).join("\n");
-  return `${run.name}: ${run.new_failures.length} new failure(s)\n${lines}`;
+  await files.write(logFile, output);
+  return { ...outcome, log: path.relative(taskWorktree, logFile) };
 }
 
 function buildResult(input: CheckInput, round: Round, results: CheckRun[]): CheckResult {
@@ -188,7 +131,7 @@ function buildResult(input: CheckInput, round: Round, results: CheckRun[]): Chec
     commit: round.head,
     base: { ref: round.base, sha: round.baseSha },
     checks: results,
-    summary: summarize(results),
+    summary: checks.summarize(results),
     file: path.relative(round.taskWorktree, checksFile(round.dir)),
   };
 }
