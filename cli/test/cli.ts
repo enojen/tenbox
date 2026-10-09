@@ -48,3 +48,8 @@ function parseJson(text: string): Json | null {
     return null;
   }
 }
+
+/** Runs `tmux <args>` against the env of the test process, so it reaches the project's own server. */
+export function tmux(args: string[]): { exitCode: number } {
+  return Bun.spawnSync(["tmux", ...args], { env: process.env });
+}

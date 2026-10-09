@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { hasTmux, tmux } from "./cli.ts";
 
 /** File path relative to the main checkout, mapped to its text. */
 export type ProjectFiles = Record<string, string>;
@@ -39,6 +40,7 @@ export async function makeTempProject(projectFiles: ProjectFiles): Promise<TempP
     tenboxHome,
     addTaskWorktree: (id) => addTaskWorktree(mainDir, path.join(wtRoot, PROJECT, id), tenboxHome),
     remove: async () => {
+      if (hasTmux) tmux(["kill-server"]);
       restoreEnv();
       await rm(root, { recursive: true, force: true });
     },
@@ -51,7 +53,10 @@ interface TempPaths {
   tenboxHome: string;
 }
 
-function testEnv({ root, wtRoot, tenboxHome }: TempPaths): Record<string, string> {
+/** A value of `undefined` removes the variable. */
+type EnvValues = Record<string, string | undefined>;
+
+function testEnv({ root, wtRoot, tenboxHome }: TempPaths): EnvValues {
   return {
     TENBOX_WT_ROOT: wtRoot,
     TENBOX_HOME: tenboxHome,
@@ -61,19 +66,24 @@ function testEnv({ root, wtRoot, tenboxHome }: TempPaths): Record<string, string
     GIT_AUTHOR_EMAIL: GIT_EMAIL,
     GIT_COMMITTER_NAME: GIT_AUTHOR,
     GIT_COMMITTER_EMAIL: GIT_EMAIL,
+    // tmux prefers `TMUX` over `TMUX_TMPDIR`; without both, tests never reach the user's server.
+    TMUX_TMPDIR: root,
+    TMUX: undefined,
   };
 }
 
 /** Sets the variables and returns the function that puts the old values back. */
-function setEnv(values: Record<string, string>): () => void {
-  const previous = Object.keys(values).map((key) => [key, process.env[key]] as const);
-  Object.assign(process.env, values);
-  return () => {
-    for (const [key, value] of previous) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  };
+function setEnv(values: EnvValues): () => void {
+  const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+  applyEnv(values);
+  return () => applyEnv(previous);
+}
+
+function applyEnv(values: EnvValues): void {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 }
 
 async function initRepo(mainDir: string, projectFiles: ProjectFiles): Promise<void> {

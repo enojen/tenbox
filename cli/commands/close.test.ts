@@ -9,7 +9,7 @@ import { projectDir } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type CliRun, hasTmux, tenbox, tmuxTest } from "../test/cli.ts";
+import { type CliRun, tenbox, tmux, tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const SESSION = "tenbox-T-1";
@@ -54,7 +54,6 @@ async function expectUntouched(run: CliRun): Promise<void> {
 }
 
 afterEach(async () => {
-  if (hasTmux) Bun.spawnSync(["tmux", "kill-session", "-t", `=${SESSION}`]);
   await project.remove();
 });
 
@@ -137,10 +136,10 @@ describe("tenbox close", () => {
 
   tmuxTest("kills the tmux session; without tmux in PATH the step is skipped", async () => {
     await setup();
-    Bun.spawnSync(["tmux", "new-session", "-d", "-s", SESSION, "sleep 30"]);
+    tmux(["new-session", "-d", "-s", SESSION, "sleep 30"]);
     const run = await closeT1();
     expect(run.json).toMatchObject({ tmux: { state: "killed" } });
-    expect(Bun.spawnSync(["tmux", "has-session", "-t", `=${SESSION}`]).exitCode).not.toBe(0);
+    expect(tmux(["has-session", "-t", `=${SESSION}`]).exitCode).not.toBe(0);
     await rm(kept, { recursive: true });
     await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
     const bin = path.join(project.root, "bin");
