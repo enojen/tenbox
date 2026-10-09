@@ -27,7 +27,9 @@ export const processes = { run, stopAll, which };
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
-  return Bun.which(name, { PATH: process.env.PATH });
+  const path = process.env.PATH;
+  if (path === undefined) return Bun.which(name);
+  return Bun.which(name, { PATH: path });
 }
 
 async function run(cmd: string[], options: ProcessOptions = {}): Promise<ProcessResult> {
@@ -61,7 +63,7 @@ async function start(
 ): Promise<Bun.Subprocess<"ignore", "pipe", "pipe">> {
   try {
     return Bun.spawn(cmd, {
-      cwd: options.cwd,
+      cwd: options.cwd ?? process.cwd(),
       // Bun.spawn defaults to the env at startup; tests change process.env later.
       env: { ...process.env, ...options.env },
       stdin: "ignore",

@@ -10,7 +10,7 @@ import { organizations } from "./organizations.ts";
 
 export interface NewUser {
   name: string;
-  email?: string;
+  email: string | undefined;
   github: string;
   org: string;
   type: MembershipType;

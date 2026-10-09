@@ -20,6 +20,7 @@ function setup() {
     name: "Enes",
     github: "enojen",
     org: "Acme",
+    email: undefined,
     type: "member",
   });
   return { app: createApp(db), token };

@@ -89,6 +89,8 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - Biome formats `cli/`, `domain/`, `server/` and `rules/` at 100 columns (`biome.json`); the `format` check fails
   on unformatted code. Run `bunx biome format --write cli domain server rules` before a commit.
 - A branded type has one constructor function.
+- `exactOptionalPropertyTypes` is on: `a?: T` = the key may be missing; `a: T | undefined` = the key
+  is always set. Never both.
 - Generic helpers live in `domain/utils.ts`; search there before writing one.
 - Data that code counts comes from a schema or a JSON file, never from Markdown.
 - Less code is always better: no code for a later phase (`unused` check, knip).

@@ -17,7 +17,13 @@ function tempDb(): Db {
   return database.open(path.join(root, "server.db"));
 }
 
-const ENES: NewUser = { name: "Enes", github: "enojen", org: "Acme", type: "member" };
+const ENES: NewUser = {
+  name: "Enes",
+  github: "enojen",
+  org: "Acme",
+  email: undefined,
+  type: "member",
+};
 
 interface CountRow {
   n: number;

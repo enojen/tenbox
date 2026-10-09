@@ -13,9 +13,9 @@ import type { StartResult } from "./results.ts";
 export interface StartInput {
   id: TaskId;
   /** With a title, no tracker is needed. */
-  title?: string;
+  title: string | undefined;
   /** Default: the manifest's `base`. */
-  base?: string;
+  base: string | undefined;
   tmux: boolean;
   setup: boolean;
 }

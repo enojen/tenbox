@@ -17,7 +17,13 @@ function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tenbox-problems-"));
   roots.push(root);
   const db = database.open(path.join(root, "server.db"));
-  const { token } = users.save(db, { name: "Enes", github: "enojen", org: "W", type: "member" });
+  const { token } = users.save(db, {
+    name: "Enes",
+    github: "enojen",
+    org: "W",
+    email: undefined,
+    type: "member",
+  });
   return { db, app: createApp(db), auth: { Authorization: `Bearer ${token}` } };
 }
 

@@ -65,7 +65,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   }
   const tmuxState = await sessions.remove(session);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
-  const status = await tasks.updateStatus({ id }, tracker, "done");
+  const status = await tasks.updateStatus({ id, title: undefined }, tracker, "done");
   return {
     ok: true,
     task: id,

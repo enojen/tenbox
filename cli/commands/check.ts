@@ -17,9 +17,9 @@ import type { BaselineSummary, CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {
   id: TaskId;
-  round?: number;
+  round: number | undefined;
   /** Default: the manifest's `base`. */
-  base?: string;
+  base: string | undefined;
   timeoutMs: number;
 }
 

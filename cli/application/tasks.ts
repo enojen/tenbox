@@ -8,7 +8,7 @@ import { files } from "../infra/files.ts";
 interface TaskSource {
   id: TaskId;
   /** With a title, no tracker is needed. */
-  title?: string;
+  title: string | undefined;
 }
 
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
