@@ -255,7 +255,7 @@ describe("tenbox close", () => {
     /** A bare `origin` with `main` and the task branch pushed. */
     async function addOrigin(): Promise<string> {
       const origin = path.join(project.root, "origin.git");
-      await git.run(["init", "-q", "--bare", origin], project.root);
+      await git.run(["init", "-q", "--bare", "-b", "main", origin], project.root);
       await git.run(["remote", "add", "origin", origin], project.mainDir);
       await git.run(["push", "-q", "origin", "main"], project.mainDir);
       await git.run(["push", "-q", "origin", "feat/T-1"], project.mainDir);
