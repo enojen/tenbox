@@ -5,7 +5,7 @@ import { noChecksError } from "../../domain/errors/manifest.ts";
 import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
-import { nextRound, roundDir, tenboxDir } from "../../domain/task.ts";
+import { checksFile, nextRound, roundDir, roundsDir, tenboxDir } from "../../domain/task.ts";
 import { elapsedMs } from "../../domain/utils.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -77,7 +77,7 @@ export async function runChecks(input: CheckInput): Promise<CheckResult> {
     results.push(run);
   }
   const result = buildResult(input, round, results);
-  await files.write(path.join(round.dir, "checks.json"), `${JSON.stringify(result, null, 2)}\n`);
+  await files.write(checksFile(round.dir), `${JSON.stringify(result, null, 2)}\n`);
   return result;
 }
 
@@ -103,9 +103,9 @@ async function getChecks(mainDir: string, taskWorktree: string): Promise<CheckSe
 
 /** The wanted round, else the next free one; creates its `checks/` directory. */
 async function ensureRound(taskWorktree: string, wanted?: number): Promise<RoundDir> {
-  const existing = await files.list(path.join(tenboxDir(taskWorktree), "rounds"));
+  const existing = await files.list(roundsDir(tenboxDir(taskWorktree)));
   const number = wanted ?? nextRound(existing);
-  const dir = roundDir(taskWorktree, number);
+  const dir = roundDir(tenboxDir(taskWorktree), number);
   await files.mkdir(path.join(dir, "checks"));
   return { number, dir };
 }
@@ -189,6 +189,6 @@ function buildResult(input: CheckInput, round: Round, results: CheckRun[]): Chec
     base: { ref: round.base, sha: round.baseSha },
     checks: results,
     summary: summarize(results),
-    file: path.relative(round.taskWorktree, path.join(round.dir, "checks.json")),
+    file: path.relative(round.taskWorktree, checksFile(round.dir)),
   };
 }

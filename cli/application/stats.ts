@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { TaskId } from "../../domain/ids.ts";
 import { type StatsProof, trimProof } from "../../domain/proof.ts";
 import { summarizeRuns } from "../../domain/runs.ts";
@@ -14,7 +13,7 @@ import {
   sumCode,
   type TaskStats,
 } from "../../domain/stats.ts";
-import { roundNumbers } from "../../domain/task.ts";
+import { checksFile, roundDir, roundNumbers, roundsDir } from "../../domain/task.ts";
 import { minutesBetween } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
@@ -87,11 +86,10 @@ async function save(taskStats: TaskStats, dir: string): Promise<void> {
 }
 
 async function readRounds(dir: string): Promise<StatsRound[]> {
-  const roundsDir = path.join(dir, "rounds");
-  const names = await files.list(roundsDir);
+  const names = await files.list(roundsDir(dir));
   const rounds: StatsRound[] = [];
   for (const number of roundNumbers(names)) {
-    const text = await files.read(path.join(roundsDir, String(number), "checks.json"));
+    const text = await files.read(checksFile(roundDir(dir, number)));
     rounds.push({ number, checks_passed: checksPassed(text) });
   }
   return rounds;

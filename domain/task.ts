@@ -18,8 +18,19 @@ export const tenboxDir = (taskWorktree: string): string => path.join(taskWorktre
 export const proofsFile = (dir: string): string => path.join(dir, "proofs.json");
 /** `approved.json` in a `.tenbox/` folder: the `Approval`. */
 export const approvedFile = (dir: string): string => path.join(dir, "approved.json");
-export const roundDir = (taskWorktree: string, round: number): string =>
-  path.join(tenboxDir(taskWorktree), "rounds", String(round));
+/** `task.md` in a `.tenbox/` folder. */
+export const taskMdFile = (dir: string): string => path.join(dir, "task.md");
+/** `plan.md` in a `.tenbox/` folder. */
+export const planMdFile = (dir: string): string => path.join(dir, "plan.md");
+/** `parts/` in a `.tenbox/` folder. */
+export const partsDir = (dir: string): string => path.join(dir, "parts");
+/** `rounds/` in a `.tenbox/` folder. */
+export const roundsDir = (dir: string): string => path.join(dir, "rounds");
+/** `checks.json` in a round directory. */
+export const checksFile = (round: string): string => path.join(round, "checks.json");
+/** `rounds/<N>` in a `.tenbox/` folder. */
+export const roundDir = (dir: string, round: number): string =>
+  path.join(roundsDir(dir), String(round));
 
 /** `.tenbox/task.md`: what the planner reads after `decisions.md`. */
 export function renderTaskMd(t: Task): string {

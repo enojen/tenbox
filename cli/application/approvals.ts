@@ -1,8 +1,7 @@
-import path from "node:path";
 import { type Approval, readApproval } from "../../domain/approval.ts";
 import { noPlanError, notApprovedError, planChangedError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { approvedFile, tenboxDir } from "../../domain/task.ts";
+import { approvedFile, planMdFile, tenboxDir } from "../../domain/task.ts";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
@@ -14,7 +13,7 @@ export const approvals = { save, get };
 /** Records the approval of the current `plan.md`; `no-plan` when there is none. A second save overwrites. */
 async function save(taskWorktree: string): Promise<Approval> {
   const dir = tenboxDir(taskWorktree);
-  const plan = await files.read(path.join(dir, "plan.md"));
+  const plan = await files.read(planMdFile(dir));
   if (plan === null) {
     throw noPlanError(dir);
   }
@@ -45,6 +44,6 @@ async function find(dir: string): Promise<Approval | null> {
 
 /** True when `plan.md` is gone or its SHA-256 is not the approved one. */
 async function planChanged(dir: string, approval: Approval): Promise<boolean> {
-  const plan = await files.read(path.join(dir, "plan.md"));
+  const plan = await files.read(planMdFile(dir));
   return plan === null || sha256Hex(plan) !== approval.plan_sha;
 }

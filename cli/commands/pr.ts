@@ -1,9 +1,15 @@
-import path from "node:path";
 import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts";
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
-import { roundDir, roundNumbers, tenboxDir } from "../../domain/task.ts";
+import {
+  checksFile,
+  planMdFile,
+  roundDir,
+  roundNumbers,
+  roundsDir,
+  tenboxDir,
+} from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
@@ -46,7 +52,7 @@ async function assertPushable(taskWorktree: string, branch: string, base: string
 async function readPrText(id: TaskId, taskWorktree: string): Promise<PrText> {
   const dir = tenboxDir(taskWorktree);
   const task = await tasks.find(dir);
-  const planText = await files.read(path.join(dir, "plan.md"));
+  const planText = await files.read(planMdFile(dir));
   const summary = await latestChecksSummary(taskWorktree);
   return {
     title: prTitle(id, task?.title ?? null),
@@ -56,10 +62,10 @@ async function readPrText(id: TaskId, taskWorktree: string): Promise<PrText> {
 
 /** The `summary` of the highest round's `checks.json`; null when there is none. */
 async function latestChecksSummary(taskWorktree: string): Promise<string | null> {
-  const names = await files.list(path.join(tenboxDir(taskWorktree), "rounds"));
+  const names = await files.list(roundsDir(tenboxDir(taskWorktree)));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;
-  const text = await files.read(path.join(roundDir(taskWorktree, latest), "checks.json"));
+  const text = await files.read(checksFile(roundDir(tenboxDir(taskWorktree), latest)));
   return checksSummary(text);
 }
 
