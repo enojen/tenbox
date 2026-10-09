@@ -24,6 +24,7 @@ export const git = {
   findBranchCreated,
   listChangedFiles,
   findCommonDir,
+  findMainDir,
   refExists,
   branchExists,
   addWorktree,
@@ -94,6 +95,12 @@ function findBranch(dir: string): Promise<string | null> {
 async function findCommonDir(dir: string): Promise<string | null> {
   const common = await find(["rev-parse", "--git-common-dir"], dir, outsideRepository);
   return common === null ? null : path.resolve(dir, common);
+}
+
+/** The main checkout: the directory that holds the shared `.git`; null outside a repository. */
+async function findMainDir(dir: string): Promise<string | null> {
+  const common = await findCommonDir(dir);
+  return common === null ? null : path.dirname(common);
 }
 
 /** Null when the key is not set. */

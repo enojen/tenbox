@@ -19,8 +19,10 @@ export interface ProjectAndManifest {
 /** The project that contains `cwd`, from the shared `.git` directory. */
 async function get(cwd: string): Promise<ProjectAndManifest> {
   const commonDir = await git.findCommonDir(cwd);
-  if (commonDir === null) throw new TenboxError(`${cwd} is not inside a git repository`, "no-repo");
-  const mainDir = path.dirname(commonDir);
+  const mainDir = await git.findMainDir(cwd);
+  if (commonDir === null || mainDir === null) {
+    throw new TenboxError(`${cwd} is not inside a git repository`, "no-repo");
+  }
   const manifest = await manifests.get(mainDir);
   const project = { name: projectName(mainDir, manifest.project), mainDir, commonDir };
   return { project, manifest };

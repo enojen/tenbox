@@ -1,22 +1,32 @@
 import path from "node:path";
+import { TenboxError } from "../../domain/errors.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
 import type { InstallResult, LinkEntry, LinkState, LinkTarget } from "./results.ts";
 
 /** The checkout directories that `~/.claude/` gets a copy of, as symlinks. */
-const LINKED_DIRS = ["agents", "workflows"] as const;
+const LINKED_DIRS: string[] = ["agents", "workflows"];
 
 interface DirPair {
   sourceDir: string;
   linkDir: string;
 }
 
-/** Symlink every file of `agents/` and `workflows/` into `claudeDir`. Never overwrites, never deletes. */
-export async function install(): Promise<InstallResult> {
+/**
+ * Symlink every file of `agents/` and `workflows/` into `claudeDir`. Never overwrites, never
+ * deletes. The sources come from the main checkout of `tenboxRoot`, so a task worktree can run it.
+ */
+export async function install(tenboxRoot: string = env().tenboxRoot): Promise<InstallResult> {
   const { claudeDir } = env();
+  // The main checkout outlives its task worktrees, so the links do too.
+  const sourceRoot = await git.findMainDir(tenboxRoot);
+  if (sourceRoot === null) {
+    throw new TenboxError(`${tenboxRoot} is not inside a git repository`, "no-repo");
+  }
   const links: LinkEntry[] = [];
   for (const dir of LINKED_DIRS) {
-    const entries = await installDir(dir);
+    const entries = await installDir(sourceRoot, dir);
     links.push(...entries);
   }
   for (const entry of links) log(`tenbox install: ${entry.state} ${entry.link}`);
@@ -24,9 +34,9 @@ export async function install(): Promise<InstallResult> {
   return { ok, claude_dir: claudeDir, links };
 }
 
-async function installDir(dir: string): Promise<LinkEntry[]> {
-  const { tenboxRoot, claudeDir } = env();
-  const pair = { sourceDir: path.join(tenboxRoot, dir), linkDir: path.join(claudeDir, dir) };
+async function installDir(sourceRoot: string, dir: string): Promise<LinkEntry[]> {
+  const { claudeDir } = env();
+  const pair = { sourceDir: path.join(sourceRoot, dir), linkDir: path.join(claudeDir, dir) };
   await files.mkdir(pair.linkDir);
   const all = await files.list(pair.sourceDir);
   const names = all.filter(isLinkable).sort();

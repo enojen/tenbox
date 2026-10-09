@@ -12,7 +12,7 @@ export interface Env {
   baselinesRoot: string;
   /** Used when the manifest has no `failure_pattern`; `WTBASE_PATTERN` overrides. */
   failurePattern: string;
-  /** The tenbox checkout with `agents/` and `workflows/`. */
+  /** The checkout this code runs from; `tenbox install` links from its main checkout. */
   tenboxRoot: string;
   /** `~/.claude`; `CLAUDE_CONFIG_DIR` overrides. */
   claudeDir: string;
