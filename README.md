@@ -188,7 +188,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 `{ type: "about:blank", title, status, detail, code }`. No token: 401
                 `unauthorized`; with a token, an unknown path is 404 `not-found`; any other
                 error is 500 and its message goes to stderr, not to the client
-  application/  organizations and users: the rules (a GitHub name once; the user, the
+  application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
                 membership and the token in one transaction)
   commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
                 [--type admin|member]` (default `member`) finds or makes the organization,
@@ -196,11 +196,15 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 The `tbx_` token is shown once; only its SHA-256 hash is stored. The same
                 `--github` again exits 1 with `code: "user-exists"`. A lost token cannot be
                 shown again: delete the user row (its memberships go with it) and add the
-                user again
+                user again.
+                `tenbox-server project add --id <id> --name <n> --repo <r> --org <o>` (all four
+                required; the id is 6 characters, a-z and 0-9) finds or makes the organization,
+                adds the project and prints `{ ok, project, organization }`. The same `--id`
+                again exits 1 with `code: "project-exists"`
   infra/        env (`TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
                 `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
-                  `memberships`) and `migrations/`. Opening the database applies the new
+                  `memberships`, `projects`) and `migrations/`. Opening the database applies the new
                   migrations. After a change to `schema.ts`, run
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`

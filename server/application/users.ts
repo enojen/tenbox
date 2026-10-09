@@ -17,7 +17,7 @@ export interface NewUser {
 }
 
 /** What `save` returns. `token` is the only time the plain token exists. */
-export interface SavedUser {
+interface SavedUser {
   user: User;
   organization: Organization;
   type: MembershipType;

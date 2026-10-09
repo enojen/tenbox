@@ -102,7 +102,7 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 
 ```
 domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port,
-            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users, git, tools,
+            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users, projects, git, tools,
             manifest, tasks; HTTP status lives in server/routes/)
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
@@ -116,8 +116,8 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
                 layers test
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
-            error as an RFC 9457 problem), application/ (the rules: organizations, users),
-            commands/ (`tenbox-server user add`), infra/ (env, tokens, db/ with the drizzle
+            error as an RFC 9457 problem), application/ (the rules: organizations, users, projects),
+            commands/ (`tenbox-server user add`, `project add`), infra/ (env, tokens, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)

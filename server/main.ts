@@ -2,7 +2,9 @@
 import type { Server } from "bun";
 import { TenboxError } from "../domain/errors/index.ts";
 import { errorMessage } from "../domain/utils.ts";
-import { type NewUser, type SavedUser, users } from "./application/users.ts";
+import { projects } from "./application/projects.ts";
+import { users } from "./application/users.ts";
+import { readProjectAddArgs } from "./commands/projectAdd.ts";
 import { readUserAddArgs } from "./commands/userAdd.ts";
 import { type Db, database } from "./infra/db/index.ts";
 import { serverEnv } from "./infra/env.ts";
@@ -12,7 +14,7 @@ import { createApp } from "./routes/index.ts";
 const SERVER_HOST = "localhost";
 const FAILURE_EXIT_CODE = 1;
 const USAGE =
-  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]";
+  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]\n       tenbox-server project add --id <id> --name <n> --repo <r> --org <o>";
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 
 interface ErrorOutput {
@@ -29,6 +31,10 @@ function main(args: string[]): void {
   }
   if (command === "user" && subcommand === "add") {
     runUserAdd(rest);
+    return;
+  }
+  if (command === "project" && subcommand === "add") {
+    runProjectAdd(rest);
     return;
   }
   console.error(USAGE);
@@ -52,10 +58,25 @@ function stopOnSignals(server: Server<undefined>, db: Db): void {
   for (const signal of STOP_SIGNALS) process.once(signal, stop);
 }
 
+interface AddCommand<Input, Saved> {
+  read: (argv: string[]) => Input;
+  save: (db: Db, input: Input) => Saved;
+}
+
 function runUserAdd(argv: string[]): void {
+  runAdd(argv, { read: readUserAddArgs, save: users.save });
+}
+
+function runProjectAdd(argv: string[]): void {
+  runAdd(argv, { read: readProjectAddArgs, save: projects.save });
+}
+
+function runAdd<Input, Saved extends object>(
+  argv: string[],
+  command: AddCommand<Input, Saved>,
+): void {
   try {
-    const input = readUserAddArgs(argv);
-    const saved = addUser(input);
+    const saved = saveOnce(command, command.read(argv));
     console.log(JSON.stringify({ ok: true, ...saved }));
   } catch (error) {
     console.log(JSON.stringify(errorOutput(error)));
@@ -63,11 +84,11 @@ function runUserAdd(argv: string[]): void {
   }
 }
 
-/** One command, one connection: open, write the user, close, also on an error. */
-function addUser(input: NewUser): SavedUser {
+/** One command, one connection: open, save, close, also on an error. */
+function saveOnce<Input, Saved>(command: AddCommand<Input, Saved>, input: Input): Saved {
   const db = database.open(serverEnv().dbFile);
   try {
-    return users.save(db, input);
+    return command.save(db, input);
   } finally {
     database.close(db);
   }

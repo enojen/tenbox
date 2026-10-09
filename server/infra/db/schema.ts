@@ -35,3 +35,12 @@ export const memberships = sqliteTable(
     check("membership_type", sql`${table.type} in (${sql.raw(MEMBERSHIP_TYPE_LIST)})`),
   ],
 );
+
+export const projects = sqliteTable("projects", {
+  id: text().primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text().notNull(),
+  repo: text().notNull(),
+});
