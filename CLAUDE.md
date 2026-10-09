@@ -66,8 +66,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 
 The roles carry the general code shape rules (`agents/worker.md`). For this repo also:
 
-- Signatures use named types: `state: TmuxState`, not `StartResult["tmux"]["state"]`; no `Omit<>`,
-  `Pick<>` or indexed types in a parameter. A shape used twice gets a name.
+- Signatures use named types (`rules/named-parameter-types`). A shape used twice gets a name.
 - Layers and their direction: `domain/` imports nothing outside itself; `cli/infra/` imports
   only `domain/`; `cli/application/` imports both, directly: no ports bag, no dependency
   injection; `cli/commands/` imports all three. The one port is `Tracker`, because its
@@ -77,8 +76,8 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
   exports the module object; other modules import only that. A function name does not repeat
   the module name.
-- `application/` never runs raw git commands (`git.run`): it calls the named ones in
-  `infra/git.ts`. A tool's file format or command line lives in `infra/`.
+- `application/` calls the named git functions in `infra/git.ts` (`rules/no-raw-git-in-application`).
+  A tool's file format or command line lives in `infra/`.
 - Verbs in module APIs: `get` (throws when missing), `find` (null when missing), `ensure`
   (creates when missing, keeps what exists), `save`, `update`, `remove`, `run`. One verb, one
   meaning.

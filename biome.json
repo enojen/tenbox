@@ -20,7 +20,10 @@
       }
     }
   },
-  "plugins": ["./rules/await-at-statement-start/rule.grit"],
+  "plugins": [
+    "./rules/await-at-statement-start/rule.grit",
+    "./rules/named-parameter-types/rule.grit"
+  ],
   "overrides": [
     {
       "includes": ["**/*.test.ts"],
@@ -31,6 +34,10 @@
     {
       "includes": ["**", "!**/domain/ids.ts", "!**/domain/failures.ts"],
       "plugins": ["./rules/no-inline-cast/rule.grit"]
+    },
+    {
+      "includes": ["**/cli/application/**", "!**/*.test.ts"],
+      "plugins": ["./rules/no-raw-git-in-application/rule.grit"]
     }
   ],
   "assist": { "enabled": false },

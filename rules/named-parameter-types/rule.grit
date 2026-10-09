@@ -1,0 +1,10 @@
+language js
+
+JsFormalParameter() as $parameter where {
+  $parameter <: contains or {
+    `Omit<$_>`,
+    `Pick<$_>`,
+    TsIndexedAccessType()
+  },
+  register_diagnostic(span=$parameter, message="Name the parameter type: no Omit<>, Pick<> or indexed type in a parameter.")
+}
