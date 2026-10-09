@@ -26,7 +26,10 @@ const fullFlags = (test: string) => [
   ...["--part", "01", "--file", "a.test.ts"],
   ...["--test", test, "--failure", "got 1"],
 ];
-const readProofs = async () => JSON.parse((await files.read(proofsFile)) ?? "null");
+const readProofs = async () => {
+  const text = await files.read(proofsFile);
+  return JSON.parse(text ?? "null");
+};
 
 describe("tenbox proof", () => {
   test("appends each proof to proofs.json", async () => {
@@ -47,7 +50,8 @@ describe("tenbox proof", () => {
     const run = await proof(...fullFlags("t"));
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-proofs"]);
     expect(run.json.error).toContain("proofs.json");
-    expect(await files.read(proofsFile)).toBe("{ not json");
+    const kept = await files.read(proofsFile);
+    expect(kept).toBe("{ not json");
   });
 
   test.each([
@@ -58,7 +62,8 @@ describe("tenbox proof", () => {
     const run = await proof(...fullFlags("t"));
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-proofs"]);
     expect(run.json.error).toContain("proofs.json");
-    expect(await files.read(proofsFile)).toBe(text);
+    const kept = await files.read(proofsFile);
+    expect(kept).toBe(text);
   });
 
   test("flags are stored trimmed, so padded and plain names are one test", async () => {
@@ -80,12 +85,14 @@ describe("tenbox proof", () => {
     const blank = await proof(...fullFlags("   "));
     expect([missing.code, missing.json.code]).toEqual([USAGE_EXIT, "usage"]);
     expect([blank.code, blank.json.code]).toEqual([USAGE_EXIT, "usage"]);
-    expect(await files.exists(proofsFile)).toBe(false);
+    const written = await files.exists(proofsFile);
+    expect(written).toBe(false);
   });
 
   test("a part without a part file is unknown-part and writes nothing", async () => {
     const run = await proof("--part", "09", "--file", "f", "--test", "t", "--failure", "x");
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "unknown-part"]);
-    expect(await files.exists(proofsFile)).toBe(false);
+    const written = await files.exists(proofsFile);
+    expect(written).toBe(false);
   });
 });

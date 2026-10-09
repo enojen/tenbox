@@ -10,7 +10,9 @@ export type SetupResult =
 /** The manifest command that prepares a new task worktree. */
 export const setups = { run };
 
-const SETUP_TIMEOUT_MS = 15 * 60_000;
+const MS_PER_MINUTE = 60_000;
+const SETUP_TIMEOUT_MINUTES = 15;
+const SETUP_TIMEOUT_MS = SETUP_TIMEOUT_MINUTES * MS_PER_MINUTE;
 const SETUP_OUTPUT_TAIL_LINES = 30;
 
 /** Runs the manifest's `setup:` in the task worktree; a failure stops `tenbox start`. */

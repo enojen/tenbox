@@ -3,8 +3,9 @@ setup: bun install
 
 checks:
   types: bunx tsc --noEmit
-  unit: bun test cli domain server
-  format: bunx biome format cli domain server
+  unit: bun test cli domain server rules
+  format: bunx biome format cli domain server rules
+  lint: bunx biome lint cli domain server rules
 
 tracker: { kind: linear }
 id: xathah

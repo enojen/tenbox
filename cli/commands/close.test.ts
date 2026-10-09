@@ -226,7 +226,7 @@ describe("tenbox close", () => {
     const run = await closeT1();
     const worktreeExists = await files.exists(taskWorktree);
     expect(run.json).toMatchObject({ ok: true });
-    expect(String((run.json.stats as { state: string }).state)).toStartWith("failed: ");
+    expect(run.json.stats).toMatchObject({ state: expect.stringMatching(/^failed: /) });
     expect(worktreeExists).toBe(false);
     const branches = await branchList();
     expect(branches).toBe("");
@@ -360,7 +360,10 @@ describe("tenbox close stats from Claude Code session files", () => {
 describe("tenbox close proofs and points", () => {
   const writePart = async (name: string, text: string) =>
     files.write(path.join(taskWorktree, ".tenbox", "parts", name), text);
-  const proofsOf = async () => JSON.parse(await readStatsText());
+  const proofsOf = async () => {
+    const text = await readStatsText();
+    return JSON.parse(text);
+  };
   const unprovenRun = (reason: string) => ({
     name: "wf_build",
     workflow: "tenbox-build",

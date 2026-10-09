@@ -1,0 +1,6 @@
+language js
+
+`$value as $type` where {
+  not $type <: "const",
+  register_diagnostic(span=$value, message="No inline cast: use a type guard or the branded type's constructor.")
+}

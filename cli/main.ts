@@ -36,9 +36,11 @@ const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
 /** 128 + the signal number, as shells report it. */
+const SIGINT_EXIT_CODE = 130;
+const SIGTERM_EXIT_CODE = 143;
 const STOP_SIGNALS = [
-  ["SIGINT", 130],
-  ["SIGTERM", 143],
+  ["SIGINT", SIGINT_EXIT_CODE],
+  ["SIGTERM", SIGTERM_EXIT_CODE],
 ] as const;
 
 const COMMANDS: Record<string, Command> = {

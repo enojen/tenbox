@@ -37,9 +37,7 @@ async function findNewest(key: BaselineKey): Promise<Baseline | null> {
   const dir = keyDir(key);
   const all = await files.list(dir);
   const names = all.filter((name) => name.endsWith(TEXT_EXT));
-  const saved: SavedFile[] = await Promise.all(
-    names.map(async (name) => ({ name, mtime: await files.mtime(path.join(dir, name)) })),
-  );
+  const saved: SavedFile[] = await Promise.all(names.map((name) => savedFile(dir, name)));
   const latest = saved.sort((a, b) => b.mtime - a.mtime)[0];
   return latest ? find(key, path.basename(latest.name, TEXT_EXT)) : null;
 }
@@ -48,6 +46,11 @@ async function findNewest(key: BaselineKey): Promise<Baseline | null> {
 async function save(key: BaselineKey, baseline: Baseline, meta: BaselineMeta): Promise<void> {
   await files.write(baselineFile(key, baseline.sha, TEXT_EXT), renderLines(baseline.lines));
   await files.write(baselineFile(key, baseline.sha, META_EXT), renderMeta(baseline.sha, meta));
+}
+
+async function savedFile(dir: string, name: string): Promise<SavedFile> {
+  const mtime = await files.mtime(path.join(dir, name));
+  return { name, mtime };
 }
 
 function keyDir(key: BaselineKey): string {

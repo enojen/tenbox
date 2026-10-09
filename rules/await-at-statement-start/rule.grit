@@ -1,0 +1,11 @@
+language js
+
+`await $value` as $await where {
+  not $await <: within or {
+    JsExpressionStatement(expression=$await),
+    JsInitializerClause(expression=$await),
+    JsAssignmentExpression(right=$await),
+    JsReturnStatement(argument=$await)
+  },
+  register_diagnostic(span=$await, message="await only at the start of a statement or an assignment.")
+}

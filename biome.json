@@ -1,6 +1,24 @@
 {
   "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
-  "linter": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "style": { "noMagicNumbers": "error" },
+      "correctness": { "noUnusedImports": "error", "noUnusedVariables": "error" }
+    }
+  },
+  "plugins": ["./rules/await-at-statement-start/rule.grit"],
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts"],
+      "linter": { "rules": { "style": { "noMagicNumbers": "off" } } }
+    },
+    {
+      "includes": ["**", "!**/domain/ids.ts", "!**/domain/failures.ts"],
+      "plugins": ["./rules/no-inline-cast/rule.grit"]
+    }
+  ],
   "assist": { "enabled": false },
-  "files": { "includes": ["cli/**", "domain/**", "server/**"] }
+  "files": { "includes": ["cli/**", "domain/**", "server/**", "rules/**", "!rules/*/bad.ts"] }
 }

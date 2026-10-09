@@ -26,7 +26,8 @@ interface ReviewerSchema {
 
 /** Runs the workflow script with a scripted agent; parallel jobs run at once. */
 async function runWorkflow(args: unknown, agent: ScriptedAgent) {
-  const source = (await Bun.file(WORKFLOW).text()).replace(EXPORT_PREFIX, "");
+  const script = await Bun.file(WORKFLOW).text();
+  const source = script.replace(EXPORT_PREFIX, "");
   const run = new AsyncFunction("args", "agent", "parallel", "phase", source);
   const parallel = (jobs: (() => Promise<unknown>)[]) => Promise.all(jobs.map((job) => job()));
   return run(args, agent, parallel, () => {});
@@ -155,7 +156,8 @@ test("the reviewer prompt lists the proofs collected so far", async () => {
 });
 
 test("the worker schema requires proofs of non-blank strings", async () => {
-  const source = (await Bun.file(WORKFLOW).text()).replace(EXPORT_PREFIX, "");
+  const script = await Bun.file(WORKFLOW).text();
+  const source = script.replace(EXPORT_PREFIX, "");
   const run = new AsyncFunction("args", "agent", "parallel", "phase", source);
   const schemas: Record<
     string,
