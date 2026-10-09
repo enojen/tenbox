@@ -247,6 +247,134 @@ describe("tenbox close", () => {
       expect([run.code, run.json.ok]).toEqual([0, true]);
       expect(calls).toBe(false);
     });
+
+    /** A `gh` that says MERGED at `head`; `parents` is what the commit lookup prints. */
+    const mergedGh = (head: string, parents: number) =>
+      `case "$1" in\n  pr) echo '{"state":"MERGED","headRefOid":"${head}","mergeCommit":{"oid":"m1"}}';;\n  api) echo ${parents};;\nesac`;
+
+    /** A bare `origin` with `main` and the task branch pushed. */
+    async function addOrigin(): Promise<string> {
+      const origin = path.join(project.root, "origin.git");
+      await git.run(["init", "-q", "--bare", origin], project.root);
+      await git.run(["remote", "add", "origin", origin], project.mainDir);
+      await git.run(["push", "-q", "origin", "main"], project.mainDir);
+      await git.run(["push", "-q", "origin", "feat/T-1"], project.mainDir);
+      return origin;
+    }
+
+    /** Pushes a new commit to `origin/main` from a second clone. */
+    async function advanceOrigin(origin: string): Promise<void> {
+      const other = path.join(project.root, "other");
+      await git.run(["clone", "-q", origin, other], project.root);
+      await git.run(["config", "user.name", "t"], other);
+      await git.run(["config", "user.email", "t@example.com"], other);
+      await commitOn(other, "upstream.txt");
+      await git.run(["push", "-q", "origin", "main"], other);
+    }
+
+    /** The task branch has one commit; returns its sha and a PATH whose gh says MERGED there. */
+    async function mergedOnGithub(parents = 1): Promise<{ origin: string; bin: string }> {
+      await commitOn(taskWorktree, "b.txt");
+      const head = await git.run(["rev-parse", "HEAD"], taskWorktree);
+      const origin = await addOrigin();
+      const bin = await ghPath(mergedGh(head.trim(), parents));
+      return { origin, bin };
+    }
+
+    const remoteHeads = (origin: string) => git.run(["branch", "--list"], origin);
+
+    test("a merge commit is refused and nothing changes", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub(2);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      const heads = await remoteHeads(origin);
+      expect(run.json).toMatchObject({ code: "merge-commit" });
+      expect(heads).toContain("feat/T-1");
+    });
+
+    test("a parent count that is not a number is the error gh and nothing changes", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const head = await git.run(["rev-parse", "HEAD"], taskWorktree);
+      const bin = await ghPath(mergedGh(head.trim(), 1).replace("echo 1", "echo nope"));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      expect(run.json).toMatchObject({ code: "gh" });
+    });
+
+    test("a close from inside the task worktree is refused, also with --force", async () => {
+      await setup();
+      for (const flags of [[], ["--force"]]) {
+        const run = await tenbox(["close", "T-1", ...flags], taskWorktree);
+        await expectUntouched(run);
+        expect(run.json).toMatchObject({ code: "in-task-worktree" });
+      }
+    });
+
+    test("a MERGED PR pulls the base and deletes the remote branch", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub();
+      await advanceOrigin(origin);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const mainHead = await git.run(["rev-parse", "HEAD"], project.mainDir);
+      const originMain = await git.run(["rev-parse", "main"], origin);
+      const heads = await remoteHeads(origin);
+      expect(run.json).toMatchObject({
+        ok: true,
+        pull: { base: "main", state: "pulled" },
+        remote_branch: { name: "feat/T-1", state: "deleted" },
+      });
+      expect(mainHead).toBe(originMain);
+      expect(heads).not.toContain("feat/T-1");
+    });
+
+    test("a remote branch that is already gone is skipped", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub();
+      await git.run(["branch", "-D", "feat/T-1"], origin);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(run.json).toMatchObject({ remote_branch: { state: "skipped" } });
+    });
+
+    test("a main checkout on another branch is not pulled", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub();
+      await advanceOrigin(origin);
+      await git.run(["checkout", "-q", "-b", "other"], project.mainDir);
+      const before = await git.run(["rev-parse", "HEAD"], project.mainDir);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const after = await git.run(["rev-parse", "HEAD"], project.mainDir);
+      expect(run.json).toMatchObject({ pull: { state: "skipped" } });
+      expect(after).toBe(before);
+    });
+
+    test("a pull that cannot fast-forward fails but the close goes on", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub();
+      await advanceOrigin(origin);
+      await commitOn(project.mainDir, "local.txt");
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const worktreeExists = await files.exists(taskWorktree);
+      const branches = await branchList();
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(run.json).toMatchObject({ pull: { state: expect.stringMatching(/^failed: /) } });
+      expect(worktreeExists).toBe(false);
+      expect(branches).toBe("");
+    });
+
+    test("--force neither pulls nor deletes the remote branch", async () => {
+      await setup();
+      const { origin } = await mergedOnGithub();
+      const forced = await closeT1("--force");
+      const heads = await remoteHeads(origin);
+      expect(forced.json).toMatchObject({
+        pull: { state: "skipped" },
+        remote_branch: { state: "skipped" },
+      });
+      expect(heads).toContain("feat/T-1");
+    });
   });
 
   test("--force closes a dirty and an unmerged task", async () => {
@@ -307,18 +435,6 @@ describe("tenbox close", () => {
     await setup();
     const run = await closeT1();
     expect(run.json).toMatchObject({ tracker: { kind: "none", status: "skipped" } });
-  });
-
-  test("works when run from inside the task worktree", async () => {
-    await setup();
-    const run = await tenbox(["close", "T-1"], taskWorktree);
-    const taskFileExists = await files.exists(path.join(kept, "task.md"));
-    const worktreeExists = await files.exists(taskWorktree);
-    const branches = await branchList();
-    expect([run.code, run.json.ok]).toEqual([0, true]);
-    expect(taskFileExists).toBe(true);
-    expect(worktreeExists).toBe(false);
-    expect(branches).toBe("");
   });
 
   test("writes stats.json with git and task file numbers", async () => {

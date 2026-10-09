@@ -9,7 +9,7 @@ This README describes what is built and how it runs today. Every statement here 
 true of the code. The target design (sandbox, QA, parallel workers, the panel) is in
 [`docs/design.md`](docs/design.md); it describes later phases, not today's behaviour.
 
-**Status**: phase 1 is done; phase 2 has `tenbox close`, `tenbox pr` and
+**Status**: phase 1 is done; phase 2 has `tenbox close`, `tenbox pr`, `/tenbox-close` and
 `tenbox merge-check`. See [Roadmap](#roadmap).
 
 ## How a task runs today
@@ -24,8 +24,9 @@ tenbox build TEN-301              types /tenbox-build TEN-301 into the task's cl
   review the diff by hand
 tenbox pr TEN-301 [--ready]       push the branch, create or update the PR
   merge on GitHub (squash)        👤 you merge
-git pull                          in the main checkout
-tenbox close TEN-301              write stats.json in the task dir, kill the task's tmux server, remove worktree and branch
+/tenbox-close TEN-301             in a claude session in the main checkout: one runner step, tenbox close TEN-301
+  tenbox close TEN-301            pull the base in the main checkout, write stats.json in the task dir, kill the task's tmux server,
+                                  remove worktree and local branch, delete the remote branch, set the tracker to done
 ```
 
 Run `/tenbox-plan` and `/tenbox-build` in an interactive `claude` session in the task
@@ -52,7 +53,7 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox wait <id> --for plan\|build [--timeout 600]` | Checks once a second for `.tenbox/plan.json` or `.tenbox/build.json` and prints `{ ok, task, file }` as soon as it exists. Fails with `wait-timeout` (exit 1) after `--timeout` seconds; a missing or other `--for` gives `usage` (exit 2). An earlier `build.json` makes it return at once |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox merge-check [--base <branch>]` | Run in the project. Runs `git fetch origin`, lists the open PRs into the base whose head branch fits `names.branch` (others are left out), and merges `origin/<branch>` of each onto `origin/<base>` in a temporary detached worktree, lowest PR number first. Then it runs `setup` and every check there and judges them as `tenbox check` does: only new failures against the baseline fail a check (it writes no log files). The worktree is removed on every way out. With no open task PR it prints `ok: true` with empty lists. A failed `setup` gives `setup` (exit 1). A conflict gives `merge-conflict` (exit 1) with `{ base, prs, order, conflict: { branch, files } }` in `details`; a new failure gives `new-failures` (exit 1) with the whole result in `details`. Prints `{ ok, base: { ref, sha }, prs: [{ number, branch }], order, checks, summary }`. It never pushes and never moves a local branch |
-| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the task's tmux server (a project with no `id` has none: `skipped`), removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
+| `tenbox close <id> [--force]` | Refuses, before it changes anything: a run from inside the task worktree (`in-task-worktree`, also with `--force`, because the close removes that directory), a dirty worktree (`dirty`), a branch not merged into the base (`unmerged`) and a PR merged as a merge commit (`merge-commit`: the merge commit has two parents; a squash or rebase merge has one). `--force` skips the last three. "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. When GitHub says `MERGED` (not with `--force`, not after the test merge), the close also runs `git pull --ff-only origin <base>` in the main checkout before the stats, only when that checkout has the base checked out (`pull: { base, state }`: `pulled`, `skipped` or `failed: <reason>`; a failed pull does not stop the close), and after the tracker step deletes `origin/<branch>` (`remote_branch: { name, state }`: `deleted`, `skipped` when it is already gone or not asked, or `failed: <reason>`). Writes `stats.json` in the task dir (it stays, with the other task files), kills the task's tmux server (a project with no `id` has none: `skipped`), removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
 
@@ -123,6 +124,12 @@ rounds, `needs-you`, or `failed` with the last feedback after the last round. Ev
 `needs-you` too, also has `unproven`: the reviewers' items from all rounds, one per part
 per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all
 rounds; `tenbox close` counts them (see `stats.json`).
+
+**`/tenbox-close <id>`**. Run it in a `claude` session in the main checkout, after you squash
+merged the PR on GitHub. One runner runs `tenbox close <id>` and the workflow adds its JSON as
+`closed`. It returns `{ status: "closed", closed }` when the close worked, `{ status: "refused",
+closed }` when `tenbox close` refused before it changed anything (`unmerged`, `merge-commit`,
+`in-task-worktree`, `dirty`), and `{ status: "failed", closed }` for any other error.
 
 ## Roles: `agents/`
 
@@ -222,7 +229,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`
 agents/       planner.md, worker.md, reviewer.md, runner.md
-workflows/    tenbox-plan.js, tenbox-build.js
+workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
 docs/         design.md (the target design), flow page and mockups
 ```
 
@@ -232,8 +239,7 @@ CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on Ubuntu
 
 1. **Done**: roles, `/tenbox-plan`, `/tenbox-build` with Build, Checks and Review,
    `tenbox start`, `check`, `install`.
-2. **Now**: `tenbox close`, `tenbox pr` and `tenbox merge-check` are built. Next:
-   `/tenbox-close` (after you merge: pull, close, delete the remote branch), the ClickUp
-   adapter.
+2. **Now**: `tenbox close`, `tenbox pr`, `tenbox merge-check` and `/tenbox-close` are built.
+   Next: the ClickUp adapter.
 3. Later, see [`docs/design.md`](docs/design.md): the full manifest and the sandbox, the
    Try phase with QA, fakes from API docs, the live pane, the panel.

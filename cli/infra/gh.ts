@@ -22,7 +22,7 @@ export interface OpenPr {
 }
 
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
-export const gh = { findPr, isMergedAt, findOpen, listOpen, create, edit, markReady };
+export const gh = { findPr, isMergedAt, countParents, findOpen, listOpen, create, edit, markReady };
 
 /** The output of `gh pr list --json number,url,isDraft`. */
 const PrListSchema = z.array(
@@ -40,10 +40,11 @@ export interface PrBranch {
 /** `gh pr list` shows 30 by default. */
 const LIST_LIMIT = "100";
 
-/** The output of `gh pr view --json state,headRefOid`. */
+/** The output of `gh pr view --json state,headRefOid,mergeCommit`. */
 const PrViewSchema = z.object({
   state: z.enum(["OPEN", "CLOSED", "MERGED"]),
   headRefOid: z.string(),
+  mergeCommit: z.object({ oid: z.string() }).nullish(),
 });
 type PrState = z.infer<typeof PrViewSchema>;
 const MERGED = "MERGED";
@@ -65,7 +66,7 @@ async function run(args: string[], cwd: string): Promise<string> {
 
 /** The PR of the branch, or null when there is none or `gh` cannot answer (missing, no login). */
 async function findPr(dir: string, branch: string): Promise<PrState | null> {
-  const args = ["pr", "view", branch, "--json", "state,headRefOid"];
+  const args = ["pr", "view", branch, "--json", "state,headRefOid,mergeCommit"];
   try {
     const result = await processes.run(["gh", ...args], { cwd: dir });
     if (result.code !== 0) return null;
@@ -74,6 +75,15 @@ async function findPr(dir: string, branch: string): Promise<PrState | null> {
     if (e instanceof TenboxError && e.code === "no-command") return null;
     throw e;
   }
+}
+
+/** How many parents the commit has: one for a squash or rebase merge, two for a merge commit. */
+async function countParents(dir: string, sha: string): Promise<number> {
+  const endpoint = `repos/{owner}/{repo}/commits/${sha}`;
+  const out = await run(["api", endpoint, "--jq", ".parents | length"], dir);
+  const parents = Number(out);
+  if (!Number.isInteger(parents)) throw ghError("api", `not a parent count: ${out}`);
+  return parents;
 }
 
 /** The open PR of the branch, or null. */

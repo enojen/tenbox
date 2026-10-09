@@ -1,4 +1,10 @@
-import { dirtyBeforeCloseError, unmergedError } from "../../domain/errors/tasks.ts";
+import path from "node:path";
+import {
+  dirtyBeforeCloseError,
+  inTaskWorktreeError,
+  mergeCommitError,
+  unmergedError,
+} from "../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
@@ -15,7 +21,7 @@ import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import type { TmuxTarget } from "../infra/tmux.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
-import type { CloseResult, StatsInfo } from "./results.ts";
+import type { CloseResult, PullState, RemoteBranchState, StatsInfo } from "./results.ts";
 
 export interface CloseInput {
   id: TaskId;
@@ -51,7 +57,9 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const target =
     projectId === undefined ? null : sessions.tmuxTarget(manifest.names, projectId, id);
   const { base } = manifest;
-  await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base }, force);
+  const closeTarget = { mainDir: project.mainDir, taskWorktree, branch, base };
+  const mergedOnGithub = await assertSafe(closeTarget, force);
+  const pull = await pullBase(closeTarget, mergedOnGithub);
   const recordedProofs = await proofs.read(taskWorktree);
   let statsInfo = SKIPPED_STATS;
   if (dir !== null) {
@@ -71,24 +79,42 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const tmuxState = await removeSession(target);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id, title: undefined }, tracker, "done");
+  const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
   return {
     ok: true,
     task: id,
     project: project.name,
     forced: force,
+    pull: { base, state: pull },
     stats: statsInfo,
     tmux: { session: tmuxSessionName(manifest.names, id), state: tmuxState },
     worktree: { path: taskWorktree, state: removed.worktree },
     branch: { name: branch, state: removed.branch },
+    remote_branch: { name: branch, state: remote },
     tracker: { kind: tracker.kind, status },
   };
 }
 
-/** Throws before anything changes. `force` skips the dirty and unmerged checks only. */
-async function assertSafe(target: CloseTarget, force: boolean): Promise<void> {
-  if (force) return;
+/**
+ * Throws before anything changes. `force` skips the dirty, unmerged and merge-commit checks, not
+ * the one for the task worktree. Returns true when GitHub said the PR is merged.
+ */
+async function assertSafe(target: CloseTarget, force: boolean): Promise<boolean> {
+  await assertOutsideWorktree(target.taskWorktree);
+  if (force) return false;
   await assertClean(target);
-  await assertMerged(target);
+  return assertMerged(target);
+}
+
+/** The close removes the task worktree; a run inside it would end in a directory that is gone. */
+async function assertOutsideWorktree(taskWorktree: string): Promise<void> {
+  const exists = await files.isDir(taskWorktree);
+  if (!exists) return;
+  const real = await files.realPath(taskWorktree);
+  const cwd = await files.realPath(env().cwd);
+  const relative = path.relative(real, cwd);
+  const outside = relative.startsWith("..") || path.isAbsolute(relative);
+  if (!outside) throw inTaskWorktreeError(taskWorktree);
 }
 
 async function assertClean(target: CloseTarget): Promise<void> {
@@ -99,25 +125,78 @@ async function assertClean(target: CloseTarget): Promise<void> {
   throw dirtyBeforeCloseError(target.taskWorktree);
 }
 
-async function assertMerged(target: CloseTarget): Promise<void> {
-  const { branch, base } = target;
-  const merged = await isBranchMerged(target);
-  if (merged) return;
-  throw unmergedError(branch, base);
+/** True when GitHub said the PR is merged; throws when the branch is not merged. */
+async function assertMerged(target: CloseTarget): Promise<boolean> {
+  const merge = await findMerge(target);
+  if (merge.source === "unmerged") throw unmergedError(target.branch, target.base);
+  if (merge.source === "git") return false;
+  await assertNotMergeCommit(target, merge.commit);
+  return true;
 }
+
+/** A squash or rebase merge has one parent. */
+async function assertNotMergeCommit({ mainDir, branch }: CloseTarget, sha: string | null) {
+  if (sha === null) return;
+  const parents = await gh.countParents(mainDir, sha);
+  if (parents > 1) throw mergeCommitError(branch);
+}
+
+interface Merge {
+  source: "github" | "git" | "unmerged";
+  /** The merge commit GitHub reports; null when there is none. */
+  commit: string | null;
+}
+
+const UNMERGED: Merge = { source: "unmerged", commit: null };
+const MERGED_IN_GIT: Merge = { source: "git", commit: null };
 
 /** A found PR decides alone; without one, a test merge into the base decides. */
-async function isBranchMerged(target: CloseTarget): Promise<boolean> {
+async function findMerge(target: CloseTarget): Promise<Merge> {
   const { mainDir, branch } = target;
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
-  if (head === null) return true; // no local branch: nothing left to merge
+  if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
-  return pr === null ? isMergedByTestMerge(target) : gh.isMergedAt(pr, head);
+  if (pr === null) return findTestMerge(target);
+  if (!gh.isMergedAt(pr, head)) return UNMERGED;
+  return { source: "github", commit: pr.mergeCommit?.oid ?? null };
 }
 
-function isMergedByTestMerge({ mainDir, base, branch }: CloseTarget): Promise<boolean> {
+async function findTestMerge({ mainDir, base, branch }: CloseTarget): Promise<Merge> {
   log("tenbox close: gh pr view failed, using the test merge");
-  return git.isMerged(mainDir, base, branch);
+  const merged = await git.isMerged(mainDir, base, branch);
+  return merged ? MERGED_IN_GIT : UNMERGED;
+}
+
+/** Moves the base of the main checkout to `origin`; a failure never stops the close. */
+async function pullBase(
+  { mainDir, base }: CloseTarget,
+  mergedOnGithub: boolean,
+): Promise<PullState> {
+  if (!mergedOnGithub) return "skipped";
+  try {
+    const current = await git.findBranch(mainDir);
+    if (current !== base) return "skipped";
+    await git.pull(mainDir, base);
+    return "pulled";
+  } catch (e) {
+    return `failed: ${errorMessage(e)}`;
+  }
+}
+
+/** Runs after the tracker step; a failure never undoes the close. */
+async function removeRemoteBranch(
+  { mainDir, branch }: CloseTarget,
+  mergedOnGithub: boolean,
+): Promise<RemoteBranchState> {
+  if (!mergedOnGithub) return "skipped";
+  try {
+    const exists = await git.remoteBranchExists(mainDir, branch);
+    if (!exists) return "skipped";
+    await git.deleteRemoteBranch(mainDir, branch);
+    return "deleted";
+  } catch (e) {
+    return `failed: ${errorMessage(e)}`;
+  }
 }
 
 /** Runs before the worktree and branch are gone; a failure never stops the close. */

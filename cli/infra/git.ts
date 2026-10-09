@@ -37,6 +37,9 @@ export const git = {
   hasChanges,
   isMerged,
   push,
+  pull,
+  remoteBranchExists,
+  deleteRemoteBranch,
   fetch,
   addDetachedWorktree,
   merge,
@@ -209,6 +212,20 @@ async function isMerged(dir: string, base: string, branch: string): Promise<bool
 /** Pushes the branch to `origin` and sets it as the upstream. A rejected push throws. */
 async function push(dir: string, branch: string): Promise<void> {
   await run(["push", "-u", "origin", branch], dir);
+}
+
+/** Moves the checked-out `base` of `dir` to `origin/<base>`; throws unless it is a fast-forward. */
+async function pull(dir: string, base: string): Promise<void> {
+  await run(["pull", "--quiet", "--ff-only", "origin", base], dir);
+}
+
+async function remoteBranchExists(dir: string, branch: string): Promise<boolean> {
+  const out = await run(["ls-remote", "--heads", "origin", `refs/heads/${branch}`], dir);
+  return out !== "";
+}
+
+async function deleteRemoteBranch(dir: string, branch: string): Promise<void> {
+  await run(["push", "origin", "--delete", branch], dir);
 }
 
 /** Updates the remote-tracking branches of `origin`; nothing local moves. */

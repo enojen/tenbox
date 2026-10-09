@@ -72,3 +72,17 @@ export function badBuildError(issues: string[]): TenboxError {
 export function waitTimeoutError(file: string, seconds: number): TenboxError {
   return new TenboxError(`${file} did not appear within ${seconds} seconds`, "wait-timeout");
 }
+
+export function mergeCommitError(branch: string): TenboxError {
+  return new TenboxError(
+    `${branch} was merged as a merge commit; squash merge it, or close it with --force`,
+    "merge-commit",
+  );
+}
+
+export function inTaskWorktreeError(taskWorktree: string): TenboxError {
+  return new TenboxError(
+    `run tenbox close outside ${taskWorktree}; it removes that directory`,
+    "in-task-worktree",
+  );
+}

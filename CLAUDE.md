@@ -15,7 +15,9 @@ Phase 1 is done: roles, `/tenbox-plan`, `/tenbox-build` without the Try phase,
 cleanup only, no sandbox and no merge), `tenbox pr` (push, then create or update the PR
 with `gh`), `tenbox build` (types `/tenbox-build` into the task's `claude` session on the
 task's own tmux server) and `tenbox merge-check` (merge the open task PRs in a temporary
-worktree and run the checks); next is `/tenbox-close`. No sandbox yet.
+worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`, which also
+pulls the base and deletes the remote branch after a MERGED PR); next is the ClickUp
+adapter. No sandbox yet.
 
 ## Rules
 
@@ -134,7 +136,7 @@ server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: ro
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)
 agents/     planner.md, worker.md, reviewer.md, runner.md
-workflows/  tenbox-plan.js, tenbox-build.js
+workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
 docs/       design.md (the target design), flow page and mockups

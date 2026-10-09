@@ -52,15 +52,31 @@ export interface StatsInfo {
   state: StatsState;
 }
 
+export type PullState = "pulled" | "skipped" | `failed: ${string}`;
+
+interface PullInfo {
+  base: string;
+  state: PullState;
+}
+
+export type RemoteBranchState = "deleted" | "skipped" | `failed: ${string}`;
+
+interface RemoteBranchInfo {
+  name: string;
+  state: RemoteBranchState;
+}
+
 export interface CloseResult {
   ok: true;
   task: string;
   project: string;
   forced: boolean;
+  pull: PullInfo;
   stats: StatsInfo;
   tmux: SessionRemoveInfo;
   worktree: WorktreeRemoveInfo;
   branch: BranchRemoveInfo;
+  remote_branch: RemoteBranchInfo;
   tracker: TrackerInfo;
 }
 
