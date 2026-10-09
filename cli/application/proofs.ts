@@ -3,7 +3,7 @@ import { proofsFile, tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 
 /** Proofs: the worker proofs `tenbox proof` records in `.tenbox/proofs.json`, a JSON array. */
-export const proofs = { read, append };
+export const proofs = { read, append, appendAll };
 
 /** None when the file is missing; `bad-proofs` unless it is an array of valid proofs. */
 async function read(taskWorktree: string): Promise<StatsProof[]> {
@@ -13,9 +13,14 @@ async function read(taskWorktree: string): Promise<StatsProof[]> {
 }
 
 /** Returns the path of `proofs.json`. */
-async function append(taskWorktree: string, proof: StatsProof): Promise<string> {
+function append(taskWorktree: string, proof: StatsProof): Promise<string> {
+  return appendAll(taskWorktree, [proof]);
+}
+
+/** Returns the path of `proofs.json`. */
+async function appendAll(taskWorktree: string, added: StatsProof[]): Promise<string> {
   const recorded = await read(taskWorktree);
   const file = proofsFile(tenboxDir(taskWorktree));
-  await files.writeJson(file, [...recorded, proof]);
+  await files.writeJson(file, [...recorded, ...added]);
   return file;
 }

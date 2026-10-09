@@ -55,8 +55,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions (`PlanResult`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
-| proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It comes from a worker's build run result, or recorded by hand in `.tenbox/proofs.json` (`tenbox proof`) (`StatsProof`). |
-| unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`RunUnproven`). |
+| build result | What `/tenbox-build` returns and `tenbox build done` saves as `build.json`: status, round, proofs, attention, nice-to-have, unproven (`BuildResult`). |
+| proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It is recorded in `.tenbox/proofs.json` by `tenbox build done` or by hand (`tenbox proof`) (`StatsProof`). |
+| unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`Unproven`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
 | organization | A group of users on the server; found by name (`organizations`). |
 | user | A person on the server, with a GitHub name and one token (`users`). |
@@ -117,7 +118,7 @@ domain/     pure code: ids, failure lines, manifest schema, events, the Tracker 
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
-    manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs
+    manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
     approvals  plans
   infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
                 claudeSettings, claudeSessions, http, graphql

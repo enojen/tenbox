@@ -5,6 +5,7 @@ import {
   checksPassed,
   countPlan,
   countPoints,
+  countReview,
   distinctProofs,
   STATS_SCHEMA,
   type StatsCode,
@@ -19,6 +20,7 @@ import { claudeSessions } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { builds } from "./builds.ts";
 import { parts } from "./parts.ts";
 import { plans } from "./plans.ts";
 import { tasks } from "./tasks.ts";
@@ -52,11 +54,12 @@ async function compute(input: StatsInput): Promise<TaskStats> {
   const partIds = await parts.read(taskDir);
   const planResult = await plans.find(taskDir);
   const plan = countPlan(planResult);
+  const build = await builds.find(taskDir);
   const rounds = await readRounds(taskDir);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
   const summary = summarizeRuns(runs, opened, closed);
-  const taskProofs = distinctProofs([...summary.proofs, ...recordedProofs].map(trimProof));
+  const taskProofs = distinctProofs(recordedProofs.map(trimProof));
   return {
     schema: STATS_SCHEMA,
     project,
@@ -69,12 +72,12 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     minutes: { ...summary.minutes, total: minutesBetween(opened, closed) },
     plan,
     rounds,
-    review: summary.review,
+    review: countReview(build),
     proofs: taskProofs,
     points: countPoints({
       partIds,
       proofs: taskProofs,
-      unproven: summary.unproven,
+      unproven: build?.unproven ?? [],
     }),
     code,
     agents: summary.agents,

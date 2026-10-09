@@ -62,7 +62,6 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
     started: isoTime(startTime),
     ended: isoTime(startTime + durationMs),
     durationMs,
-    result: json.result,
     agents,
   };
 }

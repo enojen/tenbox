@@ -87,11 +87,26 @@ const APPROVED = {
   properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
   required: ['ok'],
 }
+// Every end status goes through `tenbox build done`; `recorded` is its JSON.
+const RECORDED = {
+  type: 'object',
+  properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
+  required: ['ok'],
+}
+const finish = async (result) => {
+  const full = { round: 0, proofs: [], attention: [], nice_to_have: [], unproven: [], ...result }
+  // A quoted heredoc: a quote in the text cannot break the shell.
+  const recorded = await agent(
+    `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(full)}\nEOF\n)"`,
+    { agentType: 'runner', schema: RECORDED, phase: 'Build', label: 'record build' })
+  return { ...full, recorded }
+}
+
 phase('Build')
 const approved = await agent(`Run \`tenbox approved ${task}\` and return its JSON.`,
   { agentType: 'runner', schema: APPROVED, phase: 'Build', label: 'approval' })
 if (!approved?.ok || !approved.file) {
-  return { status: 'not-approved', error: approved?.error ?? 'tenbox approved did not run' }
+  return finish({ status: 'not-approved', error: approved?.error ?? 'tenbox approved did not run' })
 }
 
 let feedback = input.feedback ?? 'none'
@@ -117,7 +132,7 @@ for (let round = 1; round <= maxRounds; round++) {
     const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}`,
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
     proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (!built || built.status === 'blocked') return { status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], unproven, proofs }
+    if (!built || built.status === 'blocked') return finish({ status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], attention, nice_to_have: niceToHave, unproven, proofs })
   }
 
   phase('Checks')
@@ -147,13 +162,13 @@ for (let round = 1; round <= maxRounds; round++) {
     feedback = mustFix.join('\n')
     continue
   }
-  return {
+  return finish({
     status: 'ready-for-you',
     round,
     attention,
     nice_to_have: niceToHave,
     unproven,
     proofs,
-  }
+  })
 }
-return { status: 'failed', rounds: maxRounds, feedback, unproven, proofs }
+return finish({ status: 'failed', round: maxRounds, feedback, attention, nice_to_have: niceToHave, unproven, proofs })

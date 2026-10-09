@@ -253,11 +253,12 @@ test("a failing approval check returns not-approved and starts no other agent", 
     };
   };
   const result = await runWorkflow("TB-1", agent);
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     status: "not-approved",
+    round: 0,
     error: "T has no approved plan; run: tenbox approve T",
   });
-  expect(started).toEqual(["runner"]);
+  expect(started).toEqual(["runner", "runner"]);
 });
 
 test("the approval check runs `tenbox approved <task>` before any other agent", async () => {

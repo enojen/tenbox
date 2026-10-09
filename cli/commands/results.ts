@@ -96,7 +96,7 @@ export interface ProofResult {
   file: string;
 }
 
-export interface PlanDoneResult {
+export interface TaskFileResult {
   ok: true;
   task: string;
   file: string;

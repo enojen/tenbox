@@ -1,11 +1,9 @@
-import { isProof, type StatsProof } from "./proof.ts";
-import { isPlainObject, minutesBetween, toMinutes } from "./utils.ts";
+import { minutesBetween, toMinutes } from "./utils.ts";
 
 /* The plan and build workflow runs of one task, read from Claude Code's session files. */
 
 const PLAN_WORKFLOW = "tenbox-plan";
 const BUILD_WORKFLOW = "tenbox-build";
-const READY_STATUS = "ready-for-you";
 
 /** One workflow agent; `tokens` is the count Claude Code shows for it. */
 export interface RunAgent {
@@ -20,13 +18,12 @@ export interface RunAgent {
   tool_calls: number | null;
 }
 
-/** One workflow run; `result` is read for counts only. */
+/** One workflow run. */
 export interface WorkflowRun {
   workflow: string;
   started: string;
   ended: string;
   durationMs: number;
-  result: unknown;
   agents: RunAgent[];
 }
 
@@ -45,28 +42,10 @@ export interface RunMinutes {
   human_review: number | null;
 }
 
-/** Counts from the last build run's result; must_fix is 0 for a ready run, null otherwise. */
-export interface RunReview {
-  must_fix: number | null;
-  nice_to_have: number | null;
-  attention: number | null;
-}
-
-/** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
-export interface RunUnproven {
-  part: string;
-  reason: string;
-}
-
 /** What the runs add to the stats; agents are null without session files. */
 export interface RunSummary {
   timeline: RunTimeline;
   minutes: RunMinutes;
-  review: RunReview | null;
-  /** Every build run's unproven items, oldest first. */
-  unproven: RunUnproven[];
-  /** Every build run's proofs, oldest first. */
-  proofs: StatsProof[];
   agents: RunAgent[] | null;
 }
 
@@ -93,9 +72,6 @@ export function summarizeRuns(
       build: sumMinutes(build),
       human_review: minutesBetween(timeline.build_end, closed),
     },
-    review: reviewCounts(build.at(-1)),
-    unproven: build.flatMap(unprovenItems),
-    proofs: build.flatMap(proofItems),
     agents: all === null ? null : runs.flatMap((run) => run.agents),
   };
 }
@@ -121,33 +97,4 @@ function sumMinutes(runs: WorkflowRun[]): number | null {
 function waitMinutes(timeline: RunTimeline): number | null {
   const minutes = minutesBetween(timeline.plan_end, timeline.build_start);
   return minutes !== null && minutes < 0 ? null : minutes;
-}
-
-const lengthOrNull = (value: unknown): number | null =>
-  Array.isArray(value) ? value.length : null;
-
-function reviewCounts(run: WorkflowRun | undefined): RunReview | null {
-  if (run === undefined) return null;
-  const result = isPlainObject(run.result) ? run.result : {};
-  return {
-    must_fix: result.status === READY_STATUS ? 0 : null,
-    nice_to_have: lengthOrNull(result.nice_to_have),
-    attention: lengthOrNull(result.attention),
-  };
-}
-
-function unprovenItems(run: WorkflowRun): RunUnproven[] {
-  const items = isPlainObject(run.result) ? run.result.unproven : null;
-  if (!Array.isArray(items)) return [];
-  return items.filter(isUnproven);
-}
-
-function isUnproven(item: unknown): item is RunUnproven {
-  return isPlainObject(item) && typeof item.part === "string" && typeof item.reason === "string";
-}
-
-function proofItems(run: WorkflowRun): StatsProof[] {
-  const items = isPlainObject(run.result) ? run.result.proofs : null;
-  if (!Array.isArray(items)) return [];
-  return items.filter(isProof);
 }

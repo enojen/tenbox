@@ -1,8 +1,9 @@
 import path from "node:path";
+import type { BuildResult, Unproven } from "./build.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
-import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
+import type { RunAgent, RunMinutes, RunTimeline } from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
@@ -51,6 +52,13 @@ export interface StatsCode {
   test_added: number;
 }
 
+/** Counts from the build result; must_fix is 0 for a ready result, null otherwise. */
+export interface StatsReview {
+  must_fix: number | null;
+  nice_to_have: number;
+  attention: number;
+}
+
 /** +1 per distinct proof, -1 per unproven item. */
 export interface StatsPoints {
   part: string;
@@ -60,7 +68,7 @@ export interface StatsPoints {
 export interface PointsInput {
   partIds: string[];
   proofs: StatsProof[];
-  unproven: RunUnproven[];
+  unproven: Unproven[];
 }
 
 export interface TaskStats {
@@ -75,7 +83,7 @@ export interface TaskStats {
   minutes: StatsMinutes;
   plan: StatsPlan | null;
   rounds: StatsRound[];
-  review: RunReview | null;
+  review: StatsReview | null;
   proofs: StatsProof[];
   points: StatsPoints[];
   code: StatsCode | null;
@@ -87,6 +95,16 @@ export function countPlan(plan: PlanResult | null): StatsPlan | null {
   if (plan === null) return null;
   const difficulty = plan.parts.map((part) => part.difficulty);
   return { parts: difficulty.length, difficulty, estimated_lines: plan.estimated_lines };
+}
+
+/** Null without a build result. */
+export function countReview(build: BuildResult | null): StatsReview | null {
+  if (build === null) return null;
+  return {
+    must_fix: build.status === "ready-for-you" ? 0 : null,
+    nice_to_have: build.nice_to_have.length,
+    attention: build.attention.length,
+  };
 }
 
 export function sumCode(changed: ChangedFile[]): StatsCode {

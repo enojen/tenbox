@@ -48,6 +48,8 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox approved <id>` | Checks the approval; `/tenbox-build` runs it first. Fails with `not-approved` (exit 1) when `.tenbox/approved.json` is missing, and with `plan-changed` (exit 1) when the SHA-256 of `plan.md` differs from `plan_sha`; both errors name `tenbox approve <id>`. Prints `{ ok, task, file, at, plan_sha }` |
 | `tenbox build <id>` | Checks the approval as `tenbox approved` does (`not-approved`, `plan-changed`, exit 1), then needs the task's tmux session (else `no-session`, exit 1, naming `tenbox start <id>`; it starts nothing). Clears the input line of `claude` with `C-e` `C-u`, types `/tenbox-build <id>` and presses Enter. Prints `{ ok, task, session, server, sent }` |
 | `tenbox plan done <id> --json '<result>'` | Run by `/tenbox-plan` through the runner; by hand only when the plan was made without the workflow. Validates the planner result with zod and writes it to `.tenbox/plan.json`. A result that is not JSON, or has a wrong `estimated_lines` (a whole number), a part without `id` or a `difficulty` other than `easy` or `hard`, gives `bad-plan` (exit 1) and writes nothing; a missing `--json` or another sub-command gives `usage` (exit 2). Prints `{ ok, task, file }` |
+| `tenbox build done <id> --json '<result>'` | Run by `/tenbox-build` through the runner at every end status. Validates the build result with zod and writes it to `.tenbox/build.json`; its `proofs` are appended to `.tenbox/proofs.json`. A second run keeps the earlier `unproven` items first; `status`, `round`, `attention` and `nice_to_have` are the new ones. A result that is not JSON, or has an unknown `status`, a `round` that is not a whole number or a proof with a blank field, gives `bad-build` (exit 1) and writes nothing; a missing `--json` gives `usage` (exit 2). Prints `{ ok, task, file }` |
+| `tenbox wait <id> --for plan\|build [--timeout 600]` | Checks once a second for `.tenbox/plan.json` or `.tenbox/build.json` and prints `{ ok, task, file }` as soon as it exists. Fails with `wait-timeout` (exit 1) after `--timeout` seconds; a missing or other `--for` gives `usage` (exit 2). An earlier `build.json` makes it return at once |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the task's tmux server (a project with no `id` has none: `skipped`), removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
@@ -66,12 +68,13 @@ line is new.
 **`stats.json`** (in the task dir): timeline, minutes per step (plan, wait for approval,
 build, human review), plan difficulty and estimated lines (from `plan.json`, null without it), the title (from `task.json`), rounds, review counts, code
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
-`proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from the
-`proofs` of every build run result, then from `proofs.json` (`tenbox proof`); a part file's
-Markdown text gives none. `proofs[].part` and `points[].part` hold the part number (`01`, not
+`proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from
+`proofs.json` (`tenbox proof` and `tenbox build done`); a part file's Markdown text gives none.
+The review counts (`must_fix` 0 only for `ready-for-you`, `nice_to_have`, `attention`) and the
+`unproven` items come from `build.json`; without it `review` is null. Claude Code session
+files give only times, agents and tokens. `proofs[].part` and `points[].part` hold the part number (`01`, not
 `01-users`). The same part number, test file and test name counts once, the first one.
-Points: +1 per distinct proof, -1 per `unproven` item a reviewer returned in any
-build run of the task, at most one per part per build round.
+Points: +1 per distinct proof, -1 per `unproven` item in `build.json`, at most one per part per build round.
 The reviewer's sentences are not kept. Schema 3.
 `code` leaves out generated files: those marked `linguist-generated` in `.gitattributes`. To
 mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds it in PR diffs too.
@@ -111,7 +114,10 @@ a runner runs `tenbox approved <id>`. If it fails, the workflow returns
    the reviewer reads only `git diff <commit>..HEAD`, where `<commit>` is the checks
    commit of the last reviewed round.
 
-It returns `not-approved`, `ready-for-you` with the attention and nice-to-have lists of all reviewed
+Every end status runs `tenbox build done` through a runner. The workflow returns the result
+below with the same keys for every status (`status`, `round`, `proofs`, `attention`,
+`nice_to_have`, `unproven`) and the command's JSON as `recorded`. `failed` gives `round`, the
+last round. It returns `not-approved` (round 0), `ready-for-you` with the attention and nice-to-have lists of all reviewed
 rounds, `needs-you`, or `failed` with the last feedback after the last round. Every result,
 `needs-you` too, also has `unproven`: the reviewers' items from all rounds, one per part
 per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all
@@ -137,6 +143,7 @@ symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a l
 ├ task.json        tenbox start: id, title, status, tracker, url (null without one)
 ├ plan.md          planner: summary, approach, parts, acceptance criteria, risks, size
 ├ plan.json        tenbox plan done: the validated planner result, read by close
+├ build.json       tenbox build done: the last build result, read by close
 ├ approved.json    tenbox approve: { at, plan_sha } of the approved plan
 ├ questions.md     planner: open questions by kind (product, technical, contract, risk)
 ├ decisions.md     you: answered questions; every agent reads it first

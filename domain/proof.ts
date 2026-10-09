@@ -1,20 +1,15 @@
+import { z } from "zod";
 import { badProofsError } from "./errors/tasks.ts";
-import { isFilled, isPlainObject, parseJson } from "./utils.ts";
+import { isFilled, parseJson } from "./utils.ts";
 
-/** One worker proof: the test that failed before the code, and how. */
-export interface StatsProof {
-  part: string;
-  file: string;
-  test: string;
-  failure: string;
-}
+const filled = z.string().refine(isFilled, "must not be blank");
 
-const PROOF_FIELDS = ["part", "file", "test", "failure"] as const;
+/** One worker proof: the test that failed before the code, and how. Four non-blank strings. */
+export const ProofSchema = z.object({ part: filled, file: filled, test: filled, failure: filled });
 
-/** Four non-blank strings: part, file, test and failure. */
-export function isProof(item: unknown): item is StatsProof {
-  return isPlainObject(item) && PROOF_FIELDS.every((field) => isFilled(item[field]));
-}
+export type StatsProof = z.infer<typeof ProofSchema>;
+
+export const isProof = (item: unknown): item is StatsProof => ProofSchema.safeParse(item).success;
 
 /** The proof with every field trimmed, so padded and plain names are one test. */
 export const trimProof = (proof: StatsProof): StatsProof => ({

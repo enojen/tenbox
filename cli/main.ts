@@ -13,7 +13,7 @@ import {
 } from "./args.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
-import { sendBuild } from "./commands/build.ts";
+import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { install } from "./commands/install.ts";
@@ -22,6 +22,7 @@ import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
+import { isWaitKind, waitForFile } from "./commands/wait.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 
@@ -35,6 +36,8 @@ const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
+const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
+const WAIT_USAGE = "tenbox wait <id> --for plan|build [--timeout 600]";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const BUILD_USAGE = "tenbox build <id>";
@@ -121,6 +124,33 @@ const COMMANDS: Record<string, Command> = {
       return planDone({ id: idArg(rest, PLAN_USAGE), json });
     },
   },
+  build: {
+    usage: `${BUILD_USAGE} | ${BUILD_DONE_USAGE}`,
+    options: { json: { type: "string" } },
+    run: (positionals, values) => {
+      const [first, ...rest] = positionals;
+      if (first !== "done") return sendBuild(idArg(positionals, BUILD_USAGE));
+      const json = stringValue(values, "json");
+      if (!json) throw usageError(`usage: ${BUILD_DONE_USAGE}`);
+      return buildDone({ id: idArg(rest, BUILD_DONE_USAGE), json });
+    },
+  },
+  wait: {
+    usage: WAIT_USAGE,
+    options: {
+      for: { type: "string" },
+      timeout: { type: "string", default: String(DEFAULT_TIMEOUT_SECONDS) },
+    },
+    run: (positionals, values) => {
+      const kind = stringValue(values, "for");
+      if (!isWaitKind(kind)) throw usageError(`usage: ${WAIT_USAGE}`);
+      return waitForFile({
+        id: idArg(positionals, WAIT_USAGE),
+        kind,
+        timeoutSeconds: intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS,
+      });
+    },
+  },
   approve: {
     usage: APPROVE_USAGE,
     options: {},
@@ -130,11 +160,6 @@ const COMMANDS: Record<string, Command> = {
     usage: APPROVED_USAGE,
     options: {},
     run: (positionals) => checkApproved(idArg(positionals, APPROVED_USAGE)),
-  },
-  build: {
-    usage: BUILD_USAGE,
-    options: {},
-    run: (positionals) => sendBuild(idArg(positionals, BUILD_USAGE)),
   },
   install: {
     usage: "tenbox install",

@@ -60,7 +60,7 @@ Claude Code session files
     ├── agents[]  → RunAgent          → stats.agents
     └── result
         ├── proofs[]   (worker)       → StatsProof  → stats.proofs, points
-        └── unproven[] (reviewer)     → RunUnproven → points (-1)
+        └── unproven[] (reviewer)     → Unproven → points (-1)
 ```
 
 ## Flow in short

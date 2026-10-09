@@ -29,7 +29,7 @@ async function writeRun(): Promise<void> {
     startTime: STARTED_MS,
     durationMs: DURATION_MS,
     script: MARKER,
-    result: { status: "ready-for-you", attention: [MARKER] },
+    result: { attention: [MARKER] },
     workflowProgress: [
       { type: "workflow_phase", title: "Build" },
       {

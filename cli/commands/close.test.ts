@@ -487,7 +487,7 @@ async function writeRun(fixture: RunFixture): Promise<void> {
 }
 
 describe("tenbox close stats from Claude Code session files", () => {
-  test("counts the plan and build runs after opened, without prompt, result or output text", async () => {
+  test("counts the plan and build runs after opened, without prompt, result or output text, and ignores their result", async () => {
     await setup();
     const start = Date.now();
     await writeRun({
@@ -517,7 +517,7 @@ describe("tenbox close stats from Claude Code session files", () => {
       build: 3,
       human_review: humanReview,
     });
-    expect(written.review).toEqual({ must_fix: 0, nice_to_have: 3, attention: 2 });
+    expect(written.review).toBeNull();
     expect(written.agents).toEqual(
       ["tenbox-plan", "tenbox-build"].map((workflow, i) => ({
         workflow,
@@ -545,21 +545,13 @@ describe("tenbox close stats from Claude Code session files", () => {
   });
 });
 
-describe("tenbox close proofs and points", () => {
+describe("tenbox close build result, proofs and points", () => {
   const writePart = async (name: string, text: string) =>
     files.write(path.join(taskWorktree, ".tenbox", "parts", name), text);
   const proofsOf = async () => {
     const text = await readStatsText();
     return JSON.parse(text);
   };
-  const unprovenRun = (reason: string) => ({
-    name: "wf_build",
-    workflow: "tenbox-build",
-    startMs: Date.now(),
-    minutes: 1,
-    result: { status: "failed", unproven: [{ part: "01", reason }] },
-  });
-
   const proof = (test: string, part = "01") => ({
     part,
     file: "a.test.ts",
@@ -568,45 +560,99 @@ describe("tenbox close proofs and points", () => {
   });
   const writeProofs = (proofs: unknown[]) =>
     files.write(path.join(taskWorktree, ".tenbox", "proofs.json"), JSON.stringify(proofs));
-  const buildRunWith = (proofs: unknown[]) => ({
+  const writeBuild = (change: Record<string, unknown>) =>
+    files.write(
+      path.join(taskWorktree, ".tenbox", "build.json"),
+      JSON.stringify({
+        status: "ready-for-you",
+        round: 1,
+        proofs: [],
+        attention: [],
+        nice_to_have: [],
+        unproven: [],
+        ...change,
+      }),
+    );
+  const sessionRun = (result: unknown) => ({
     name: "wf_build",
     workflow: "tenbox-build",
     startMs: Date.now(),
     minutes: 1,
-    result: { status: "ready-for-you", proofs },
+    result,
   });
 
-  test("proofs from build runs and proofs.json count, runs first; a part without proofs gives 0", async () => {
+  test("review counts come from build.json: must_fix 0 for ready-for-you", async () => {
+    await setup();
+    await writeBuild({ nice_to_have: ["a", "b", "c"], attention: [MARKER, "b"] });
+    await closeT1();
+    const text = await readStatsText();
+    expect(JSON.parse(text).review).toEqual({ must_fix: 0, nice_to_have: 3, attention: 2 });
+    expect(text).not.toContain(MARKER);
+  });
+
+  test("review must_fix is null for a build result that is not ready-for-you", async () => {
+    await setup();
+    await writeBuild({ status: "failed", nice_to_have: ["a"] });
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.review).toEqual({ must_fix: null, nice_to_have: 1, attention: 0 });
+  });
+
+  test("without build.json the review is null", async () => {
+    await setup();
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.review).toBeNull();
+  });
+
+  test("proofs and unproven items in a session result are ignored", async () => {
+    await setup();
+    await writePart("01-x.md", "status: done\n");
+    await writeRun(
+      sessionRun({
+        status: "ready-for-you",
+        nice_to_have: ["a"],
+        attention: ["b"],
+        proofs: [proof("from the run")],
+        unproven: [{ part: "01", reason: "r" }],
+      }),
+    );
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.proofs).toEqual([]);
+    expect(written.review).toBeNull();
+    expect(written.points).toEqual([{ part: "01", points: 0 }]);
+  });
+
+  test("proofs of build.json are not read; proofs.json gives the proofs and a part without proofs 0", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
     await writePart("02-y.md", "status: done\n");
+    await writeBuild({ proofs: [proof("only in build")] });
     await writeProofs([proof("second"), proof("third")]);
-    await writeRun(buildRunWith([proof("first")]));
     await closeT1();
     const written = await proofsOf();
-    expect(written.proofs).toEqual([proof("first"), proof("second"), proof("third")]);
+    expect(written.proofs).toEqual([proof("second"), proof("third")]);
     expect(written.points).toEqual([
-      { part: "01", points: 3 },
+      { part: "01", points: 2 },
       { part: "02", points: 0 },
     ]);
   });
 
-  test("the same part, test file and test name in both sources counts once", async () => {
+  test("the same part, test file and test name twice counts once", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
-    await writeProofs([proof("same"), proof("same"), proof("other")]);
-    await writeRun(buildRunWith([{ ...proof("same"), failure: "from the run" }]));
+    await writeProofs([proof("same"), { ...proof("same"), failure: "later" }, proof("other")]);
     await closeT1();
     const written = await proofsOf();
-    expect(written.proofs).toEqual([{ ...proof("same"), failure: "from the run" }, proof("other")]);
+    expect(written.proofs).toEqual([proof("same"), proof("other")]);
     expect(written.points).toEqual([{ part: "01", points: 2 }]);
   });
 
-  test("padded fields from a run and proofs.json are one proof and 1 point", async () => {
+  test("padded fields are one proof and 1 point", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
-    await writeProofs([proof("t")]);
-    await writeRun(buildRunWith([{ ...proof(" t "), file: " a.test.ts", failure: "got 1 " }]));
+    await writeProofs([proof("t"), { ...proof(" t "), file: " a.test.ts", failure: "got 1 " }]);
     await closeT1();
     const written = await proofsOf();
     expect(written.proofs).toEqual([proof("t")]);
@@ -644,10 +690,10 @@ describe("tenbox close proofs and points", () => {
     expect(written.points).toEqual([{ part: "01", points: 0 }]);
   });
 
-  test("an unproven item of a build run gives -1 and its reason is not written", async () => {
+  test("an unproven item of build.json gives -1 and its reason is not written", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
-    await writeRun(unprovenRun(MARKER));
+    await writeBuild({ unproven: [{ part: "01", reason: MARKER }] });
     await closeT1();
     const text = await readStatsText();
     expect(JSON.parse(text).points).toEqual([{ part: "01", points: -1 }]);
@@ -658,41 +704,26 @@ describe("tenbox close proofs and points", () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
     await writeProofs([proof("first")]);
-    await writeRun(unprovenRun("r"));
+    await writeBuild({ unproven: [{ part: "01", reason: "r" }] });
     await closeT1();
     const written = await proofsOf();
     expect(written.points).toEqual([{ part: "01", points: 0 }]);
   });
 
-  test("a build-run proof named by part file slug and a proofs.json proof named by number are one row", async () => {
+  test("a proof named by part file slug and one named by number are one row", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
-    await writeProofs([proof("recorded")]);
-    await writeRun(buildRunWith([proof("built", "01-x")]));
+    await writeProofs([proof("recorded"), proof("built", "01-x")]);
     await closeT1();
     const written = await proofsOf();
-    expect(written.proofs).toEqual([proof("built"), proof("recorded")]);
+    expect(written.proofs).toEqual([proof("recorded"), proof("built")]);
     expect(written.points).toEqual([{ part: "01", points: 2 }]);
-  });
-
-  test("the same test from a run (01-x) and proofs.json (01) counts once", async () => {
-    await setup();
-    await writePart("01-x.md", "status: done\n");
-    await writeProofs([proof("same")]);
-    await writeRun(buildRunWith([proof("same", "01-x")]));
-    await closeT1();
-    const written = await proofsOf();
-    expect(written.proofs).toEqual([proof("same")]);
-    expect(written.points).toEqual([{ part: "01", points: 1 }]);
   });
 
   test("an unproven item named 01-x lowers the 01 row", async () => {
     await setup();
     await writePart("01-x.md", "status: done\n");
-    await writeRun({
-      ...unprovenRun("r"),
-      result: { status: "failed", unproven: [{ part: "01-x", reason: "r" }] },
-    });
+    await writeBuild({ unproven: [{ part: "01-x", reason: "r" }] });
     await closeT1();
     const written = await proofsOf();
     expect(written.points).toEqual([{ part: "01", points: -1 }]);

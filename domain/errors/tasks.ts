@@ -60,3 +60,15 @@ export function badPlanError(issues: string[]): TenboxError {
 export function setupError(exitCode: number, cmd: string, output: string): TenboxError {
   return new TenboxError(`setup failed (exit ${exitCode}): ${cmd}`, "setup", { output });
 }
+
+export function badBuildError(issues: string[]): TenboxError {
+  return new TenboxError(
+    `the build result is not valid: ${issues.join("; ")}`,
+    "bad-build",
+    issues,
+  );
+}
+
+export function waitTimeoutError(file: string, seconds: number): TenboxError {
+  return new TenboxError(`${file} did not appear within ${seconds} seconds`, "wait-timeout");
+}
