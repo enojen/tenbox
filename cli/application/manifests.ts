@@ -29,7 +29,7 @@ async function ensureId(mainDir: string): Promise<ProjectId> {
   if (typeof existing === "string") return projectId(existing);
   const id = newProjectId();
   const separator = text === null || text === "" || text.endsWith("\n") ? "" : "\n";
-  await files.write(file, `${text ?? ""}${separator}id: ${id}\n`);
+  await files.write(file, `${text ?? ""}${separator}id: "${id}"\n`);
   log("tenbox.yaml now has a project id: commit tenbox.yaml");
   return id;
 }

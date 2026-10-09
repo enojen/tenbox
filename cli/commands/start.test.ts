@@ -145,7 +145,7 @@ test("the first start writes the project id and says to commit; the second chang
   const yamlPath = path.join(project.mainDir, "tenbox.yaml");
   const first = await startCapturingStderr();
   const written = await files.read(yamlPath);
-  expect(written).toMatch(/^# keep me\nproject: demo\nid: [a-z0-9]{6}\n$/);
+  expect(written).toMatch(/^# keep me\nproject: demo\nid: "[a-z0-9]{6}"\n$/);
   expect(first).toContain(COMMIT_MESSAGE);
   const second = await startCapturingStderr({ id: taskId("T-2") });
   const after = await files.read(yamlPath);
