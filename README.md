@@ -18,7 +18,7 @@ true of the code. The target design (sandbox, QA, parallel workers, the panel) i
 tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/TEN-301, .tenbox/task.md (a link to the task dir)
   /tenbox-plan TEN-301            planner writes plan.md, parts, questions.md     👤 you read it
 tenbox approve TEN-301            record the approval: the time and the sha of plan.md  👤 you approve
-  /tenbox-build TEN-301           rounds of build → tenbox check → review
+  /tenbox-build TEN-301           first tenbox approved; then rounds of build → tenbox check → review
   review the diff by hand
 tenbox pr TEN-301 [--ready]       push the branch, create or update the PR
   merge on GitHub (squash)        👤 you merge
@@ -41,7 +41,8 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 |---|---|
 | `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` and `task.json` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
-| `tenbox approve <id>` | Refuses a task with no `.tenbox/plan.md` (`no-plan`, exit 1). Writes `.tenbox/approved.json` `{ at, plan_sha }`: the ISO time and the SHA-256 hex of `plan.md`. A second run overwrites it. Prints `{ ok, task, file, at, plan_sha }`. Nothing reads it yet |
+| `tenbox approve <id>` | Refuses a task with no `.tenbox/plan.md` (`no-plan`, exit 1). Writes `.tenbox/approved.json` `{ at, plan_sha }`: the ISO time and the SHA-256 hex of `plan.md`. A second run overwrites it. Prints `{ ok, task, file, at, plan_sha }`. `tenbox approved` reads it |
+| `tenbox approved <id>` | Checks the approval; `/tenbox-build` runs it first. Fails with `not-approved` (exit 1) when `.tenbox/approved.json` is missing, and with `plan-changed` (exit 1) when the SHA-256 of `plan.md` differs from `plan_sha`; both errors name `tenbox approve <id>`. Prints `{ ok, task, file, at, plan_sha }` |
 | `tenbox plan done <id> --json '<result>'` | Run by `/tenbox-plan` through the runner; by hand only when the plan was made without the workflow. Validates the planner result with zod and writes it to `.tenbox/plan.json`. A result that is not JSON, or has a wrong `estimated_lines` (a whole number), a part without `id` or a `difficulty` other than `easy` or `hard`, gives `bad-plan` (exit 1) and writes nothing; a missing `--json` or another sub-command gives `usage` (exit 2). Prints `{ ok, task, file }` |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
@@ -91,7 +92,9 @@ per part and `questions.md`. It returns the summary, the estimated lines, the pa
 `difficulty`), acceptance criteria, the extra review lenses and the questions. A runner then
 saves the result with `tenbox plan done`; the workflow adds its JSON as `recorded`.
 
-**`/tenbox-build <id>`**, or `{ task, feedback, maxRounds }` (default 3 rounds). Each round:
+**`/tenbox-build <id>`**, or `{ task, feedback, maxRounds }` (default 3 rounds). First step:
+a runner runs `tenbox approved <id>`. If it fails, the workflow returns
+`{ status: "not-approved", error }` and starts no other agent. Then each round:
 
 1. **Build**: the planner lists the parts still to build and the extra lenses; one worker
    per part, one after another, in the task worktree. A part marked `hard` in `plan.json` gets the strong
@@ -104,7 +107,7 @@ saves the result with `tenbox plan done`; the workflow adds its JSON as `recorde
    the reviewer reads only `git diff <commit>..HEAD`, where `<commit>` is the checks
    commit of the last reviewed round.
 
-It returns `ready-for-you` with the attention and nice-to-have lists of all reviewed
+It returns `not-approved`, `ready-for-you` with the attention and nice-to-have lists of all reviewed
 rounds, `needs-you`, or `failed` with the last feedback after the last round. Every result,
 `needs-you` too, also has `unproven`: the reviewers' items from all rounds, one per part
 per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all

@@ -1,0 +1,68 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import path from "node:path";
+import { sha256Hex } from "../../domain/utils.ts";
+import { files } from "../infra/files.ts";
+import { tenbox } from "../test/cli.ts";
+import { makeTempProject, type TempProject } from "../test/tempProject.ts";
+
+const USAGE_EXIT = 2;
+
+let project: TempProject;
+let planFile: string;
+let approvedFile: string;
+
+beforeEach(async () => {
+  project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
+  const taskWorktree = path.join(project.wtRoot, "demo", "T-1");
+  planFile = path.join(taskWorktree, ".tenbox", "plan.md");
+  approvedFile = path.join(taskWorktree, ".tenbox", "approved.json");
+  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+});
+
+afterEach(async () => {
+  await project.remove();
+});
+
+const approved = (...args: string[]) => tenbox(["approved", ...args], project.mainDir);
+
+describe("tenbox approved", () => {
+  test("without approved.json it is not-approved and names tenbox approve", async () => {
+    const run = await approved("T-1");
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "not-approved"]);
+    expect(run.json.error).toContain("tenbox approve T-1");
+  });
+
+  test("after tenbox approve it prints the approval", async () => {
+    await files.write(planFile, "# plan\n");
+    const approve = await tenbox(["approve", "T-1"], project.mainDir);
+    const run = await approved("T-1");
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({
+      ok: true,
+      task: "T-1",
+      file: approvedFile,
+      at: approve.json.at,
+      plan_sha: sha256Hex("# plan\n"),
+    });
+  });
+
+  test("a plan.md edited after the approval is plan-changed", async () => {
+    await files.write(planFile, "# plan\n");
+    await tenbox(["approve", "T-1"], project.mainDir);
+    await files.write(planFile, "# plan changed\n");
+    const run = await approved("T-1");
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "plan-changed"]);
+    expect(run.json.error).toContain("tenbox approve T-1");
+  });
+
+  test("no id is a usage error", async () => {
+    const run = await approved();
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+    expect(run.json.error).toContain("tenbox approved <id>");
+  });
+
+  test("a task with no worktree fails", async () => {
+    const run = await approved("T-9");
+    expect([run.code, run.json.ok]).toEqual([1, false]);
+  });
+});

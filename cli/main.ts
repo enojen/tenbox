@@ -10,6 +10,7 @@ import {
 } from "./args.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { approveTask } from "./commands/approve.ts";
+import { checkApproved } from "./commands/approved.ts";
 import { closeTask } from "./commands/close.ts";
 import { runChecks } from "./commands/check.ts";
 import { install } from "./commands/install.ts";
@@ -34,6 +35,7 @@ const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const APPROVE_USAGE = "tenbox approve <id>";
+const APPROVED_USAGE = "tenbox approved <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -121,6 +123,11 @@ const COMMANDS: Record<string, Command> = {
     usage: APPROVE_USAGE,
     options: {},
     run: (positionals) => approveTask(idArg(positionals, APPROVE_USAGE)),
+  },
+  approved: {
+    usage: APPROVED_USAGE,
+    options: {},
+    run: (positionals) => checkApproved(idArg(positionals, APPROVED_USAGE)),
   },
   install: {
     usage: "tenbox install",

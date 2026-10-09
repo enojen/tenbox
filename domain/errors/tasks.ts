@@ -8,6 +8,17 @@ export function noPlanError(dir: string): TenboxError {
   return new TenboxError(`no plan.md in ${dir}; run /tenbox-plan first`, "no-plan");
 }
 
+export function notApprovedError(id: string): TenboxError {
+  return new TenboxError(`${id} has no approved plan; run: tenbox approve ${id}`, "not-approved");
+}
+
+export function planChangedError(id: string): TenboxError {
+  return new TenboxError(
+    `plan.md changed after the approval; run: tenbox approve ${id}`,
+    "plan-changed",
+  );
+}
+
 export function dirtyBeforePrError(taskWorktree: string): TenboxError {
   return new TenboxError(`${taskWorktree} has uncommitted changes; commit them first`, "dirty");
 }

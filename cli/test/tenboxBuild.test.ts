@@ -172,6 +172,7 @@ test("the worker schema requires proofs of non-blank strings", async () => {
   > = {};
   const agent = async (_prompt: string, options: { agentType: string; schema: never }) => {
     schemas[options.agentType] = options.schema;
+    if (options.agentType === "runner") return { ok: true, file: "f" };
     if (options.agentType === "planner")
       return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [] };
     return { status: "blocked", questions: [] };
@@ -239,4 +240,35 @@ test("attention and nice_to_have items of earlier reviewed rounds stay in the re
   expect(result.status).toBe("ready-for-you");
   expect(result.attention).toEqual(["hunk 1"]);
   expect(result.nice_to_have).toEqual(["nice 1"]);
+});
+
+test("a failing approval check returns not-approved and starts no other agent", async () => {
+  const started: string[] = [];
+  const agent: ScriptedAgent = async (_prompt, options) => {
+    started.push(options.agentType);
+    return {
+      ok: false,
+      error: "T has no approved plan; run: tenbox approve T",
+      code: "not-approved",
+    };
+  };
+  const result = await runWorkflow("TB-1", agent);
+  expect(result).toEqual({
+    status: "not-approved",
+    error: "T has no approved plan; run: tenbox approve T",
+  });
+  expect(started).toEqual(["runner"]);
+});
+
+test("the approval check runs `tenbox approved <task>` before any other agent", async () => {
+  const prompts: string[] = [];
+  const agent: ScriptedAgent = async (prompt, options) => {
+    prompts.push(`${options.agentType}: ${prompt}`);
+    if (options.agentType === "runner") return { ok: true, commit: "c", file: "f" };
+    if (options.agentType === "planner") return { parts: [], lenses: [] };
+    return cleanReply;
+  };
+  await runWorkflow("TB-1", agent);
+  expect(prompts[0]).toContain("runner: ");
+  expect(prompts[0]).toContain("tenbox approved TB-1");
 });

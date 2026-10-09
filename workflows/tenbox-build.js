@@ -81,6 +81,19 @@ const REVIEW = {
   required: ['must_fix', 'nice_to_have', 'attention', 'unproven'],
 }
 
+// The approval gate: `file` comes only from the CLI; without it the command did not run.
+const APPROVED = {
+  type: 'object',
+  properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
+  required: ['ok'],
+}
+phase('Build')
+const approved = await agent(`Run \`tenbox approved ${task}\` and return its JSON.`,
+  { agentType: 'runner', schema: APPROVED, phase: 'Build', label: 'approval' })
+if (!approved?.ok || !approved.file) {
+  return { status: 'not-approved', error: approved?.error ?? 'tenbox approved did not run' }
+}
+
 let feedback = input.feedback ?? 'none'
 // Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
 const unproven = []
