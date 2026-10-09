@@ -5,7 +5,7 @@ import { statsFile } from "../../domain/stats.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
-import { sessions } from "../application/sessions.ts";
+import { type SessionRemoveState, sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
@@ -13,6 +13,7 @@ import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
+import type { TmuxTarget } from "../infra/tmux.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type { CloseResult, StatsInfo } from "./results.ts";
 
@@ -32,7 +33,7 @@ interface CloseTarget {
 }
 
 /**
- * Writes `stats.json` in the task dir, kills the tmux session, removes the worktree and the
+ * Writes `stats.json` in the task dir, kills the task's tmux server, removes the worktree and the
  * branch, sets the tracker to done. The task dir stays. The safety checks run first; a step with
  * nothing to do is skipped.
  */
@@ -43,9 +44,12 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const tracker = makeTracker(manifest.tracker);
   const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
-  const session = tmuxSessionName(manifest.names, id);
-  // Read only: a project with no id yet has no task dirs, and close must not write the manifest.
-  const dir = manifest.id === undefined ? null : taskDir(tenboxHome, manifest.id, id);
+  // Read only: a project with no id yet has no task dirs and no task tmux server, and close
+  // must not write the manifest.
+  const projectId = manifest.id;
+  const dir = projectId === undefined ? null : taskDir(tenboxHome, projectId, id);
+  const target =
+    projectId === undefined ? null : sessions.tmuxTarget(manifest.names, projectId, id);
   const { base } = manifest;
   await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base }, force);
   const recordedProofs = await proofs.read(taskWorktree);
@@ -64,7 +68,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     };
     statsInfo = await writeStats(statsInput);
   }
-  const tmuxState = await sessions.remove(session);
+  const tmuxState = await removeSession(target);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id, title: undefined }, tracker, "done");
   return {
@@ -73,7 +77,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     project: project.name,
     forced: force,
     stats: statsInfo,
-    tmux: { session, state: tmuxState },
+    tmux: { session: tmuxSessionName(manifest.names, id), state: tmuxState },
     worktree: { path: taskWorktree, state: removed.worktree },
     branch: { name: branch, state: removed.branch },
     tracker: { kind: tracker.kind, status },
@@ -129,4 +133,9 @@ async function writeStats(input: StatsInput): Promise<StatsInfo> {
   } catch (e) {
     return { path: file, state: `failed: ${errorMessage(e)}` };
   }
+}
+
+/** No target: a project with no id has no task tmux server. */
+function removeSession(target: TmuxTarget | null): Promise<SessionRemoveState> {
+  return target === null ? Promise.resolve("skipped") : sessions.remove(target.server);
 }

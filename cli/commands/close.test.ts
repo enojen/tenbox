@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
-import { taskDir } from "../../domain/project.ts";
+import { taskDir, tmuxDir } from "../../domain/project.ts";
 import { minutesBetween } from "../../domain/utils.ts";
 import { manifests } from "../application/manifests.ts";
 import { projectDir } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type CliRun, tenbox, tmux, tmuxTest } from "../test/cli.ts";
+import { type CliRun, removeServers, tenbox, tmux, tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const SESSION = "tenbox-T-1";
@@ -32,6 +33,7 @@ const PLAN_RESULT = JSON.stringify({
 let project: TempProject;
 let taskWorktree: string;
 let kept: string;
+const servers: string[] = [];
 
 async function setup(): Promise<void> {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
@@ -66,8 +68,17 @@ async function expectUntouched(run: CliRun): Promise<void> {
 }
 
 afterEach(async () => {
+  await removeServers(servers);
   await project.remove();
 });
+
+/** A `PATH` with a fake `claude` that only waits, so `tenbox start` can start its session. */
+async function fakeClaude(): Promise<Record<string, string>> {
+  const bin = path.join(project.root, "claude-bin");
+  await files.write(path.join(bin, "claude"), "#!/bin/sh\nsleep 30\n");
+  await chmod(path.join(bin, "claude"), EXECUTABLE);
+  return { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+}
 
 describe("tenbox close", () => {
   test("closes a clean task and removes worktree and branch, the task dir stays", async () => {
@@ -267,14 +278,24 @@ describe("tenbox close", () => {
     });
   });
 
-  tmuxTest("kills the tmux session; without tmux in PATH the step is skipped", async () => {
+  tmuxTest("kills the task's tmux server; with no server running it is skipped", async () => {
     await setup();
-    tmux(["new-session", "-d", "-s", SESSION, "sleep 30"]);
+    const withClaude = await fakeClaude();
+    await tenbox(["start", "T-1", "--title", "x"], project.mainDir, withClaude);
+    const projectId = await manifests.ensureId(project.mainDir);
+    const server = tmuxDir(os.tmpdir(), projectId, taskId("T-1"));
+    servers.push(server);
     const run = await closeT1();
-    expect(run.json).toMatchObject({ tmux: { state: "killed" } });
-    expect(tmux(["has-session", "-t", `=${SESSION}`]).exitCode).not.toBe(0);
+    expect(run.json).toMatchObject({ tmux: { session: SESSION, state: "killed" } });
+    expect(tmux(["list-sessions"], server).exitCode).not.toBe(0);
     await rm(kept, { recursive: true });
     await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+    const again = await closeT1();
+    expect(again.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
+  });
+
+  tmuxTest("without tmux in PATH the tmux step is skipped", async () => {
+    await setup();
     const bin = path.join(project.root, "bin");
     await files.mkdir(bin);
     await files.symlink(Bun.which("git") ?? "git", path.join(bin, "git"));

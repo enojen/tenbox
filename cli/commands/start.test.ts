@@ -1,17 +1,22 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { chmod, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
+import { taskDir } from "../../domain/project.ts";
+import { manifests } from "../application/manifests.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { tmuxTest } from "../test/cli.ts";
+import { removeServers, tmux, tmuxTest, waitForText } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
+import type { StartResult } from "./results.ts";
 import { type StartInput, startTask } from "./start.ts";
 
 let project: TempProject;
 let taskWorktree: string;
 let startCwd: string;
 const startPath = process.env.PATH;
+const servers: string[] = [];
 
 const input = (extra: Partial<StartInput> = {}): StartInput => ({
   id: taskId("T-1"),
@@ -36,6 +41,7 @@ async function setup(manifest: string): Promise<void> {
 }
 
 afterEach(async () => {
+  await removeServers(servers);
   process.env.PATH = startPath;
   process.chdir(startCwd);
   await project.remove();
@@ -101,15 +107,51 @@ test("a failing setup is an error with the output tail", async () => {
   });
 });
 
-tmuxTest("starts the tmux session once and then reports exists", async () => {
-  await setup("project: demo\n");
+/** A fake `claude` that appends its args, one per line, to `<root>/claude.args` and stays up. */
+async function useFakeClaude(): Promise<string> {
   const bin = path.join(project.root, "bin");
-  await files.write(path.join(bin, "claude"), "#!/bin/sh\nsleep 30\n");
+  const args = path.join(project.root, "claude.args");
+  const script = `#!/bin/sh\nprintf '%s\\n' "$@" >> "${args}"\nsleep 30\n`;
+  await files.write(path.join(bin, "claude"), script);
   await chmod(path.join(bin, "claude"), 0o755);
   process.env.PATH = `${bin}${path.delimiter}${startPath}`;
-  const first = await startTask(input({ tmux: true }));
-  const second = await startTask(input({ tmux: true }));
+  return args;
+}
+
+async function startOnServer(extra: Partial<StartInput> = {}): Promise<StartResult> {
+  const r = await startTask(input({ tmux: true, ...extra }));
+  servers.push(r.tmux.server);
+  return r;
+}
+
+tmuxTest("starts claude with the plan on the task's own tmux server, once", async () => {
+  await setup("project: demo\n");
+  const argsFile = await useFakeClaude();
+  const first = await startOnServer();
+  const second = await startOnServer();
+  const id = await manifests.ensureId(project.mainDir);
+  const dir = taskDir(project.tenboxHome, id, taskId("T-1"));
   expect([first.tmux.state, second.tmux.state]).toEqual(["started", "exists"]);
+  expect(first.tmux.server).toBe(path.join(os.tmpdir(), `tenbox-${id}-T-1`));
+  expect(tmux(["has-session", "-t", "=tenbox-T-1"], first.tmux.server).exitCode).toBe(0);
+  expect(tmux(["has-session", "-t", "=tenbox-T-1"]).exitCode).not.toBe(0);
+  const args = await waitForText(argsFile);
+  expect(args.trimEnd().split("\n")).toEqual([
+    "--model",
+    "sonnet",
+    "--add-dir",
+    dir,
+    "--",
+    "/tenbox-plan T-1",
+  ]);
+});
+
+tmuxTest("the manifest model goes to claude --model", async () => {
+  await setup("project: demo\nmodel: opus\n");
+  const argsFile = await useFakeClaude();
+  await startOnServer();
+  const args = await waitForText(argsFile);
+  expect(args.split("\n").slice(0, 2)).toEqual(["--model", "opus"]);
 });
 
 test("invalid settings.local.json fails with code settings naming the file", async () => {

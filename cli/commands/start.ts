@@ -1,4 +1,4 @@
-import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
+import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
@@ -20,7 +20,7 @@ export interface StartInput {
   setup: boolean;
 }
 
-/** Worktree + branch from `base`, task dir with `task.md` linked as `.tenbox`, setup, tmux session with `claude`. */
+/** Worktree + branch from `base`, task dir with `task.md` linked as `.tenbox`, setup, tmux session on the task's own server with `claude`. */
 export async function startTask(input: StartInput): Promise<StartResult> {
   const { id } = input;
   const { project, manifest } = await projects.get(env().cwd);
@@ -30,7 +30,7 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const task = await tasks.get(input, tracker);
   const taskWorktree = taskWorktreeDir(env().wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
-  const session = tmuxSessionName(manifest.names, id);
+  const target = sessions.tmuxTarget(manifest.names, projectId, id);
   const { tenboxHome } = env();
   await projects.save(tenboxHome, { id: projectId, name: project.name });
   const dir = taskDir(tenboxHome, projectId, id);
@@ -38,7 +38,8 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const task_md = await tasks.ensureFiles(taskWorktree, task);
   const setup = await setups.run(taskWorktree, manifest.setup, input.setup);
   const status = await tasks.updateStatus(input, tracker, "in_progress");
-  const tmux = await sessions.ensure(session, input.tmux ? taskWorktree : null);
+  const start = { id, target, taskWorktree, taskDir: dir, model: manifest.model };
+  const tmux = await sessions.ensure(target, input.tmux ? start : null);
   return {
     ok: true,
     task: id,

@@ -13,7 +13,8 @@ the README.
 Phase 1 is done: roles, `/tenbox-plan`, `/tenbox-build` without the Try phase,
 `tenbox start`, `check`, `install`, the Linear tracker. Phase 2 has `tenbox close` (the
 cleanup only, no sandbox and no merge) and `tenbox pr` (push, then create or update the PR
-with `gh`); next is `/tenbox-close`. No sandbox yet.
+with `gh`), and `tenbox build` (types `/tenbox-build` into the task's `claude` session on
+the task's own tmux server); next is `/tenbox-close`. No sandbox yet.
 
 ## Rules
 

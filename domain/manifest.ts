@@ -62,6 +62,8 @@ const ManifestSchema = z.object({
     .min(1)
     .refine(compiles, { message: "not a valid regular expression" })
     .optional(),
+  /** The `--model` of the task's `claude` session. */
+  model: z.string().min(1).default("sonnet"),
   checks: z.record(z.string(), z.string().min(1)).default({}),
   tracker: TrackerConfigSchema.prefault({}),
   names: NamesSchema.prefault({}),

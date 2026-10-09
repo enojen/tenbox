@@ -15,19 +15,22 @@ true of the code. The target design (sandbox, QA, parallel workers, the panel) i
 ## How a task runs today
 
 ```
-tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/TEN-301, .tenbox/task.md (a link to the task dir)
+tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/TEN-301, .tenbox/task.md (a link to the task dir),
+                                  claude on the task's own tmux server, started with /tenbox-plan TEN-301
   /tenbox-plan TEN-301            planner writes plan.md, parts, questions.md     👤 you read it
 tenbox approve TEN-301            record the approval: the time and the sha of plan.md  👤 you approve
+tenbox build TEN-301              types /tenbox-build TEN-301 into the task's claude session
   /tenbox-build TEN-301           first tenbox approved; then rounds of build → tenbox check → review
   review the diff by hand
 tenbox pr TEN-301 [--ready]       push the branch, create or update the PR
   merge on GitHub (squash)        👤 you merge
 git pull                          in the main checkout
-tenbox close TEN-301              write stats.json in the task dir, remove worktree and branch
+tenbox close TEN-301              write stats.json in the task dir, kill the task's tmux server, remove worktree and branch
 ```
 
 Run `/tenbox-plan` and `/tenbox-build` in an interactive `claude` session in the task
-worktree (`tenbox start` opens one in tmux). A headless `claude -p` run stops at the
+worktree. `tenbox start` opens one on the task's own tmux server and `tenbox build` types
+`/tenbox-build` into it; attach with the `tmux.attach` command that `start` prints. A headless `claude -p` run stops at the
 workflow approval. To send review feedback into a new build:
 `/tenbox-build { "task": "TEN-301", "feedback": "..." }`.
 
@@ -39,13 +42,14 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 
 | Command | Does |
 |---|---|
-| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` and `task.json` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
+| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` and `task.json` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress. Then the task's own tmux server (`TMUX_TMPDIR=<tmp>/tenbox-<project id>-<id>`, `TMUX` empty) with one session that runs `claude --model <model> --add-dir <task dir> -- "/tenbox-plan <id>"`, so the plan starts at once and `.tenbox` needs no permission prompt; a running session is kept (`tmux.state: exists`). `tmux` in the output holds `session`, `server`, `state` and `attach`: `TMUX= TMUX_TMPDIR=<server> tmux attach -t <session>`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox approve <id>` | Refuses a task with no `.tenbox/plan.md` (`no-plan`, exit 1). Writes `.tenbox/approved.json` `{ at, plan_sha }`: the ISO time and the SHA-256 hex of `plan.md`. A second run overwrites it. Prints `{ ok, task, file, at, plan_sha }`. `tenbox approved` reads it |
 | `tenbox approved <id>` | Checks the approval; `/tenbox-build` runs it first. Fails with `not-approved` (exit 1) when `.tenbox/approved.json` is missing, and with `plan-changed` (exit 1) when the SHA-256 of `plan.md` differs from `plan_sha`; both errors name `tenbox approve <id>`. Prints `{ ok, task, file, at, plan_sha }` |
+| `tenbox build <id>` | Checks the approval as `tenbox approved` does (`not-approved`, `plan-changed`, exit 1), then needs the task's tmux session (else `no-session`, exit 1, naming `tenbox start <id>`; it starts nothing). Clears the input line of `claude` with `C-e` `C-u`, types `/tenbox-build <id>` and presses Enter. Prints `{ ok, task, session, server, sent }` |
 | `tenbox plan done <id> --json '<result>'` | Run by `/tenbox-plan` through the runner; by hand only when the plan was made without the workflow. Validates the planner result with zod and writes it to `.tenbox/plan.json`. A result that is not JSON, or has a wrong `estimated_lines` (a whole number), a part without `id` or a `difficulty` other than `easy` or `hard`, gives `bad-plan` (exit 1) and writes nothing; a missing `--json` or another sub-command gives `usage` (exit 2). Prints `{ ok, task, file }` |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
-| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
+| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). "Merged" comes from `gh pr view`: the PR is `MERGED` and the branch head is the PR head; an `OPEN` or `CLOSED` PR is not merged. Without a PR, or without `gh`, a test merge into the base decides, and one stderr line says so. Writes `stats.json` in the task dir (it stays, with the other task files), kills the task's tmux server (a project with no `id` has none: `skipped`), removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
 
@@ -155,6 +159,7 @@ setup: bun install               # optional: runs in a new task worktree
 checks:                          # name: command; tenbox check runs them all
   types: bunx tsc --noEmit
   unit: bun test cli domain
+model: sonnet                    # optional: the --model of the task's claude session; default sonnet
 failure_pattern: "..."           # optional: a regex for a failure line; the default knows bun, vitest, jest and tsc
 tracker: { kind: linear }        # none (default) or linear; api_key here or LINEAR_API_KEY
 names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults

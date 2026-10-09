@@ -19,6 +19,10 @@ export function planChangedError(id: string): TenboxError {
   );
 }
 
+export function noSessionError(id: string): TenboxError {
+  return new TenboxError(`${id} has no tmux session; run: tenbox start ${id}`, "no-session");
+}
+
 export function dirtyBeforePrError(taskWorktree: string): TenboxError {
   return new TenboxError(`${taskWorktree} has uncommitted changes; commit them first`, "dirty");
 }

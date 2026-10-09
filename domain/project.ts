@@ -34,6 +34,14 @@ export function taskDir(tenboxHome: string, projectId: ProjectId, id: TaskId): s
   return path.join(projectDir(tenboxHome, projectId), id);
 }
 
+/**
+ * `<tmp>/tenbox-<project id>-<id>`: the `TMUX_TMPDIR` of the task's own tmux server. Not the task
+ * dir: a socket path must stay under 104 characters on macOS.
+ */
+export function tmuxDir(tmpRoot: string, projectId: ProjectId, id: TaskId): string {
+  return path.join(tmpRoot, `tenbox-${projectId}-${id}`);
+}
+
 /** Tenbox and Claude Code write these into worktrees; keep them out of `git status`. */
 export const EXCLUDED_PATHS: readonly string[] = [
   ".tenbox", // the link to the task dir; no slash, a slash would skip a symlink

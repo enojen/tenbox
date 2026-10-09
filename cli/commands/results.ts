@@ -63,6 +63,15 @@ export interface CloseResult {
   tracker: TrackerInfo;
 }
 
+export interface SendBuildResult {
+  ok: true;
+  task: string;
+  session: string;
+  server: string;
+  /** The text typed into the session and submitted. */
+  sent: string;
+}
+
 export type PrState = "created" | "updated";
 
 export interface PrInfo {
