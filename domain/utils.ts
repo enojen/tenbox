@@ -6,14 +6,19 @@ export const unique = <T>(items: T[]): T[] => [...new Set(items)];
 export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** The JSON value in `text`; undefined when the text is not JSON. */
+export function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The JSON object in `text`; null when the text is not JSON or not an object. */
 export function parseObject(text: string): Record<string, unknown> | null {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  const parsed = parseJson(text);
+  return isPlainObject(parsed) ? parsed : null;
 }
 
 /** Merge b over a: objects key by key, arrays and scalars replaced. */

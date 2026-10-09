@@ -5,8 +5,6 @@ import { approvedFile, planMdFile, tenboxDir } from "../../domain/task.ts";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
-const JSON_INDENT = 2;
-
 /** Approvals: `approved.json` in the task dir, written by `tenbox approve`. */
 export const approvals = { save, get };
 
@@ -18,7 +16,7 @@ async function save(taskWorktree: string): Promise<Approval> {
     throw noPlanError(dir);
   }
   const approval: Approval = { at: new Date().toISOString(), plan_sha: sha256Hex(plan) };
-  await files.write(approvedFile(dir), `${JSON.stringify(approval, null, JSON_INDENT)}\n`);
+  await files.writeJson(approvedFile(dir), approval);
   return approval;
 }
 

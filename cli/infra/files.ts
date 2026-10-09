@@ -2,6 +2,7 @@ import { lstat, mkdir, readdir, readlink, realpath, rename, stat, symlink } from
 import path from "node:path";
 import { hasErrorCode } from "../../domain/utils.ts";
 
+const JSON_INDENT = 2;
 const MISSING_CODES = ["ENOENT", "ENOTDIR"];
 
 function isMissing(e: unknown): boolean {
@@ -40,6 +41,11 @@ export const files = {
     const tmp = `${p}.${process.pid}.tmp`;
     await Bun.write(tmp, text);
     await rename(tmp, p);
+  },
+
+  /** Two-space JSON and a newline, written like `write`. */
+  async writeJson(p: string, value: unknown): Promise<void> {
+    await files.write(p, `${JSON.stringify(value, null, JSON_INDENT)}\n`);
   },
 
   async mkdir(p: string): Promise<void> {

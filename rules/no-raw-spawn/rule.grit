@@ -1,0 +1,8 @@
+language js
+
+or {
+  `Bun.spawn($args)`,
+  `Bun.spawnSync($args)`
+} as $call where {
+  register_diagnostic(span=$call, message="No raw Bun.spawn: call a function in cli/infra/processes.ts.")
+}

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { settingsError } from "../../domain/errors/tools.ts";
-import { errorMessage, isPlainObject } from "../../domain/utils.ts";
+import { isPlainObject, parseJson } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 
 /** Claude Code's local settings in a checkout: `.claude/settings.local.json`. */
@@ -16,16 +16,13 @@ async function ensureHeadBaseRef(mainDir: string): Promise<void> {
   const worktree = isPlainObject(settings.worktree) ? settings.worktree : {};
   if (worktree.baseRef === "head") return;
   const updated = { ...settings, worktree: { ...worktree, baseRef: "head" } };
-  await files.write(file, `${JSON.stringify(updated, null, 2)}\n`);
+  await files.writeJson(file, updated);
 }
 
 async function read(file: string): Promise<Record<string, unknown>> {
   const text = await files.read(file);
   if (text === null) return {};
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : {};
-  } catch (e) {
-    throw settingsError(file, errorMessage(e));
-  }
+  const parsed = parseJson(text);
+  if (parsed === undefined) throw settingsError(file, "is not valid JSON");
+  return isPlainObject(parsed) ? parsed : {};
 }

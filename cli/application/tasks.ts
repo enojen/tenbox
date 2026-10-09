@@ -48,7 +48,7 @@ async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   if (!kept) await files.write(taskMd, renderTaskMd(task));
   const taskJson = taskFile(dir);
   const jsonKept = await files.exists(taskJson);
-  if (!jsonKept) await files.write(taskJson, `${JSON.stringify(taskFileOf(task), null, 2)}\n`);
+  if (!jsonKept) await files.writeJson(taskJson, taskFileOf(task));
   return taskMd;
 }
 

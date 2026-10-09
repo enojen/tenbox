@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { errorMessage, isDigits, minutesBetween, sha256Hex } from "./utils.ts";
+import { errorMessage, isDigits, minutesBetween, parseJson, sha256Hex } from "./utils.ts";
 
 describe("isDigits", () => {
   test("accepts whole numbers", () => {
@@ -28,5 +28,15 @@ describe("sha256Hex", () => {
     expect(sha256Hex("abc")).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     );
+  });
+});
+
+describe("parseJson", () => {
+  test("returns the parsed value, arrays included", () => {
+    expect(parseJson('[{"a":1}]')).toEqual([{ a: 1 }]);
+    expect(parseJson("null")).toBeNull();
+  });
+  test("returns undefined when the text is not JSON", () => {
+    expect(parseJson("{nope")).toBeUndefined();
   });
 });

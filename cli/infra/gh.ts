@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
+import { parseJson } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
 
 export interface PrText {
@@ -57,7 +58,7 @@ async function findPr(dir: string, branch: string): Promise<PrState | null> {
   try {
     const result = await processes.run(["gh", ...args], { cwd: dir });
     if (result.code !== 0) return null;
-    return PrViewSchema.parse(JSON.parse(result.stdout));
+    return PrViewSchema.parse(parseJson(result.stdout));
   } catch (e) {
     if (e instanceof TenboxError && e.code === "no-command") return null;
     throw e;
@@ -68,7 +69,7 @@ async function findPr(dir: string, branch: string): Promise<PrState | null> {
 async function findOpen(dir: string, branch: string): Promise<OpenPr | null> {
   const args = ["pr", "list", "--head", branch, "--state", "open", "--json", "number,url,isDraft"];
   const out = await run(args, dir);
-  const first = PrListSchema.parse(JSON.parse(out))[0];
+  const first = PrListSchema.parse(parseJson(out))[0];
   if (first === undefined) return null;
   return { number: first.number, url: first.url, draft: first.isDraft };
 }

@@ -1,0 +1,5 @@
+language js
+
+`JSON.stringify($value, $replacer, $indent)` as $call where {
+  register_diagnostic(span=$call, message="Write JSON with files.writeJson, not an indented JSON.stringify.")
+}

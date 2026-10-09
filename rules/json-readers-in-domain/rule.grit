@@ -1,0 +1,8 @@
+language js
+
+or {
+  `parseObject($args)`,
+  `parseJson($args)`
+} as $call where {
+  register_diagnostic(span=$call, message="JSON readers live in domain/: read the file with a read* function there.")
+}

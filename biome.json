@@ -47,6 +47,29 @@
     {
       "includes": ["**/cli/application/**", "!**/*.test.ts"],
       "plugins": ["./rules/no-raw-git-in-application/rule.grit"]
+    },
+    {
+      "includes": ["**", "!**/*.test.ts", "!**/cli/infra/processes.ts", "!**/cli/test/cli.ts"],
+      "plugins": ["./rules/no-raw-spawn/rule.grit"]
+    },
+    {
+      "includes": ["**", "!**/*.test.ts", "!**/domain/utils.ts", "!**/rules/*/good.ts"],
+      "plugins": ["./rules/no-raw-json-parse/rule.grit"]
+    },
+    {
+      "includes": [
+        "**",
+        "!**/*.test.ts",
+        "!**/domain/**",
+        "!**/cli/infra/**",
+        "!**/cli/test/**",
+        "!**/rules/*/good.ts"
+      ],
+      "plugins": ["./rules/json-readers-in-domain/rule.grit"]
+    },
+    {
+      "includes": ["**", "!**/*.test.ts", "!**/cli/infra/files.ts", "!**/cli/main.ts"],
+      "plugins": ["./rules/write-json-once/rule.grit"]
     }
   ],
   "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },

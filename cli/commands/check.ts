@@ -77,7 +77,7 @@ export async function runChecks(input: CheckInput): Promise<CheckResult> {
     results.push(run);
   }
   const result = buildResult(input, round, results);
-  await files.write(checksFile(round.dir), `${JSON.stringify(result, null, 2)}\n`);
+  await files.writeJson(checksFile(round.dir), result);
   return result;
 }
 

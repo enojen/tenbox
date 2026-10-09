@@ -85,6 +85,11 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   (`rules/no-caught-error-in-tests`).
 - `application/` calls the named git functions in `infra/git.ts` (`rules/no-raw-git-in-application`).
   A tool's file format or command line lives in `infra/`.
+- Start a process only through `cli/infra/processes.ts` (`rules/no-raw-spawn`).
+- Parse JSON only with `parseJson` / `parseObject` from `domain/utils.ts` (`rules/no-raw-json-parse`).
+- Outside `domain/` and `cli/infra/`, read a Tenbox file with a `read*` function in `domain/`
+  (`rules/json-readers-in-domain`).
+- Write a JSON file with `files.writeJson` (`rules/write-json-once`).
 - Verbs in module APIs: `get` (throws when missing), `find` (null when missing), `ensure`
   (creates when missing, keeps what exists), `save`, `update`, `remove`, `run`. One verb, one
   meaning.

@@ -82,7 +82,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
 }
 
 async function save(taskStats: TaskStats, dir: string): Promise<void> {
-  await files.write(statsFile(dir), `${JSON.stringify(taskStats, null, 2)}\n`);
+  await files.writeJson(statsFile(dir), taskStats);
 }
 
 async function readRounds(dir: string): Promise<StatsRound[]> {

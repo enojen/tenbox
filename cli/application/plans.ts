@@ -2,8 +2,6 @@ import { type PlanResult, parsePlan, planFile, readPlan } from "../../domain/pla
 import { tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 
-const JSON_INDENT = 2;
-
 /** Plans: the validated planner result, `plan.json` in the task dir. */
 export const plans = { save, find };
 
@@ -11,7 +9,7 @@ export const plans = { save, find };
 async function save(taskWorktree: string, planText: string): Promise<string> {
   const plan = parsePlan(planText);
   const file = planFile(tenboxDir(taskWorktree));
-  await files.write(file, `${JSON.stringify(plan, null, JSON_INDENT)}\n`);
+  await files.writeJson(file, plan);
   return file;
 }
 

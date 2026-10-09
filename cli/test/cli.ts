@@ -1,6 +1,6 @@
 import { test } from "bun:test";
 import path from "node:path";
-import { isPlainObject } from "../../domain/utils.ts";
+import { parseObject } from "../../domain/utils.ts";
 
 const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
 
@@ -35,18 +35,9 @@ export async function tenbox(
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  const json = parseJson(out);
+  const json = parseObject(out);
   if (!json) throw new Error(`stdout is not JSON (exit ${code}):\n${out}\n--- stderr:\n${err}`);
   return { code, out, err, json };
-}
-
-function parseJson(text: string): Json | null {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Runs `tmux <args>` against the env of the test process, so it reaches the project's own server. */

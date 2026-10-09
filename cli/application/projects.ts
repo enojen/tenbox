@@ -36,5 +36,5 @@ interface ProjectRecord {
 /** Writes `project.json` in the project's folder under `tenboxHome`; the name can change. */
 async function save(tenboxHome: string, record: ProjectRecord): Promise<void> {
   const file = path.join(projectDir(tenboxHome, record.id), "project.json");
-  await files.write(file, `${JSON.stringify(record)}\n`);
+  await files.writeJson(file, record);
 }
