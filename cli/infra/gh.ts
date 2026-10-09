@@ -20,12 +20,25 @@ export interface OpenPr {
 }
 
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
-export const gh = { findOpen, create, edit, markReady };
+export const gh = { findPr, isMergedAt, findOpen, create, edit, markReady };
 
 /** The output of `gh pr list --json number,url,isDraft`. */
 const PrListSchema = z.array(
   z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }),
 );
+
+/** The output of `gh pr view --json state,headRefOid`. */
+const PrViewSchema = z.object({
+  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  headRefOid: z.string(),
+});
+type PrState = z.infer<typeof PrViewSchema>;
+const MERGED = "MERGED";
+
+/** Merged at exactly this head: a commit after the PR head is not on GitHub. */
+function isMergedAt(pr: PrState, head: string): boolean {
+  return pr.state === MERGED && pr.headRefOid === head;
+}
 
 /** `pr create`, `api --method`: enough to name the command in an error without its long arguments. */
 const SUBCOMMAND_WORDS = 2;
@@ -35,6 +48,19 @@ async function run(args: string[], cwd: string): Promise<string> {
   if (result.code === 0) return result.stdout.trim();
   const reason = result.stderr.trim() || result.stdout.trim();
   throw new TenboxError(`gh ${args.slice(0, SUBCOMMAND_WORDS).join(" ")} failed: ${reason}`, "gh");
+}
+
+/** The PR of the branch, or null when there is none or `gh` cannot answer (missing, no login). */
+async function findPr(dir: string, branch: string): Promise<PrState | null> {
+  const args = ["pr", "view", branch, "--json", "state,headRefOid"];
+  try {
+    const result = await processes.run(["gh", ...args], { cwd: dir });
+    if (result.code !== 0) return null;
+    return PrViewSchema.parse(JSON.parse(result.stdout));
+  } catch (e) {
+    if (e instanceof TenboxError && e.code === "no-command") return null;
+    throw e;
+  }
 }
 
 /** The open PR of the branch, or null. */

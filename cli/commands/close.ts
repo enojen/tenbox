@@ -3,8 +3,9 @@ import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
 import { errorMessage } from "../../domain/utils.ts";
-import { env } from "../infra/env.ts";
+import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
+import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import { projects } from "../application/projects.ts";
@@ -98,15 +99,27 @@ async function assertClean(target: CloseTarget): Promise<void> {
 }
 
 async function assertMerged(target: CloseTarget): Promise<void> {
-  const { mainDir, branch, base } = target;
-  const exists = await git.branchExists(mainDir, branch);
-  if (!exists) return;
-  const merged = await git.isMerged(mainDir, base, branch);
+  const { branch, base } = target;
+  const merged = await isBranchMerged(target);
   if (merged) return;
   throw new TenboxError(
     `${branch} has changes that are not on ${base}; merge it or pass --force`,
     "unmerged",
   );
+}
+
+/** A found PR decides alone; without one, a test merge into the base decides. */
+async function isBranchMerged(target: CloseTarget): Promise<boolean> {
+  const { mainDir, branch } = target;
+  const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
+  if (head === null) return true; // no local branch: nothing left to merge
+  const pr = await gh.findPr(mainDir, branch);
+  return pr === null ? isMergedByTestMerge(target) : gh.isMergedAt(pr, head);
+}
+
+function isMergedByTestMerge({ mainDir, base, branch }: CloseTarget): Promise<boolean> {
+  log("tenbox close: gh pr view failed, using the test merge");
+  return git.isMerged(mainDir, base, branch);
 }
 
 /** Runs before the worktree and branch are gone; a failure never stops the close. */

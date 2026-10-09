@@ -26,6 +26,7 @@ export const git = {
   listGeneratedFiles,
   findCommonDir,
   findMainDir,
+  findCommit,
   refExists,
   branchExists,
   addWorktree,
@@ -150,8 +151,13 @@ function parseNumstatLine(line: string): ChangedFile {
 
 const lineCount = (count: string): number => (count === BINARY_COUNT ? 0 : Number(count));
 
+/** The sha of `ref`, or null when it does not exist. */
+function findCommit(dir: string, ref: string): Promise<string | null> {
+  return find(["rev-parse", "--verify", "--quiet", ref], dir, exitedWithOne);
+}
+
 async function refExists(dir: string, ref: string): Promise<boolean> {
-  const sha = await find(["rev-parse", "--verify", "--quiet", ref], dir, exitedWithOne);
+  const sha = await findCommit(dir, ref);
   return sha !== null;
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { chmod, rm } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { taskDir } from "../../domain/project.ts";
@@ -15,6 +15,7 @@ import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 const SESSION = "tenbox-T-1";
 const MS_PER_MINUTE = 60_000;
 const DAY_MS = 86_400_000;
+const EXECUTABLE = 0o755;
 const MARKER = "SECRET-MARKER";
 
 let project: TempProject;
@@ -103,6 +104,112 @@ describe("tenbox close", () => {
     const branches = await branchList();
     expect([run.code, run.json.ok]).toEqual([0, true]);
     expect(branches).toBe("");
+  });
+
+  describe("asks GitHub through gh", () => {
+    const FALLBACK_LINE = "tenbox close: gh pr view failed, using the test merge";
+
+    /** A PATH dir with only git in it. */
+    async function binWithGit(name: string): Promise<string> {
+      const bin = path.join(project.root, name);
+      await files.mkdir(bin);
+      await files.symlink(Bun.which("git") ?? "git", path.join(bin, "git"));
+      return bin;
+    }
+
+    /** A PATH with git and a `gh` that runs `body`; the stub records each call in `gh.calls`. */
+    async function ghPath(body: string, name = "bin"): Promise<string> {
+      const bin = await binWithGit(name);
+      const script = `#!/bin/sh\necho "$@" >> "${bin}/gh.calls"\n${body}\n`;
+      await files.write(path.join(bin, "gh"), script);
+      await chmod(path.join(bin, "gh"), EXECUTABLE);
+      return bin;
+    }
+
+    const answer = (state: string, sha: string) =>
+      `echo '{"state":"${state}","headRefOid":"${sha}"}'`;
+
+    /** Squash-merges the branch, then changes the same line on main, so the test merge fails. */
+    async function squashThenConflict(): Promise<string> {
+      await files.write(path.join(taskWorktree, "a.txt"), "branch\n");
+      await git.run(["commit", "-q", "-am", "branch"], taskWorktree);
+      const head = await git.run(["rev-parse", "HEAD"], taskWorktree);
+      await git.run(["merge", "--squash", "feat/T-1"], project.mainDir);
+      await git.run(["commit", "-q", "-m", "squash"], project.mainDir);
+      await files.write(path.join(project.mainDir, "a.txt"), "later\n");
+      await git.run(["commit", "-q", "-am", "later"], project.mainDir);
+      return head.trim();
+    }
+
+    test("a MERGED PR with the branch head closes although main changed the same lines", async () => {
+      await setup();
+      const head = await squashThenConflict();
+      const bin = await ghPath(answer("MERGED", head));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const worktreeExists = await files.exists(taskWorktree);
+      const branches = await branchList();
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(run.err).not.toContain(FALLBACK_LINE);
+      expect(worktreeExists).toBe(false);
+      expect(branches).toBe("");
+    });
+
+    test("a commit after the PR head is refused", async () => {
+      await setup();
+      const head = await squashThenConflict();
+      await commitOn(taskWorktree, "later.txt");
+      const bin = await ghPath(answer("MERGED", head));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      expect(run.json).toMatchObject({ code: "unmerged" });
+    });
+
+    test("an OPEN or CLOSED PR is refused, even when the test merge would pass", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      await git.run(["merge", "--squash", "feat/T-1"], project.mainDir);
+      await git.run(["commit", "-q", "-m", "squash"], project.mainDir);
+      const rawHead = await git.run(["rev-parse", "feat/T-1"], project.mainDir);
+      const head = rawHead.trim();
+      for (const state of ["OPEN", "CLOSED"]) {
+        const bin = await ghPath(answer(state, head), state);
+        const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+        await expectUntouched(run);
+        expect(run.json).toMatchObject({ code: "unmerged" });
+      }
+    });
+
+    test("a gh that fails uses the test merge and says so on stderr", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const bin = await ghPath("echo 'no pull requests found' >&2\nexit 1");
+      const refused = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(refused);
+      expect(refused.err).toContain(FALLBACK_LINE);
+      await git.run(["merge", "--squash", "feat/T-1"], project.mainDir);
+      await git.run(["commit", "-q", "-m", "squash"], project.mainDir);
+      const closed = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      expect([closed.code, closed.json.ok]).toEqual([0, true]);
+    });
+
+    test("without gh in PATH the test merge decides and stderr says so", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const bin = await binWithGit("nogh");
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      expect(run.err).toContain(FALLBACK_LINE);
+    });
+
+    test("--force does not call gh", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const bin = await ghPath("exit 1");
+      const run = await tenbox(["close", "T-1", "--force"], project.mainDir, { PATH: bin });
+      const calls = await files.exists(path.join(bin, "gh.calls"));
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(calls).toBe(false);
+    });
   });
 
   test("--force closes a dirty and an unmerged task", async () => {
