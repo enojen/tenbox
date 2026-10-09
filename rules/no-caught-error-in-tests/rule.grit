@@ -1,0 +1,16 @@
+language js
+
+or {
+  `try { $_ } catch ($e) { $body }` where {
+    or {
+      $body <: contains `return $v` where $v <: $e,
+      $body <: contains JsAssignmentExpression(left=$t, right=$v) where $v <: $e
+    },
+    register_diagnostic(span=$e, message="Do not take the caught error out of the catch: use expect(...).toThrow or rejects.")
+  },
+  `$_.catch($handler)` where {
+    $handler <: `$p => $b`,
+    $p <: contains $b,
+    register_diagnostic(span=$handler, message="Do not return the caught error from .catch: use rejects.")
+  }
+}

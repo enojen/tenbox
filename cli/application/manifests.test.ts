@@ -18,8 +18,10 @@ test("a local layer with an id fails: the id belongs in tenbox.yaml", async () =
     "tenbox.local.yaml": "id: k7f3qa\n",
   });
   const local = path.join(project.mainDir, "tenbox.local.yaml");
-  const error = await manifests.get(project.mainDir).catch((e: unknown) => e);
-  expect(error).toMatchObject({ code: "manifest", message: `${local}: id belongs in tenbox.yaml` });
+  await expect(manifests.get(project.mainDir)).rejects.toMatchObject({
+    code: "manifest",
+    message: `${local}: id belongs in tenbox.yaml`,
+  });
 });
 
 test("ensureId appends the id line and keeps every other byte", async () => {
@@ -64,8 +66,7 @@ test("get reads a quoted all-digit id as the string", async () => {
 
 test("get rejects an unquoted all-digit id", async () => {
   project = await makeTempProject({ "tenbox.yaml": "id: 000000\n" });
-  const error = await manifests.get(project.mainDir).catch((e: unknown) => e);
-  expect(error).toMatchObject({ code: "manifest" });
+  await expect(manifests.get(project.mainDir)).rejects.toMatchObject({ code: "manifest" });
 });
 
 test("ensureId creates tenbox.yaml with only the id line", async () => {

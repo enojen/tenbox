@@ -79,6 +79,10 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   the module name.
 - Errors come from named functions in `domain/errors/<kind>.ts`, never `new TenboxError(`
   elsewhere (`rules/errors-from-domain`).
+- No `JSON.parse(JSON.stringify(x))`: copy with `structuredClone` (`rules/no-json-roundtrip`).
+- In `*.test.ts`, no ternary inside `expect(...)`: assert each case (`rules/no-conditional-expect`).
+- In `*.test.ts`, never take a caught error out of a catch; use `toThrow` or `rejects`
+  (`rules/no-caught-error-in-tests`).
 - `application/` calls the named git functions in `infra/git.ts` (`rules/no-raw-git-in-application`).
   A tool's file format or command line lives in `infra/`.
 - Verbs in module APIs: `get` (throws when missing), `find` (null when missing), `ensure`

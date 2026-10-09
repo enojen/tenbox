@@ -65,13 +65,7 @@ test("save stores the type and reuses an organization found by name", () => {
 test("the same github twice is user-exists and adds nothing", () => {
   const db = tempDb();
   users.save(db, ENES);
-  let thrown: unknown = null;
-  try {
-    users.save(db, ENES);
-  } catch (error) {
-    thrown = error;
-  }
-  expect(thrown).toMatchObject({ code: "user-exists" });
+  expect(() => users.save(db, ENES)).toThrow(expect.objectContaining({ code: "user-exists" }));
   expect(count(db, "users")).toBe(1);
 });
 

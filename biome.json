@@ -22,14 +22,19 @@
   },
   "plugins": [
     "./rules/await-at-statement-start/rule.grit",
-    "./rules/named-parameter-types/rule.grit"
+    "./rules/named-parameter-types/rule.grit",
+    "./rules/no-json-roundtrip/rule.grit"
   ],
   "overrides": [
     {
       "includes": ["**/*.test.ts"],
       "linter": {
         "rules": { "style": { "noMagicNumbers": "off" }, "suspicious": { "useAwait": "off" } }
-      }
+      },
+      "plugins": [
+        "./rules/no-conditional-expect/rule.grit",
+        "./rules/no-caught-error-in-tests/rule.grit"
+      ]
     },
     {
       "includes": ["**", "!**/domain/ids.ts", "!**/domain/failures.ts"],

@@ -1,0 +1,5 @@
+language js
+
+`expect($test ? $yes : $no)` as $call where {
+  register_diagnostic(span=$call, message="No ternary inside expect: assert each case, so the test fails for one reason.")
+}

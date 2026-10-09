@@ -126,14 +126,8 @@ describe("install", () => {
   test("outside a git repository it is no-repo and links nothing", async () => {
     const outside = await mkdtemp(path.join(os.tmpdir(), "tenbox-no-repo-"));
     try {
-      let thrown: unknown = null;
-      try {
-        await install(outside);
-      } catch (error) {
-        thrown = error;
-      }
+      await expect(install(outside)).rejects.toMatchObject({ code: "no-repo" });
       const agentLinks = await files.list(path.join(env().claudeDir, "agents"));
-      expect(thrown).toMatchObject({ code: "no-repo" });
       expect(agentLinks).toEqual([]);
     } finally {
       await rm(outside, { recursive: true, force: true });
