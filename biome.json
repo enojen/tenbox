@@ -3,16 +3,30 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": false,
-      "style": { "noMagicNumbers": "error" },
-      "correctness": { "noUnusedImports": "error", "noUnusedVariables": "error" }
+      "recommended": true,
+      "style": {
+        "noMagicNumbers": "error",
+        "noNonNullAssertion": "error",
+        "noParameterAssign": "error",
+        "noNestedTernary": "error",
+        "noDefaultExport": "error"
+      },
+      "suspicious": { "noExplicitAny": "error", "useAwait": "error" },
+      "complexity": { "noForEach": "error", "noExcessiveCognitiveComplexity": "error" },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "error"
+      }
     }
   },
   "plugins": ["./rules/await-at-statement-start/rule.grit"],
   "overrides": [
     {
       "includes": ["**/*.test.ts"],
-      "linter": { "rules": { "style": { "noMagicNumbers": "off" } } }
+      "linter": {
+        "rules": { "style": { "noMagicNumbers": "off" }, "suspicious": { "useAwait": "off" } }
+      }
     },
     {
       "includes": ["**", "!**/domain/ids.ts", "!**/domain/failures.ts"],

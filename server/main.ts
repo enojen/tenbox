@@ -23,8 +23,14 @@ interface ErrorOutput {
 
 function main(args: string[]): void {
   const [command, subcommand, ...rest] = args;
-  if (command === undefined) return serve();
-  if (command === "user" && subcommand === "add") return runUserAdd(rest);
+  if (command === undefined) {
+    serve();
+    return;
+  }
+  if (command === "user" && subcommand === "add") {
+    runUserAdd(rest);
+    return;
+  }
   console.error(USAGE);
   process.exitCode = FAILURE_EXIT_CODE;
 }

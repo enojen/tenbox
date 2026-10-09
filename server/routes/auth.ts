@@ -7,7 +7,7 @@ const BEARER_PREFIX = "Bearer ";
 const OPEN_PATHS = new Set(["/health", "/openapi.json", "/docs"]);
 
 export function requireToken(db: Db): MiddlewareHandler {
-  return async (c, next) => {
+  return (c, next) => {
     if (OPEN_PATHS.has(c.req.path)) return next();
     const token = bearerToken(c.req.header("Authorization"));
     if (token === null) throw new UnauthorizedError();
