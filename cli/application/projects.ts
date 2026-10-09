@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import type { Manifest } from "../../domain/manifest.ts";
 import type { ProjectId } from "../../domain/ids.ts";
 import { type Project, projectDir, projectName } from "../../domain/project.ts";

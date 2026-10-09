@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { errorMessage } from "../../domain/utils.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;

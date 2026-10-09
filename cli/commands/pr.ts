@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
 import { roundDir, roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";

@@ -169,12 +169,31 @@ cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
   application/  use cases
   infra/        git, gh, tmux, shell, files, env, baselines on disk, tracker/ adapters
   test/         temporary projects and the CLI runner for tests
-server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`), loopback only
+server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`), loopback only.
+              SIGINT or SIGTERM lets open requests finish, closes the database and exits 0
   routes/       `GET /health` returns 200 `{"ok":true}`; `GET /openapi.json` is the OpenAPI 3.1
-                document built from the zod route schemas; `GET /docs` is Swagger UI; any
-                other path returns 404
+                document built from the zod route schemas; `GET /docs` is Swagger UI. Every
+                other path needs `Authorization: Bearer <token>` of a known user. Every error
+                is an RFC 9457 problem, `application/problem+json`:
+                `{ type: "about:blank", title, status, detail, code }`. No token: 401
+                `unauthorized`; with a token, an unknown path is 404 `not-found`; any other
+                error is 500 and its message goes to stderr, not to the client
+  application/  organizations and users: the rules (a GitHub name once; the user, the
+                membership and the token in one transaction)
+  commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
+                [--type admin|member]` (default `member`) finds or makes the organization,
+                makes the user and prints `{ ok, user, organization, type, token }` on stdout.
+                The `tbx_` token is shown once; only its SHA-256 hash is stored. The same
+                `--github` again exits 1 with `code: "user-exists"`. A lost token cannot be
+                shown again: delete the user row (its memberships go with it) and add the
+                user again
   infra/        env (`TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
-                `~/.tenbox-server/server.db`; Bun reads `.env`) and the SQLite database
+                `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
+    db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
+                  `memberships`) and `migrations/`. Opening the database applies the new
+                  migrations. After a change to `schema.ts`, run
+                  `bunx drizzle-kit generate --name <what>` and commit the new migration
+    repositories/ data access per table, no rules: `find...`, `insert`
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js
 docs/         design.md (the target design), flow page and mockups

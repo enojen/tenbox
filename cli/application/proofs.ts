@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { isProof, type StatsProof } from "../../domain/proof.ts";
 import { proofsFile, tenboxDir } from "../../domain/task.ts";
 import { errorMessage } from "../../domain/utils.ts";

@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 
 export interface ServerEnv {
   /** `TENBOX_SERVER_PORT`, default 4300. */

@@ -57,7 +57,6 @@ export function minutesBetween(from: string | null, to: string | null): number |
   return toMinutes(Date.parse(to) - Date.parse(from));
 }
 
-/** The SHA-256 of a text, in hex. */
 export function sha256Hex(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }

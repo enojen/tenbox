@@ -71,4 +71,9 @@ describe("tenbox approve", () => {
     const run = await approve("T-9");
     expect([run.code, run.json.ok]).toEqual([1, false]);
   });
+
+  test("a bad task id is a usage error", async () => {
+    const run = await approve("bad id");
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+  });
 });

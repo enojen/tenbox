@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TenboxError } from "./errors.ts";
+import { TenboxError } from "./errors/index.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject } from "./utils.ts";
 

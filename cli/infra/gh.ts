@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { processes } from "./processes.ts";
 
 export interface PrText {

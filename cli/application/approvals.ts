@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Approval } from "../../domain/approval.ts";
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { approvedFile, tenboxDir } from "../../domain/task.ts";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";

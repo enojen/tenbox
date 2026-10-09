@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { app } from "./index.ts";
+import { database } from "../infra/db/index.ts";
+import { createApp } from "./index.ts";
+
+const app = createApp(database.open(":memory:"));
 
 /** The parts of the OpenAPI document the test reads. */
 const OpenApiDocSchema = z.object({
@@ -15,11 +18,9 @@ test("GET /health returns 200 ok true", async () => {
   expect(body).toEqual({ ok: true });
 });
 
-test("any other path returns 404 ok false", async () => {
+test("any other path without a token returns 401", async () => {
   const response = await app.request("/nope");
-  expect(response.status).toBe(404);
-  const body = await response.json();
-  expect(body).toEqual({ ok: false, error: "not found" });
+  expect(response.status).toBe(401);
 });
 
 test("POST /health returns 404", async () => {

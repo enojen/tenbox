@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TenboxError } from "../../../domain/errors.ts";
+import { TenboxError } from "../../../domain/errors/index.ts";
 import type { TrackerConfig } from "../../../domain/manifest.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";

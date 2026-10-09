@@ -1,4 +1,4 @@
-import { TenboxError } from "./errors.ts";
+import { UsageError } from "./errors/usage.ts";
 import type { Names } from "./manifest.ts";
 
 /** A tracker task id such as `TEN-301` or `86abc123`. Validated once, at the edge. */
@@ -13,7 +13,7 @@ export function isSafeName(raw: string): boolean {
 
 export function taskId(raw: string): TaskId {
   if (!isSafeName(raw)) {
-    throw new TenboxError(`task id "${raw}": letters, digits, _ and - only`, "usage");
+    throw new UsageError(`task id "${raw}": letters, digits, _ and - only`);
   }
   return raw as TaskId;
 }
@@ -32,16 +32,27 @@ export function isProjectId(raw: string): boolean {
 
 export function projectId(raw: string): ProjectId {
   if (!isProjectId(raw)) {
-    throw new TenboxError(`project id "${raw}": 6 characters, a-z and 0-9`, "usage");
+    throw new UsageError(`project id "${raw}": 6 characters, a-z and 0-9`);
   }
   return raw as ProjectId;
 }
 
+function randomChars(): string {
+  const random = crypto.getRandomValues(new Uint8Array(PROJECT_ID_LENGTH));
+  return Array.from(random, (n) => PROJECT_ID_ALPHABET[n % PROJECT_ID_ALPHABET.length]).join("");
+}
+
 /** A random project id; `tenbox start` writes it once into `tenbox.yaml`. */
 export function newProjectId(): ProjectId {
-  const random = crypto.getRandomValues(new Uint8Array(PROJECT_ID_LENGTH));
-  const chars = Array.from(random, (n) => PROJECT_ID_ALPHABET[n % PROJECT_ID_ALPHABET.length]);
-  return projectId(chars.join(""));
+  return projectId(randomChars());
+}
+
+export function newUserId(): string {
+  return `u-${randomChars()}`;
+}
+
+export function newOrganizationId(): string {
+  return `o-${randomChars()}`;
 }
 
 const SHORT_SHA_LENGTH = 7;

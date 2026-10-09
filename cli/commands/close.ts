@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";

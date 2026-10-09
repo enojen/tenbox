@@ -1,4 +1,4 @@
-import { TenboxError } from "../../../domain/errors.ts";
+import { TenboxError } from "../../../domain/errors/index.ts";
 import type { Tracker, TrackerTask } from "../../../domain/tracker.ts";
 
 /** No tracker configured: `tenbox start <id> --title "..."` is the only way in. */

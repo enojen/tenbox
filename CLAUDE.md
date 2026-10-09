@@ -56,6 +56,10 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It comes from a worker's build run result, or recorded by hand in `.tenbox/proofs.json` (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`RunUnproven`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
+| organization | A group of users on the server; found by name (`organizations`). |
+| user | A person on the server, with a GitHub name and one token (`users`). |
+| membership | A user in an organization, with a type `admin` or `member`. |
+| token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules
@@ -94,7 +98,9 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 ## Layout
 
 ```
-domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port
+domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port,
+            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users; HTTP status lives
+            in server/routes/)
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
@@ -106,9 +112,12 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
                 layers test
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
-            schema per route, `/openapi.json`, Swagger UI on `/docs`), infra/ (env, SQLite);
-            imports only server/ and domain/, never cli/; cli/ never imports server/
-            (`cli/test/layers.test.ts`); `server/application/` comes with the first use case
+            schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
+            error as an RFC 9457 problem), application/ (the rules: organizations, users),
+            commands/ (`tenbox-server user add`), infra/ (env, tokens, db/ with the drizzle
+            schema and migrations, repositories/: data access per table, no rules);
+            application/ imports repositories/ directly; imports only server/ and domain/,
+            never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)
 agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js
 docs/       design.md (the target design), flow page and mockups

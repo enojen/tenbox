@@ -1,5 +1,5 @@
 import path from "node:path";
-import { noBaseError, TenboxError } from "../../domain/errors.ts";
+import { noBaseError, TenboxError } from "../../domain/errors/index.ts";
 import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";

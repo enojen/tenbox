@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors.ts";
+import { TenboxError } from "../../domain/errors/index.ts";
 import { elapsedMs } from "../../domain/utils.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";

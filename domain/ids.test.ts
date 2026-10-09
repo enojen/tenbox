@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   isProjectId,
+  newOrganizationId,
   newProjectId,
+  newUserId,
   projectId,
   shortSha,
   taskBranch,
@@ -54,5 +56,12 @@ describe("projectId", () => {
 describe("shortSha", () => {
   test("keeps the first seven characters", () => {
     expect(shortSha("d".repeat(40))).toBe("ddddddd");
+  });
+});
+
+describe("newUserId and newOrganizationId", () => {
+  test("a user id is u- and 6 characters, an organization id is o- and 6 characters", () => {
+    expect(newUserId()).toMatch(/^u-[a-z0-9]{6}$/);
+    expect(newOrganizationId()).toMatch(/^o-[a-z0-9]{6}$/);
   });
 });
