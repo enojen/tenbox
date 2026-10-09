@@ -28,8 +28,8 @@ export interface StatsInput {
   forced: boolean;
   mainDir: string;
   taskWorktree: string;
-  /** Where close moved `.tenbox/`; the files are read from here. */
-  archive: string;
+  /** The task dir; the files are read from here. */
+  taskDir: string;
   branch: string;
   /** The branch the diff starts from. */
   base: string;
@@ -37,24 +37,24 @@ export interface StatsInput {
   recordedProofs: StatsProof[];
 }
 
-/** Stats: the record of one closed task, `stats.json` in its archive. */
+/** Stats: the record of one closed task, `stats.json` in its task dir. */
 export const stats = { compute, save };
 
 /** Reads git, the task's `.tenbox/` files and its Claude Code sessions; a missing source gives null. */
 async function compute(input: StatsInput): Promise<TaskStats> {
-  const { id, project, forced, mainDir, taskWorktree, archive, branch, recordedProofs } = input;
-  const taskMd = await files.read(path.join(archive, "task.md"));
+  const { id, project, forced, mainDir, taskWorktree, taskDir, branch, recordedProofs } = input;
+  const taskMd = await files.read(path.join(taskDir, "task.md"));
   const user = await git.findConfig(mainDir, "user.email");
   const tenbox = await git.findHead(env().tenboxRoot);
   const opened = await git.findBranchCreated(mainDir, branch);
   const closed = new Date().toISOString();
-  const planText = await files.read(path.join(archive, "plan.md"));
-  const partFiles = await parts.read(archive);
+  const planText = await files.read(path.join(taskDir, "plan.md"));
+  const partFiles = await parts.read(taskDir);
   const plan = countPlan(
     planText,
     partFiles.map((part) => part.text),
   );
-  const rounds = await readRounds(archive);
+  const rounds = await readRounds(taskDir);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
   const summary = summarizeRuns(runs, opened, closed);
@@ -83,8 +83,8 @@ async function compute(input: StatsInput): Promise<TaskStats> {
   };
 }
 
-async function save(taskStats: TaskStats, archive: string): Promise<void> {
-  await files.write(statsFile(archive), `${JSON.stringify(taskStats, null, 2)}\n`);
+async function save(taskStats: TaskStats, dir: string): Promise<void> {
+  await files.write(statsFile(dir), `${JSON.stringify(taskStats, null, 2)}\n`);
 }
 
 async function readRounds(dir: string): Promise<StatsRound[]> {

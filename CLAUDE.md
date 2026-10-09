@@ -40,7 +40,6 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | worktree root | The directory that holds every project's checkouts, `~/wt` (`wtRoot`). |
 | task worktree | The git worktree of one task, `~/wt/<project>/<id>` (`taskWorktree`). |
 | task dir | Where one task's files live, `~/.tenbox/<project id>/<id>`; `.tenbox` in the task worktree links to it (`taskDir`). |
-| archive | Where a closed task's `.tenbox/` goes, `~/wt/.archive/<project>/<id>` (`archiveDir`). |
 | manifest | `tenbox.yaml` plus its local layers (`Manifest`). |
 | setup | The manifest command that prepares a new task worktree, e.g. `bun install`. |
 | check | One named command under `checks:`; `tenbox check` runs them all. |
@@ -52,7 +51,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
-| stats | The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
+| stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It comes from a worker's build run result, or recorded by hand in `.tenbox/proofs.json` (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`RunUnproven`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |

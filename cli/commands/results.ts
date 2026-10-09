@@ -3,7 +3,6 @@ import type { TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { SessionRemoveState, TmuxInfo } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
-import type { ArchiveState } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
@@ -28,11 +27,6 @@ export interface StartResult {
   tmux: TmuxInfo;
 }
 
-export interface ArchiveInfo {
-  path: string;
-  state: ArchiveState;
-}
-
 export interface SessionRemoveInfo {
   session: string;
   state: SessionRemoveState;
@@ -51,7 +45,8 @@ export interface BranchRemoveInfo {
 export type StatsState = "written" | "skipped" | `failed: ${string}`;
 
 export interface StatsInfo {
-  path: string;
+  /** Null when the stats were skipped. */
+  path: string | null;
   state: StatsState;
 }
 
@@ -60,7 +55,6 @@ export interface CloseResult {
   task: string;
   project: string;
   forced: boolean;
-  archive: ArchiveInfo;
   stats: StatsInfo;
   tmux: SessionRemoveInfo;
   worktree: WorktreeRemoveInfo;

@@ -34,11 +34,6 @@ export function taskDir(tenboxHome: string, projectId: ProjectId, id: TaskId): s
   return path.join(projectDir(tenboxHome, projectId), id);
 }
 
-/** `~/wt/.archive/<project>/<id>`: where a closed task's `.tenbox/` goes. */
-export function archiveDir(wtRoot: string, projectName: string, id: TaskId): string {
-  return path.join(wtRoot, ".archive", projectName, id);
-}
-
 /** Tenbox and Claude Code write these into worktrees; keep them out of `git status`. */
 export const EXCLUDED_PATHS: readonly string[] = [
   ".tenbox", // the link to the task dir; no slash, a slash would skip a symlink

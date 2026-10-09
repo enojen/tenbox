@@ -38,8 +38,7 @@ Notes:
 │                     ├── fixed (baseline lines that no longer appear)
 │                     └── summary → FEEDBACK for the next round
 │
-├── .archive/<project>/<TEN-301>/       ARCHIVE (tenbox close)
-│   ├── (the moved .tenbox/ content)
+├── (tenboxHome)/<project id>/<TEN-301>/  the task dir; tenbox close adds
 │   └── stats.json                      STATS (TaskStats)
 │         ├── timeline, minutes         plan / wait approval / build / human review
 │         ├── plan                      parts count, difficulty[], estimated_lines
@@ -71,4 +70,4 @@ Claude Code session files
 3. A task opens a task worktree.
 4. Inside the worktree, the plan makes parts and the build makes rounds.
 5. Each round makes failures and feedback.
-6. `tenbox close` moves `.tenbox/` to the archive and writes `stats.json`.
+6. `tenbox close` writes `stats.json` in the task dir and keeps the dir.

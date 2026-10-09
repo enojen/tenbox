@@ -3,12 +3,12 @@ import type { StatsProof } from "./proof.ts";
 import type { RunAgent, RunMinutes, RunReview, RunTimeline, RunUnproven } from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
-/* The record `tenbox close` writes to `<archive>/stats.json`: numbers, labels and the worker proofs. */
+/* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
 export const STATS_SCHEMA = 3;
 
-/** `<archive>/stats.json`. */
-export const statsFile = (archive: string): string => path.join(archive, "stats.json");
+/** `stats.json` in a task dir. */
+export const statsFile = (dir: string): string => path.join(dir, "stats.json");
 
 const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";

@@ -1,8 +1,7 @@
 import { TenboxError } from "../../domain/errors.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
-import { archiveDir, taskWorktreeDir } from "../../domain/project.ts";
+import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
-import { tenboxDir } from "../../domain/task.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -12,7 +11,7 @@ import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
 import { sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
-import { type ArchiveState, tasks } from "../application/tasks.ts";
+import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import type { CloseResult, StatsInfo } from "./results.ts";
 
@@ -22,43 +21,48 @@ export interface CloseInput {
   force: boolean;
 }
 
+const SKIPPED_STATS: StatsInfo = { path: null, state: "skipped" };
+
 interface CloseTarget {
   mainDir: string;
   taskWorktree: string;
   branch: string;
   base: string;
-  archive: string;
 }
 
 /**
- * Archives `.tenbox/`, kills the tmux session, removes the worktree and the branch, sets the
- * tracker to done. The safety checks run first; a step with nothing to do is skipped.
+ * Writes `stats.json` in the task dir, kills the tmux session, removes the worktree and the
+ * branch, sets the tracker to done. The task dir stays. The safety checks run first; a step with
+ * nothing to do is skipped.
  */
 export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const { id, force } = input;
-  const { cwd, wtRoot } = env();
+  const { cwd, wtRoot, tenboxHome } = env();
   const { project, manifest } = await projects.get(cwd);
   const tracker = makeTracker(manifest.tracker);
   const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
   const session = tmuxSessionName(manifest.names, id);
-  const archive = archiveDir(wtRoot, project.name, id);
+  // Read only: a project with no id yet has no task dirs, and close must not write the manifest.
+  const dir = manifest.id === undefined ? null : taskDir(tenboxHome, manifest.id, id);
   const { base } = manifest;
-  await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base, archive }, force);
+  await assertSafe({ mainDir: project.mainDir, taskWorktree, branch, base }, force);
   const recordedProofs = await proofs.read(taskWorktree);
-  const archiveState = await tasks.removeFiles(taskWorktree, archive);
-  const statsInput: StatsInput = {
-    id,
-    project: project.name,
-    forced: force,
-    mainDir: project.mainDir,
-    taskWorktree,
-    archive,
-    branch,
-    base,
-    recordedProofs,
-  };
-  const statsInfo = await writeStats(statsInput, archiveState);
+  let statsInfo = SKIPPED_STATS;
+  if (dir !== null) {
+    const statsInput: StatsInput = {
+      id,
+      project: project.name,
+      forced: force,
+      mainDir: project.mainDir,
+      taskWorktree,
+      taskDir: dir,
+      branch,
+      base,
+      recordedProofs,
+    };
+    statsInfo = await writeStats(statsInput);
+  }
   const tmuxState = await sessions.remove(session);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id }, tracker, "done");
@@ -67,7 +71,6 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     task: id,
     project: project.name,
     forced: force,
-    archive: { path: archive, state: archiveState },
     stats: statsInfo,
     tmux: { session, state: tmuxState },
     worktree: { path: taskWorktree, state: removed.worktree },
@@ -78,18 +81,9 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
 
 /** Throws before anything changes. `force` skips the dirty and unmerged checks only. */
 async function assertSafe(target: CloseTarget, force: boolean): Promise<void> {
-  await assertArchiveFree(target);
   if (force) return;
   await assertClean(target);
   await assertMerged(target);
-}
-
-async function assertArchiveFree(target: CloseTarget): Promise<void> {
-  const hasFiles = await files.isDir(tenboxDir(target.taskWorktree));
-  if (!hasFiles) return;
-  const taken = await files.exists(target.archive);
-  if (!taken) return;
-  throw new TenboxError(`archive ${target.archive} already exists; move it away`, "archive-exists");
 }
 
 async function assertClean(target: CloseTarget): Promise<void> {
@@ -115,13 +109,15 @@ async function assertMerged(target: CloseTarget): Promise<void> {
   );
 }
 
-/** Runs after the archive move and before the branch is gone; a failure never stops the close. */
-async function writeStats(input: StatsInput, archiveState: ArchiveState): Promise<StatsInfo> {
-  const file = statsFile(input.archive);
-  if (archiveState === "skipped") return { path: file, state: "skipped" };
+/** Runs before the worktree and branch are gone; a failure never stops the close. */
+async function writeStats(input: StatsInput): Promise<StatsInfo> {
+  const hasDir = await files.isDir(input.taskDir);
+  const hasWorktree = await files.isDir(input.taskWorktree);
+  if (!hasDir || !hasWorktree) return SKIPPED_STATS;
+  const file = statsFile(input.taskDir);
   try {
     const computed = await stats.compute(input);
-    await stats.save(computed, input.archive);
+    await stats.save(computed, input.taskDir);
     return { path: file, state: "written" };
   } catch (e) {
     return { path: file, state: `failed: ${errorMessage(e)}` };

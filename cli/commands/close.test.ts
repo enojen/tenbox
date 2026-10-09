@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import { taskId } from "../../domain/ids.ts";
+import { taskDir } from "../../domain/project.ts";
 import { minutesBetween } from "../../domain/utils.ts";
+import { manifests } from "../application/manifests.ts";
 import { projectDir } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -16,13 +19,14 @@ const MARKER = "SECRET-MARKER";
 
 let project: TempProject;
 let taskWorktree: string;
-let archive: string;
+let kept: string;
 
 async function setup(): Promise<void> {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   taskWorktree = path.join(project.wtRoot, "demo", "T-1");
-  archive = path.join(project.wtRoot, ".archive", "demo", "T-1");
   await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  const id = await manifests.ensureId(project.mainDir);
+  kept = taskDir(project.tenboxHome, id, taskId("T-1"));
 }
 
 const closeT1 = (...flags: string[]) => tenbox(["close", "T-1", ...flags], project.mainDir);
@@ -33,9 +37,9 @@ const commitOn = async (dir: string, name: string) => {
   await git.run(["commit", "-q", "-m", name], dir);
 };
 
-/** The archived `stats.json` text; `"null"` when it is missing. */
+/** The task dir's `stats.json` text; `"null"` when it is missing. */
 async function readStatsText(): Promise<string> {
-  const text = await files.read(path.join(archive, "stats.json"));
+  const text = await files.read(path.join(kept, "stats.json"));
   return text ?? "null";
 }
 
@@ -43,11 +47,9 @@ async function expectUntouched(run: CliRun): Promise<void> {
   expect([run.code, run.json.ok]).toEqual([1, false]);
   const worktreeIsDir = await files.isDir(taskWorktree);
   const taskFileExists = await files.exists(path.join(taskWorktree, ".tenbox", "task.md"));
-  const archiveExists = await files.exists(archive);
   const branches = await branchList();
   expect(worktreeIsDir).toBe(true);
   expect(taskFileExists).toBe(true);
-  expect(archiveExists).toBe(false);
   expect(branches).not.toBe("");
 }
 
@@ -57,15 +59,18 @@ afterEach(async () => {
 });
 
 describe("tenbox close", () => {
-  test("closes a clean task and removes worktree, branch and .tenbox", async () => {
+  test("closes a clean task and removes worktree and branch, the task dir stays", async () => {
     await setup();
     const run = await closeT1();
     expect([run.code, run.json.ok]).toEqual([0, true]);
-    const archivedTaskExists = await files.exists(path.join(archive, "task.md"));
+    const keptNames = await files.list(kept);
     const worktreeExists = await files.exists(taskWorktree);
     const worktreeList = await git.run(["worktree", "list"], project.mainDir);
     const branches = await branchList();
-    expect(archivedTaskExists).toBe(true);
+    expect(keptNames).toEqual(expect.arrayContaining(["task.md", "parts", "rounds", "stats.json"]));
+    expect(run.json).toMatchObject({
+      stats: { path: path.join(kept, "stats.json"), state: "written" },
+    });
     expect(worktreeExists).toBe(false);
     expect(worktreeList).not.toContain("T-1");
     expect(branches).toBe("");
@@ -113,30 +118,16 @@ describe("tenbox close", () => {
     expect(branches).toBe("");
   });
 
-  test("an existing archive stops the close, also with --force", async () => {
-    await setup();
-    await files.mkdir(archive);
-    const run = await closeT1();
-    const worktreeIsDir = await files.isDir(taskWorktree);
-    const archivedTaskExists = await files.exists(path.join(archive, "task.md"));
-    expect([run.code, run.json.ok]).toEqual([1, false]);
-    expect(worktreeIsDir).toBe(true);
-    expect(archivedTaskExists).toBe(false);
-    const forced = await closeT1("--force");
-    const worktreeIsDirAfterForce = await files.isDir(taskWorktree);
-    const branches = await branchList();
-    expect([forced.code, forced.json.ok]).toEqual([1, false]);
-    expect(worktreeIsDirAfterForce).toBe(true);
-    expect(branches).not.toBe("");
-  });
-
-  test("a second close skips every step", async () => {
+  test("a second close skips every step and keeps the first stats.json", async () => {
     await setup();
     await closeT1();
+    const first = await readStatsText();
     const run = await closeT1();
+    const second = await readStatsText();
     expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(second).toBe(first);
     expect(run.json).toMatchObject({
-      archive: { state: "skipped" },
+      stats: { path: null, state: "skipped" },
       tmux: { state: "skipped" },
       worktree: { state: "skipped" },
       branch: { state: "skipped" },
@@ -150,7 +141,7 @@ describe("tenbox close", () => {
     const run = await closeT1();
     expect(run.json).toMatchObject({ tmux: { state: "killed" } });
     expect(Bun.spawnSync(["tmux", "has-session", "-t", `=${SESSION}`]).exitCode).not.toBe(0);
-    await rm(archive, { recursive: true });
+    await rm(kept, { recursive: true });
     await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
     const bin = path.join(project.root, "bin");
     await files.mkdir(bin);
@@ -168,11 +159,11 @@ describe("tenbox close", () => {
   test("works when run from inside the task worktree", async () => {
     await setup();
     const run = await tenbox(["close", "T-1"], taskWorktree);
-    const archivedTaskExists = await files.exists(path.join(archive, "task.md"));
+    const taskFileExists = await files.exists(path.join(kept, "task.md"));
     const worktreeExists = await files.exists(taskWorktree);
     const branches = await branchList();
     expect([run.code, run.json.ok]).toEqual([0, true]);
-    expect(archivedTaskExists).toBe(true);
+    expect(taskFileExists).toBe(true);
     expect(worktreeExists).toBe(false);
     expect(branches).toBe("");
   });
@@ -197,7 +188,7 @@ describe("tenbox close", () => {
     const text = await readStatsText();
     const written = JSON.parse(text);
     expect(run.json).toMatchObject({
-      stats: { path: path.join(archive, "stats.json"), state: "written" },
+      stats: { path: path.join(kept, "stats.json"), state: "written" },
     });
     expect(written).toMatchObject({
       schema: 3,
@@ -241,13 +232,25 @@ describe("tenbox close", () => {
     expect(branches).toBe("");
   });
 
-  test("a task without .tenbox skips the stats", async () => {
+  test("a task without a task dir gets no stats and still closes", async () => {
     await setup();
-    await rm(path.join(taskWorktree, ".tenbox"), { recursive: true });
+    await rm(kept, { recursive: true });
     const run = await closeT1();
-    const archiveExists = await files.exists(archive);
-    expect(run.json).toMatchObject({ stats: { state: "skipped" } });
-    expect(archiveExists).toBe(false);
+    const worktreeExists = await files.exists(taskWorktree);
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(run.json).toMatchObject({ stats: { path: null, state: "skipped" } });
+    expect(worktreeExists).toBe(false);
+  });
+
+  test("a project without an id keeps its tenbox.yaml and gets no stats", async () => {
+    await setup();
+    const manifestFile = path.join(project.mainDir, "tenbox.yaml");
+    await files.write(manifestFile, "project: demo\n");
+    const run = await closeT1();
+    const manifestText = await files.read(manifestFile);
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(run.json).toMatchObject({ stats: { path: null, state: "skipped" } });
+    expect(manifestText).toBe("project: demo\n");
   });
 });
 

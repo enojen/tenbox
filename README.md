@@ -22,7 +22,7 @@ tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/T
 tenbox pr TEN-301 [--ready]       push the branch, create or update the PR
   merge on GitHub (squash)        👤 you merge
 git pull                          in the main checkout
-tenbox close TEN-301              archive .tenbox/ with stats.json, remove worktree and branch
+tenbox close TEN-301              write stats.json in the task dir, remove worktree and branch
 ```
 
 Run `/tenbox-plan` and `/tenbox-build` in an interactive `claude` session in the task
@@ -41,7 +41,7 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
-| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves the `.tenbox` link to the archive, so `stats.json` lands in the task dir, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything is moved |
+| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both). Writes `stats.json` in the task dir (it stays, with the other task files), kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything changes |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
 
@@ -55,7 +55,7 @@ the newest one it has. With none at all, it runs the check once in the main chec
 that sits at the base commit, and saves the result. Without any baseline, every failure
 line is new.
 
-**`stats.json`** (in the archive): timeline, minutes per step (plan, wait for approval,
+**`stats.json`** (in the task dir): timeline, minutes per step (plan, wait for approval,
 build, human review), plan difficulty and estimated lines, rounds, review counts, code
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
 `proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from the
@@ -130,7 +130,7 @@ symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a l
   └ checks/*.log   the output of each check
 ```
 
-`tenbox close` moves `.tenbox` (the link) to `~/wt/.archive/<project>/<id>/` and adds `stats.json`.
+`tenbox close` keeps the task dir, adds `stats.json` to it and removes the worktree, so `.tenbox` goes with the worktree.
 
 ## The manifest: `tenbox.yaml`
 
