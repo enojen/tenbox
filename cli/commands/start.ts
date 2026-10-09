@@ -1,5 +1,5 @@
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
-import { taskWorktreeDir } from "../../domain/project.ts";
+import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { env } from "../infra/env.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import { manifests } from "../application/manifests.ts";
@@ -20,18 +20,21 @@ export interface StartInput {
   setup: boolean;
 }
 
-/** Worktree + branch from `base`, `.tenbox/` with `task.md`, setup, tmux session with `claude`. */
+/** Worktree + branch from `base`, task dir with `task.md` linked as `.tenbox`, setup, tmux session with `claude`. */
 export async function startTask(input: StartInput): Promise<StartResult> {
   const { id } = input;
   const { project, manifest } = await projects.get(env().cwd);
-  await manifests.ensureId(project.mainDir);
+  const projectId = await manifests.ensureId(project.mainDir);
   const base = input.base ?? manifest.base;
   const tracker = makeTracker(manifest.tracker);
   const task = await tasks.get(input, tracker);
   const taskWorktree = taskWorktreeDir(env().wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
   const session = tmuxSessionName(manifest.names, id);
-  const created = await worktrees.ensure({ project, taskWorktree, branch, base });
+  const { tenboxHome } = env();
+  await projects.save(tenboxHome, { id: projectId, name: project.name });
+  const dir = taskDir(tenboxHome, projectId, id);
+  const created = await worktrees.ensure({ project, taskWorktree, taskDir: dir, branch, base });
   const task_md = await tasks.ensureFiles(taskWorktree, task);
   const setup = await setups.run(taskWorktree, manifest.setup, input.setup);
   const status = await tasks.updateStatus(input, tracker, "in_progress");

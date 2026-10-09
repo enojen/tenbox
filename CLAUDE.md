@@ -39,6 +39,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | main checkout | The project's own clone, `~/wt/<project>/main` (`mainDir`). |
 | worktree root | The directory that holds every project's checkouts, `~/wt` (`wtRoot`). |
 | task worktree | The git worktree of one task, `~/wt/<project>/<id>` (`taskWorktree`). |
+| task dir | Where one task's files live, `~/.tenbox/<project id>/<id>`; `.tenbox` in the task worktree links to it (`taskDir`). |
 | archive | Where a closed task's `.tenbox/` goes, `~/wt/.archive/<project>/<id>` (`archiveDir`). |
 | manifest | `tenbox.yaml` plus its local layers (`Manifest`). |
 | setup | The manifest command that prepares a new task worktree, e.g. `bun install`. |

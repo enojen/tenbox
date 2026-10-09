@@ -1,8 +1,9 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { chmod } from "node:fs/promises";
+import { chmod, rm } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
 import { hasTmux, tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { startTask, type StartInput } from "./start.ts";
@@ -51,7 +52,7 @@ test("creates the worktree, .tenbox, excludes, settings and runs setup", async (
   const settings = await readSettings();
   const setupOutput = await files.read(path.join(taskWorktree, "setup.txt"));
   expect(taskMd).toContain("# T-1 · Cancel");
-  for (const pattern of [".tenbox/", ".claude/worktrees/", ".claude/settings.local.json"]) {
+  for (const pattern of [".tenbox", ".claude/worktrees/", ".claude/settings.local.json"]) {
     expect((exclude ?? "").split("\n")).toContain(pattern);
   }
   expect(settings).toEqual({ worktree: { baseRef: "head" } });
@@ -159,4 +160,65 @@ test("start keeps a tenbox.yaml that already has an id", async () => {
   const text = await files.read(path.join(project.mainDir, "tenbox.yaml"));
   expect(text).toBe(before);
   expect(stderr).not.toContain(COMMIT_MESSAGE);
+});
+
+const TASK_DIR_SUBS = ["parts", "rounds"];
+const PROJECT_ID = "k7f3qa";
+const ID_MANIFEST = `project: demo\nid: ${PROJECT_ID}\n`;
+const taskDirPath = (): string => path.join(project.tenboxHome, PROJECT_ID, "T-1");
+const linkPath = (): string => path.join(taskWorktree, ".tenbox");
+
+test("the task dir holds task.md, parts and rounds, and project.json names the project", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  const taskMd = await files.read(path.join(taskDirPath(), "task.md"));
+  const projectJson = await files.read(path.join(project.tenboxHome, PROJECT_ID, "project.json"));
+  expect(taskMd).toContain("# T-1 · Cancel");
+  for (const sub of TASK_DIR_SUBS) {
+    const isDir = await files.isDir(path.join(taskDirPath(), sub));
+    expect(isDir).toBe(true);
+  }
+  expect(JSON.parse(projectJson ?? "null")).toEqual({ id: PROJECT_ID, name: "demo" });
+});
+
+test("the worktree .tenbox is an absolute link to the task dir and git status stays clean", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  await files.write(path.join(linkPath(), "plan.md"), "plan");
+  const target = await files.readLink(linkPath());
+  const written = await files.read(path.join(taskDirPath(), "plan.md"));
+  const status = await git.run(["status", "--porcelain"], taskWorktree);
+  expect(target).toBe(taskDirPath());
+  expect(written).toBe("plan");
+  expect(status).toBe("");
+});
+
+test("a second start keeps the link and an edited task.md", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  await files.write(taskMdPath(), "# T-1 · Edited\n");
+  await startTask(input({ setup: false }));
+  const target = await files.readLink(linkPath());
+  const taskMd = await files.read(path.join(taskDirPath(), "task.md"));
+  expect([target, taskMd]).toEqual([taskDirPath(), "# T-1 · Edited\n"]);
+});
+
+test("a link whose task dir is gone gets the task dir back", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  await rm(taskDirPath(), { recursive: true, force: true });
+  await startTask(input({ setup: false }));
+  const taskMd = await files.read(path.join(taskDirPath(), "task.md"));
+  expect(taskMd).toContain("# T-1 · Cancel");
+});
+
+test("a real .tenbox directory is kept and not replaced by a link", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  await rm(linkPath(), { recursive: true, force: true });
+  await files.write(path.join(linkPath(), "plan.md"), "old");
+  await startTask(input({ setup: false }));
+  const target = await files.readLink(linkPath());
+  const plan = await files.read(path.join(linkPath(), "plan.md"));
+  expect([target, plan]).toEqual([null, "old"]);
 });

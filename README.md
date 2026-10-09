@@ -15,7 +15,7 @@ true of the code. The target design (sandbox, QA, parallel workers, the panel) i
 ## How a task runs today
 
 ```
-tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/TEN-301, .tenbox/task.md
+tenbox start TEN-301              worktree ~/wt/<project>/TEN-301, branch feat/TEN-301, .tenbox/task.md (a link to the task dir)
   /tenbox-plan TEN-301            planner writes plan.md, parts, questions.md     👤 you approve
   /tenbox-build TEN-301           rounds of build → tenbox check → review
   review the diff by hand
@@ -38,10 +38,10 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 
 | Command | Does |
 |---|---|
-| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, `.tenbox/` with `task.md` from the tracker (or from `--title`), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
+| `tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]` | Task worktree and branch from the base, the task dir `~/.tenbox/<project id>/<id>/` with `task.md` from the tracker (or from `--title`), `parts/` and `rounds/`, `project.json` `{ id, name }` in the project folder, and `.tenbox` in the worktree as an absolute symlink to the task dir (kept when it exists, also a real `.tenbox/` directory of an older task), the manifest `setup` command, tracker status to in progress, a tmux session with `claude`. Sets `worktree.baseRef: head` in the main checkout's `.claude/settings.local.json`. Writes `id:` to the main checkout's `tenbox.yaml` when it is missing and says on stderr to commit it. Safe to run twice |
 | `tenbox check <id> [--round N] [--base <branch>] [--timeout 600]` | Runs every manifest check in the task worktree and keeps only new failures (see below). Writes `.tenbox/rounds/N/checks.json` and `checks/<name>.log`; without `--round` it takes the next free round |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
-| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves `.tenbox/` to the archive with a `stats.json`, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything is moved |
+| `tenbox close <id> [--force]` | Refuses a dirty worktree or a branch not merged into the base (`--force` skips both) and an existing archive. Moves the `.tenbox` link to the archive, so `stats.json` lands in the task dir, kills the tmux session, removes the worktree and the local branch, sets the tracker to done. A step with nothing to do is skipped. A `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs` before anything is moved |
 | `tenbox proof <id> --part NN --file F --test T --failure X` | For a person who works by hand, outside `/tenbox-build`, and wants that proof counted at close; workers return proofs in their result and do not call it. Appends one proof `{ part, file, test, failure }`, each field trimmed, to `.tenbox/proofs.json`. Every flag is required and not blank (else `usage`, exit 2); `--part` must be the `NN` of a file in `.tenbox/parts/` (else `unknown-part`, exit 1); a `proofs.json` that is not a JSON array of valid proofs gives `bad-proofs`, exit 1, and nothing is written |
 | `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`. Never overwrites a foreign file |
 
@@ -67,6 +67,7 @@ The reviewer's sentences are not kept. Schema 3.
 
 | Variable | Does |
 |---|---|
+| `TENBOX_HOME` | Where task dirs are kept; default `~/.tenbox` |
 | `TENBOX_WT_ROOT` | The worktree root; default `~/wt` |
 | `WTBASE_DIR` | Where baselines are kept; default `<worktree root>/.baselines` |
 | `WTBASE_PATTERN` | The failure pattern when the manifest has none |
@@ -113,7 +114,8 @@ rounds; `tenbox close` counts them (see `stats.json`).
 
 ## Task files: `.tenbox/`
 
-Inside the task worktree, excluded from git:
+The files live in the task dir `~/.tenbox/<project id>/<id>/`. The task worktree has `.tenbox`, a
+symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a link):
 
 ```
 .tenbox/
@@ -128,7 +130,7 @@ Inside the task worktree, excluded from git:
   └ checks/*.log   the output of each check
 ```
 
-`tenbox close` moves the folder to `~/wt/.archive/<project>/<id>/` and adds `stats.json`.
+`tenbox close` moves `.tenbox` (the link) to `~/wt/.archive/<project>/<id>/` and adds `stats.json`.
 
 ## The manifest: `tenbox.yaml`
 

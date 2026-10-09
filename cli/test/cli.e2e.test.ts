@@ -54,7 +54,7 @@ describe("tenbox start", () => {
     expect(branch).toBe("feat/T-1");
     expect(taskMd).toContain("# T-1 · First task");
     expect(setupRan).toBe(true);
-    expect(exclude).toContain(".tenbox/");
+    expect(exclude.split("\n")).toContain(".tenbox");
     expect(JSON.parse(settings)).toEqual({ worktree: { baseRef: "head" } });
     expect(status).toBe("?? .setup-ran");
   });

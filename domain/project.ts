@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { TaskId } from "./ids.ts";
+import type { ProjectId, TaskId } from "./ids.ts";
 
 export interface Project {
   /** `tenbox.yaml` `project:`, else the checkout's directory name, or its parent's when the checkout is `main`. */
@@ -24,6 +24,16 @@ export function taskWorktreeDir(wtRoot: string, projectName: string, id: TaskId)
   return path.join(wtRoot, projectName, id);
 }
 
+/** `~/.tenbox/<project id>`: holds `project.json` and the task dirs. */
+export function projectDir(tenboxHome: string, id: ProjectId): string {
+  return path.join(tenboxHome, id);
+}
+
+/** `~/.tenbox/<project id>/<id>`: the files of one task; `.tenbox` in its worktree links here. */
+export function taskDir(tenboxHome: string, projectId: ProjectId, id: TaskId): string {
+  return path.join(projectDir(tenboxHome, projectId), id);
+}
+
 /** `~/wt/.archive/<project>/<id>`: where a closed task's `.tenbox/` goes. */
 export function archiveDir(wtRoot: string, projectName: string, id: TaskId): string {
   return path.join(wtRoot, ".archive", projectName, id);
@@ -31,7 +41,7 @@ export function archiveDir(wtRoot: string, projectName: string, id: TaskId): str
 
 /** Tenbox and Claude Code write these into worktrees; keep them out of `git status`. */
 export const EXCLUDED_PATHS: readonly string[] = [
-  ".tenbox/", // task state written by tenbox
+  ".tenbox", // the link to the task dir; no slash, a slash would skip a symlink
   ".claude/worktrees/", // Claude Code's own worktrees
   ".claude/settings.local.json", // written by `tenbox start`
 ];

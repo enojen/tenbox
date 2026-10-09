@@ -6,6 +6,8 @@ export interface Env {
   cwd: string;
   /** `~/wt`; `TENBOX_WT_ROOT` overrides. */
   wtRoot: string;
+  /** `~/.tenbox`; `TENBOX_HOME` overrides. */
+  tenboxHome: string;
   /** `~/wt/.baselines`; `WTBASE_DIR` overrides. */
   baselinesRoot: string;
   /** Used when the manifest has no `failure_pattern`; `WTBASE_PATTERN` overrides. */
@@ -24,6 +26,7 @@ export function env(): Env {
   return {
     cwd: process.cwd(),
     wtRoot,
+    tenboxHome: process.env.TENBOX_HOME ?? path.join(os.homedir(), ".tenbox"),
     baselinesRoot: process.env.WTBASE_DIR ?? path.join(wtRoot, ".baselines"),
     failurePattern: process.env.WTBASE_PATTERN ?? DEFAULT_FAILURE_PATTERN,
     tenboxRoot: path.resolve(import.meta.dir, "..", ".."),

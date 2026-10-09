@@ -13,7 +13,7 @@ export interface TaskSource {
   title?: string;
 }
 
-/** Tasks: one tracker item each, with its `.tenbox/` files in the task worktree. */
+/** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
 export const tasks = { get, ensureFiles, removeFiles, updateStatus };
 
 /** From the title when one is given, else from the tracker. */
@@ -24,7 +24,7 @@ async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
   return { ...found, id, tracker: tracker.kind };
 }
 
-/** Creates `.tenbox/` and returns the path of `task.md`; an existing one is kept. */
+/** Makes the task files through `.tenbox` and returns the path of `task.md`; an existing one is kept. */
 async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   const dir = tenboxDir(taskWorktree);
   for (const sub of ["parts", "rounds"]) {

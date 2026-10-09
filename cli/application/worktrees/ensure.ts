@@ -1,6 +1,7 @@
 import path from "node:path";
 import { noBaseError, TenboxError } from "../../../domain/errors.ts";
 import { EXCLUDED_PATHS, type Project } from "../../../domain/project.ts";
+import { tenboxDir } from "../../../domain/task.ts";
 import { claudeSettings } from "../../infra/claudeSettings.ts";
 import { log } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
@@ -9,6 +10,8 @@ import { git } from "../../infra/git.ts";
 export interface WorktreeInput {
   project: Project;
   taskWorktree: string;
+  /** `~/.tenbox/<project id>/<id>`: `.tenbox` in the worktree links here. */
+  taskDir: string;
   branch: string;
   base: string;
 }
@@ -20,6 +23,7 @@ export interface WorktreeInput {
 export async function ensure(input: WorktreeInput): Promise<boolean> {
   const { project } = input;
   const created = await addOrReuse(input);
+  await ensureLink(tenboxDir(input.taskWorktree), input.taskDir);
   await git.ensureExcludes(project.commonDir, EXCLUDED_PATHS);
   await claudeSettings.ensureHeadBaseRef(project.mainDir);
   return created;
@@ -46,4 +50,17 @@ async function assertWorktree(taskWorktree: string): Promise<void> {
   const real = await files.realPath(taskWorktree);
   if (top === real) return;
   throw new TenboxError(`${taskWorktree} exists but is not a git worktree`, "worktree");
+}
+
+/** A link keeps its target, made again when it is gone; a real directory stays as it is. */
+async function ensureLink(link: string, taskDir: string): Promise<void> {
+  const target = await files.readLink(link);
+  if (target !== null) {
+    await files.mkdir(path.resolve(path.dirname(link), target));
+    return;
+  }
+  const isDir = await files.isDir(link);
+  if (isDir) return;
+  await files.mkdir(taskDir);
+  await files.symlink(taskDir, link);
 }
