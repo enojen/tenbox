@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { noRepoError } from "../../domain/errors/git.ts";
 import type { Manifest } from "../../domain/manifest.ts";
 import type { ProjectId } from "../../domain/ids.ts";
 import { type Project, projectDir, projectName } from "../../domain/project.ts";
@@ -21,7 +21,7 @@ async function get(cwd: string): Promise<ProjectAndManifest> {
   const commonDir = await git.findCommonDir(cwd);
   const mainDir = await git.findMainDir(cwd);
   if (commonDir === null || mainDir === null) {
-    throw new TenboxError(`${cwd} is not inside a git repository`, "no-repo");
+    throw noRepoError(cwd);
   }
   const manifest = await manifests.get(mainDir);
   const project = { name: projectName(mainDir, manifest.project), mainDir, commonDir };

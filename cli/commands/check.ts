@@ -1,5 +1,7 @@
 import path from "node:path";
-import { noBaseError, TenboxError } from "../../domain/errors/index.ts";
+import { noHeadError } from "../../domain/errors/git.ts";
+import { noBaseError } from "../../domain/errors/index.ts";
+import { noChecksError } from "../../domain/errors/manifest.ts";
 import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
@@ -94,7 +96,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
 async function getChecks(mainDir: string, taskWorktree: string): Promise<CheckSetup> {
   const manifest = await manifests.get(mainDir, taskWorktree);
   if (Object.keys(manifest.checks).length === 0) {
-    throw new TenboxError("no checks: in tenbox.yaml; add one", "no-checks");
+    throw noChecksError();
   }
   return { checks: manifest.checks, pattern: manifest.failure_pattern ?? env().failurePattern };
 }
@@ -111,7 +113,7 @@ async function ensureRound(taskWorktree: string, wanted?: number): Promise<Round
 async function getCommits(taskWorktree: string, base: string): Promise<Commits> {
   const head = await git.findHead(taskWorktree);
   if (head === null) {
-    throw new TenboxError(`${taskWorktree} has no commit yet; commit first`, "no-head");
+    throw noHeadError(taskWorktree);
   }
   const baseExists = await git.refExists(taskWorktree, `${base}^{commit}`);
   if (!baseExists) throw noBaseError(base, "not found");

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { noRepoError } from "../../domain/errors/git.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
@@ -22,7 +22,7 @@ export async function install(tenboxRoot: string = env().tenboxRoot): Promise<In
   // The main checkout outlives its task worktrees, so the links do too.
   const sourceRoot = await git.findMainDir(tenboxRoot);
   if (sourceRoot === null) {
-    throw new TenboxError(`${tenboxRoot} is not inside a git repository`, "no-repo");
+    throw noRepoError(tenboxRoot);
   }
   const links: LinkEntry[] = [];
   for (const dir of LINKED_DIRS) {

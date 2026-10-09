@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import { TenboxError } from "../../domain/errors/index.ts";
+import type { TenboxError } from "../../domain/errors/index.ts";
+import { serviceError } from "../../domain/errors/tools.ts";
 import { errorMessage } from "../../domain/utils.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -35,7 +36,7 @@ export async function postJson<T>(request: JsonRequest<T>): Promise<T> {
 }
 
 export function endpointError(endpoint: Endpoint, message: string): TenboxError {
-  return new TenboxError(`${endpoint.service}: ${message}`, endpoint.errorCode);
+  return serviceError(endpoint.service, endpoint.errorCode, message);
 }
 
 /** A network error or no answer in time is the service's failure, not an internal one. */

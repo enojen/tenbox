@@ -36,6 +36,10 @@
       "plugins": ["./rules/no-inline-cast/rule.grit"]
     },
     {
+      "includes": ["**", "!**/domain/errors/**"],
+      "plugins": ["./rules/errors-from-domain/rule.grit"]
+    },
+    {
       "includes": ["**/cli/application/**", "!**/*.test.ts"],
       "plugins": ["./rules/no-raw-git-in-application/rule.grit"]
     }

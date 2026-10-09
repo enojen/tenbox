@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../../domain/errors/index.ts";
+import { noWorktreeError } from "../../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch } from "../../../domain/ids.ts";
 import type { Manifest } from "../../../domain/manifest.ts";
 import { taskWorktreeDir } from "../../../domain/project.ts";
@@ -25,7 +25,7 @@ export async function get(id: TaskId): Promise<string> {
   if (near !== null) return near;
   const underRoot = await worktreeUnderWtRoot(lookup, id);
   if (underRoot === null) {
-    throw new TenboxError(`no worktree for ${id}; run: tenbox start ${id}`, "no-worktree");
+    throw noWorktreeError(id);
   }
   return underRoot;
 }

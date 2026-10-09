@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { settingsError } from "../../domain/errors/tools.ts";
 import { errorMessage, isPlainObject } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 
@@ -26,6 +26,6 @@ async function read(file: string): Promise<Record<string, unknown>> {
     const parsed: unknown = JSON.parse(text);
     return isPlainObject(parsed) ? parsed : {};
   } catch (e) {
-    throw new TenboxError(`${file}: ${errorMessage(e)}`, "settings");
+    throw settingsError(file, errorMessage(e));
   }
 }

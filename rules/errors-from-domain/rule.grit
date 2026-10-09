@@ -1,0 +1,5 @@
+language js
+
+`new TenboxError($args)` as $call where {
+  register_diagnostic(span=$call, message="Build errors in domain/errors/: call a named error function, not new TenboxError.")
+}

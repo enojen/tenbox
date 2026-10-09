@@ -1,5 +1,5 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { manifestError } from "../../domain/errors/manifest.ts";
 import { newProjectId, type ProjectId, projectId } from "../../domain/ids.ts";
 import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifest.ts";
 import { errorMessage, isPlainObject } from "../../domain/utils.ts";
@@ -37,7 +37,7 @@ async function ensureId(mainDir: string): Promise<ProjectId> {
 function rejectLocalId(layer: ManifestLayer): void {
   if (path.basename(layer.file) === "tenbox.yaml") return;
   if (!isPlainObject(layer.value) || !("id" in layer.value)) return;
-  throw new TenboxError(`${layer.file}: id belongs in tenbox.yaml`, "manifest");
+  throw manifestError(`${layer.file}: id belongs in tenbox.yaml`);
 }
 
 function manifestPaths(mainDir: string, taskWorktree?: string): string[] {
@@ -63,6 +63,6 @@ function parseYaml(file: string, text: string): unknown {
   try {
     return Bun.YAML.parse(text);
   } catch (e) {
-    throw new TenboxError(`${file}: ${errorMessage(e)}`, "manifest");
+    throw manifestError(`${file}: ${errorMessage(e)}`);
   }
 }

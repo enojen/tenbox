@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { envError } from "../../domain/errors/manifest.ts";
 
 export interface ServerEnv {
   /** `TENBOX_SERVER_PORT`, default 4300. */
@@ -24,5 +24,5 @@ function port(raw: string | undefined): number {
   if (raw === undefined) return DEFAULT_PORT;
   const value = Number(raw);
   if (Number.isInteger(value) && value >= 1 && value <= MAX_PORT) return value;
-  throw new TenboxError(`TENBOX_SERVER_PORT "${raw}": a number from 1 to ${MAX_PORT}`, "env");
+  throw envError("TENBOX_SERVER_PORT", raw, `a number from 1 to ${MAX_PORT}`);
 }

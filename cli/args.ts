@@ -1,7 +1,7 @@
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
+import { usageError } from "../domain/errors/usage.ts";
 import { type TaskId, taskId } from "../domain/ids.ts";
 import { errorMessage, isDigits } from "../domain/utils.ts";
-import { UsageError } from "../domain/errors/usage.ts";
 
 type OptionValue = string | boolean | Array<string | boolean> | undefined;
 export type Values = Record<string, OptionValue>;
@@ -27,13 +27,13 @@ export function parseCommandArgs(spec: ArgSpec, args: string[]): ParsedArgs {
       strict: true,
     });
   } catch (e) {
-    throw new UsageError(`${errorMessage(e)}\nusage: ${spec.usage}`);
+    throw usageError(`${errorMessage(e)}\nusage: ${spec.usage}`);
   }
 }
 
 export function idArg(positionals: string[], usage: string): TaskId {
   const raw = positionals[0];
-  if (!raw) throw new UsageError(`usage: ${usage}`);
+  if (!raw) throw usageError(`usage: ${usage}`);
   return taskId(raw);
 }
 
@@ -41,7 +41,7 @@ export function intValue(values: Values, name: string): number | undefined {
   const value = values[name];
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !isDigits(value)) {
-    throw new UsageError(`--${name} must be a whole number`);
+    throw usageError(`--${name} must be a whole number`);
   }
   return Number(value);
 }

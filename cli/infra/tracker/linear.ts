@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TenboxError } from "../../../domain/errors/index.ts";
+import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import type { TrackerConfig } from "../../../domain/manifest.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
@@ -62,7 +62,7 @@ function linearEndpoint(config: TrackerConfig): Endpoint {
   const apiKey = config.api_key ?? process.env.LINEAR_API_KEY;
   if (!apiKey) {
     const message = "Linear: set tracker.api_key in tenbox.local.yaml or LINEAR_API_KEY";
-    throw new TenboxError(message, "tracker-auth");
+    throw trackerAuthError(message);
   }
   return {
     service: "Linear",
@@ -84,7 +84,7 @@ async function fetchIssue(endpoint: Endpoint, id: string): Promise<Issue> {
     variables: { id },
     data: IssueDataSchema,
   });
-  if (!data.issue) throw new TenboxError(`Linear: issue ${id} not found`, "tracker");
+  if (!data.issue) throw trackerError(`Linear: issue ${id} not found`);
   return data.issue;
 }
 
@@ -103,7 +103,7 @@ async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Prom
   const state = pickState(issue.team.states.nodes, change.status);
   if (!state) {
     const message = `Linear: no workflow state for ${change.status} in team ${issue.team.id}`;
-    throw new TenboxError(message, "tracker");
+    throw trackerError(message);
   }
   await graphqlQuery({
     endpoint,

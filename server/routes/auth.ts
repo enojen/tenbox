@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { UnauthorizedError } from "../../domain/errors/auth.ts";
+import { unauthorizedError } from "../../domain/errors/auth.ts";
 import { users } from "../application/users.ts";
 import type { Db } from "../infra/db/index.ts";
 
@@ -10,9 +10,9 @@ export function requireToken(db: Db): MiddlewareHandler {
   return (c, next) => {
     if (OPEN_PATHS.has(c.req.path)) return next();
     const token = bearerToken(c.req.header("Authorization"));
-    if (token === null) throw new UnauthorizedError();
+    if (token === null) throw unauthorizedError();
     const user = users.findByToken(db, token);
-    if (user === null) throw new UnauthorizedError();
+    if (user === null) throw unauthorizedError();
     return next();
   };
 }

@@ -1,4 +1,4 @@
-import { UsageError } from "./errors/usage.ts";
+import { usageError } from "./errors/usage.ts";
 import type { Names } from "./manifest.ts";
 
 /** A tracker task id such as `TEN-301` or `86abc123`. Validated once, at the edge. */
@@ -13,7 +13,7 @@ export function isSafeName(raw: string): boolean {
 
 export function taskId(raw: string): TaskId {
   if (!isSafeName(raw)) {
-    throw new UsageError(`task id "${raw}": letters, digits, _ and - only`);
+    throw usageError(`task id "${raw}": letters, digits, _ and - only`);
   }
   return raw as TaskId;
 }
@@ -32,7 +32,7 @@ export function isProjectId(raw: string): boolean {
 
 export function projectId(raw: string): ProjectId {
   if (!isProjectId(raw)) {
-    throw new UsageError(`project id "${raw}": 6 characters, a-z and 0-9`);
+    throw usageError(`project id "${raw}": 6 characters, a-z and 0-9`);
   }
   return raw as ProjectId;
 }

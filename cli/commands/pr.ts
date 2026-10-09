@@ -1,5 +1,6 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts";
+import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
 import { roundDir, roundNumbers, tenboxDir, titleFromTaskMd } from "../../domain/task.ts";
@@ -33,11 +34,11 @@ export async function openPr(input: PrInput): Promise<PrResult> {
 async function assertPushable(taskWorktree: string, branch: string, base: string): Promise<void> {
   const dirty = await git.hasChanges(taskWorktree);
   if (dirty) {
-    throw new TenboxError(`${taskWorktree} has uncommitted changes; commit them first`, "dirty");
+    throw dirtyBeforePrError(taskWorktree);
   }
   const merged = await git.isMerged(taskWorktree, base, branch);
   if (merged) {
-    throw new TenboxError(`${branch} has no commits ahead of ${base}`, "no-commits");
+    throw noCommitsError(branch, base);
   }
 }
 
@@ -85,7 +86,7 @@ async function createOrUpdate(input: CreateOrUpdateInput): Promise<PrInfo> {
 
 async function getOpen(dir: string, branch: string): Promise<OpenPr> {
   const pr = await gh.findOpen(dir, branch);
-  if (pr === null) throw new TenboxError(`no open PR for ${branch} after gh ran`, "gh");
+  if (pr === null) throw ghNoPrError(branch);
   return pr;
 }
 

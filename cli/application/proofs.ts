@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors/index.ts";
+import { badProofsError } from "../../domain/errors/tasks.ts";
 import { isProof, type StatsProof } from "../../domain/proof.ts";
 import { proofsFile, tenboxDir } from "../../domain/task.ts";
 import { errorMessage } from "../../domain/utils.ts";
@@ -13,9 +13,9 @@ async function read(taskWorktree: string): Promise<StatsProof[]> {
   const text = await files.read(file);
   if (text === null) return [];
   const parsed = parseJson(text, file);
-  if (!Array.isArray(parsed)) throw new TenboxError(`${file} is not a JSON array`, "bad-proofs");
+  if (!Array.isArray(parsed)) throw badProofsError(file, "is not a JSON array");
   if (!parsed.every(isProof)) {
-    throw new TenboxError(`${file} has an item that is not a valid proof`, "bad-proofs");
+    throw badProofsError(file, "has an item that is not a valid proof");
   }
   return parsed;
 }
@@ -24,7 +24,7 @@ function parseJson(text: string, file: string): unknown {
   try {
     return JSON.parse(text);
   } catch (e) {
-    throw new TenboxError(`${file} is not valid JSON: ${errorMessage(e)}`, "bad-proofs");
+    throw badProofsError(file, `is not valid JSON: ${errorMessage(e)}`);
   }
 }
 

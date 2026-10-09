@@ -76,6 +76,8 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
   exports the module object; other modules import only that. A function name does not repeat
   the module name.
+- Errors come from named functions in `domain/errors/<kind>.ts`, never `new TenboxError(`
+  elsewhere (`rules/errors-from-domain`).
 - `application/` calls the named git functions in `infra/git.ts` (`rules/no-raw-git-in-application`).
   A tool's file format or command line lives in `infra/`.
 - Verbs in module APIs: `get` (throws when missing), `find` (null when missing), `ensure`
@@ -99,8 +101,8 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 
 ```
 domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port,
-            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users; HTTP status lives
-            in server/routes/)
+            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users, git, tools,
+            manifest, tasks; HTTP status lives in server/routes/)
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural

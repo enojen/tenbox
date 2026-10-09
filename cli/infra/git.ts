@@ -1,5 +1,6 @@
 import path from "node:path";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { gitFailedError } from "../../domain/errors/git.ts";
+import type { TenboxError } from "../../domain/errors/index.ts";
 import type { ChangedFile } from "../../domain/stats.ts";
 import { lastNonEmpty, MS_PER_SECOND } from "../../domain/utils.ts";
 import { files } from "./files.ts";
@@ -60,7 +61,7 @@ function runRaw(args: string[], cwd: string): Promise<ProcessResult> {
 
 function gitError(args: string[], result: ProcessResult): TenboxError {
   const reason = result.stderr.trim() || result.stdout.trim();
-  return new TenboxError(`git ${args.join(" ")} failed: ${reason}`, "git");
+  return gitFailedError(args, reason);
 }
 
 /** Trimmed stdout; throws on a non-zero exit. */

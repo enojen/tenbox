@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors/index.ts";
+import { tmuxError } from "../../domain/errors/tools.ts";
 import { processes } from "./processes.ts";
 
 export const tmux = {
@@ -21,5 +21,5 @@ async function run(args: string[]): Promise<void> {
   const result = await processes.run(["tmux", ...args]);
   if (result.code === 0) return;
   const reason = result.stderr.trim();
-  throw new TenboxError(`tmux ${args[0]} failed: ${reason}`, "tmux");
+  throw tmuxError(args[0], reason);
 }

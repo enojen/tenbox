@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
+import { ghError } from "../../domain/errors/tools.ts";
 import { processes } from "./processes.ts";
 
 export interface PrText {
@@ -47,7 +48,7 @@ async function run(args: string[], cwd: string): Promise<string> {
   const result = await processes.run(["gh", ...args], { cwd });
   if (result.code === 0) return result.stdout.trim();
   const reason = result.stderr.trim() || result.stdout.trim();
-  throw new TenboxError(`gh ${args.slice(0, SUBCOMMAND_WORDS).join(" ")} failed: ${reason}`, "gh");
+  throw ghError(args.slice(0, SUBCOMMAND_WORDS).join(" "), reason);
 }
 
 /** The PR of the branch, or null when there is none or `gh` cannot answer (missing, no login). */

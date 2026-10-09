@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Approval } from "../../domain/approval.ts";
-import { TenboxError } from "../../domain/errors/index.ts";
+import { noPlanError } from "../../domain/errors/tasks.ts";
 import { approvedFile, tenboxDir } from "../../domain/task.ts";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
@@ -15,7 +15,7 @@ async function save(taskWorktree: string): Promise<Approval> {
   const dir = tenboxDir(taskWorktree);
   const plan = await files.read(path.join(dir, "plan.md"));
   if (plan === null) {
-    throw new TenboxError(`no plan.md in ${dir}; run /tenbox-plan first`, "no-plan");
+    throw noPlanError(dir);
   }
   const approval: Approval = { at: new Date().toISOString(), plan_sha: sha256Hex(plan) };
   await files.write(approvedFile(dir), `${JSON.stringify(approval, null, JSON_INDENT)}\n`);

@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors/index.ts";
+import { dirtyBeforeCloseError, unmergedError } from "../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
@@ -92,20 +92,14 @@ async function assertClean(target: CloseTarget): Promise<void> {
   if (!exists) return;
   const dirty = await git.hasChanges(target.taskWorktree);
   if (!dirty) return;
-  throw new TenboxError(
-    `${target.taskWorktree} has uncommitted changes; commit them or pass --force`,
-    "dirty",
-  );
+  throw dirtyBeforeCloseError(target.taskWorktree);
 }
 
 async function assertMerged(target: CloseTarget): Promise<void> {
   const { branch, base } = target;
   const merged = await isBranchMerged(target);
   if (merged) return;
-  throw new TenboxError(
-    `${branch} has changes that are not on ${base}; merge it or pass --force`,
-    "unmerged",
-  );
+  throw unmergedError(branch, base);
 }
 
 /** A found PR decides alone; without one, a test merge into the base decides. */

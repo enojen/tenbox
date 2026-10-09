@@ -1,4 +1,5 @@
-import { TenboxError } from "../../domain/errors/index.ts";
+import type { TenboxError } from "../../domain/errors/index.ts";
+import { noCommandError, noDirError } from "../../domain/errors/tools.ts";
 import { elapsedMs, hasErrorCode } from "../../domain/utils.ts";
 import { env, log } from "./env.ts";
 import { files } from "./files.ts";
@@ -84,9 +85,9 @@ async function start(
 async function missingError(cmd: string[], cwd: string | undefined): Promise<TenboxError> {
   if (cwd !== undefined) {
     const cwdIsDir = await files.isDir(cwd);
-    if (!cwdIsDir) return new TenboxError(`directory ${cwd} does not exist`, "no-dir");
+    if (!cwdIsDir) return noDirError(cwd);
   }
-  return new TenboxError(`${cmd[0]} not found in PATH`, "no-command");
+  return noCommandError(cmd[0]);
 }
 
 function logRun(cmd: string[], options: ProcessOptions, code: number, ms: number): void {

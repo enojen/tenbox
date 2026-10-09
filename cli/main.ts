@@ -8,6 +8,7 @@ import {
   stringValue,
   type Values,
 } from "./args.ts";
+import { usageError } from "../domain/errors/usage.ts";
 import { approveTask } from "./commands/approve.ts";
 import { closeTask } from "./commands/close.ts";
 import { runChecks } from "./commands/check.ts";
@@ -20,7 +21,6 @@ import { TenboxError } from "../domain/errors/index.ts";
 import { errorMessage, MS_PER_SECOND } from "../domain/utils.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
-import { UsageError } from "../domain/errors/usage.ts";
 
 interface Command extends ArgSpec {
   run(positionals: string[], values: Values): Promise<unknown>;
@@ -124,7 +124,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   const command = COMMANDS[name];
-  if (!command) throw new UsageError(`unknown command: ${name}`);
+  if (!command) throw usageError(`unknown command: ${name}`);
   const parsed = parseCommandArgs(command, rest);
   const result = await command.run(parsed.positionals, parsed.values);
   emit(result);
@@ -150,7 +150,9 @@ function exitWithFailure(e: unknown): never {
   const failure = toFailure(e);
   emit(failure);
   printStack(e);
-  process.exit(e instanceof UsageError ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE);
+  process.exit(
+    e instanceof TenboxError && e.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE,
+  );
 }
 
 /** Internal errors always show their stack; Tenbox's own errors only with TENBOX_DEBUG=1. */

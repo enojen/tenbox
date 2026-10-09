@@ -4,8 +4,8 @@ import {
   MEMBERSHIP_TYPES,
   type MembershipType,
 } from "../../domain/membership.ts";
+import { usageError } from "../../domain/errors/usage.ts";
 import type { NewUser } from "../application/users.ts";
-import { UsageError } from "../../domain/errors/usage.ts";
 
 const DEFAULT_TYPE: MembershipType = "member";
 
@@ -23,7 +23,7 @@ export function readUserAddArgs(argv: string[]): NewUser {
   });
   const { name, github, org, email } = values;
   if (!name || !github || !org) {
-    throw new UsageError("user add needs --name, --github and --org");
+    throw usageError("user add needs --name, --github and --org");
   }
   return { name, github, org, email, type: membershipType(values.type) };
 }
@@ -32,5 +32,5 @@ function membershipType(raw: string | undefined): MembershipType {
   if (raw === undefined) return DEFAULT_TYPE;
   const type = findMembershipType(raw);
   if (type !== null) return type;
-  throw new UsageError(`--type "${raw}": ${MEMBERSHIP_TYPES.join(" or ")}`);
+  throw usageError(`--type "${raw}": ${MEMBERSHIP_TYPES.join(" or ")}`);
 }

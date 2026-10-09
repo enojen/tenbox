@@ -1,5 +1,6 @@
 import path from "node:path";
-import { noBaseError, TenboxError } from "../../../domain/errors/index.ts";
+import { worktreeError } from "../../../domain/errors/git.ts";
+import { noBaseError } from "../../../domain/errors/index.ts";
 import { EXCLUDED_PATHS, type Project } from "../../../domain/project.ts";
 import { tenboxDir } from "../../../domain/task.ts";
 import { claudeSettings } from "../../infra/claudeSettings.ts";
@@ -49,7 +50,7 @@ async function assertWorktree(taskWorktree: string): Promise<void> {
   const top = await git.findTopLevel(taskWorktree);
   const real = await files.realPath(taskWorktree);
   if (top === real) return;
-  throw new TenboxError(`${taskWorktree} exists but is not a git worktree`, "worktree");
+  throw worktreeError(taskWorktree);
 }
 
 /** A link keeps its target, made again when it is gone; a real directory stays as it is. */

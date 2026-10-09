@@ -1,5 +1,5 @@
-import { TenboxError } from "../../domain/errors/index.ts";
-import { UsageError } from "../../domain/errors/usage.ts";
+import { unknownPartError } from "../../domain/errors/tasks.ts";
+import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { isProof, type StatsProof, trimProof } from "../../domain/proof.ts";
 import { tenboxDir } from "../../domain/task.ts";
@@ -30,7 +30,7 @@ function readProof(input: ProofInput): StatsProof {
   const { part, file, test, failure } = input;
   const proof = { part, file, test, failure };
   if (!isProof(proof)) {
-    throw new UsageError("--part, --file, --test and --failure each need a value");
+    throw usageError("--part, --file, --test and --failure each need a value");
   }
   return trimProof(proof);
 }
@@ -38,6 +38,6 @@ function readProof(input: ProofInput): StatsProof {
 async function assertPartExists(taskWorktree: string, part: string): Promise<void> {
   const known = await parts.read(tenboxDir(taskWorktree));
   if (!known.some((p) => p.id === part)) {
-    throw new TenboxError(`no part file ${part}-*.md in .tenbox/parts`, "unknown-part");
+    throw unknownPartError(part);
   }
 }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TenboxError } from "./errors/index.ts";
+import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject } from "./utils.ts";
 
@@ -83,14 +83,14 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
   for (const layer of layers) {
     if (layer.value === null || layer.value === undefined) continue;
     if (!isPlainObject(layer.value))
-      throw new TenboxError(`${layer.file}: expected a YAML mapping at the top`, "manifest");
+      throw manifestError(`${layer.file}: expected a YAML mapping at the top`);
     merged = deepMerge(merged, layer.value);
   }
   const parsed = ManifestSchema.safeParse(merged);
   if (!parsed.success) {
     const where = layers.map((l) => l.file).join(", ") || "manifest";
     const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
-    throw new TenboxError(`${where}: ${issues.join("; ")}`, "manifest", issues);
+    throw manifestError(`${where}: ${issues.join("; ")}`, issues);
   }
   return parsed.data;
 }

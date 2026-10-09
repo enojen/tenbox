@@ -1,7 +1,6 @@
 import { STATUS_CODES } from "node:http";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { UnauthorizedError } from "../../domain/errors/auth.ts";
 import { TenboxError } from "../../domain/errors/index.ts";
 
 /* Every error response is an RFC 9457 problem: `application/problem+json`. */
@@ -30,7 +29,7 @@ function problem(c: Context, status: ContentfulStatusCode, code: string, detail:
 
 /** `app.onError`: a known error keeps its message; any other is a 500 that hides it. */
 export function onError(error: Error, c: Context): Response {
-  if (error instanceof UnauthorizedError) {
+  if (error instanceof TenboxError && error.code === "unauthorized") {
     return problem(c, UNAUTHORIZED_STATUS, error.code, error.message);
   }
   // Until TEN-362 brings a logger, the hidden error goes to stderr as it is.

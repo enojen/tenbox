@@ -1,4 +1,4 @@
-import { UserExistsError } from "../../domain/errors/users.ts";
+import { userExistsError } from "../../domain/errors/users.ts";
 import { newUserId } from "../../domain/ids.ts";
 import type { MembershipType } from "../../domain/membership.ts";
 import type { Db, Queryable } from "../infra/db/index.ts";
@@ -39,7 +39,7 @@ function save(db: Db, input: NewUser): SavedUser {
 
 function assertNew(db: Queryable, github: string): void {
   const found = usersRepository.findByGithub(db, github);
-  if (found !== null) throw new UserExistsError(github);
+  if (found !== null) throw userExistsError(github);
 }
 
 function insert(tx: Queryable, input: NewUser, user: User, tokenHash: string): Organization {

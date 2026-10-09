@@ -1,4 +1,4 @@
-import { TenboxError } from "../../domain/errors/index.ts";
+import { setupError } from "../../domain/errors/tasks.ts";
 import { elapsedMs } from "../../domain/utils.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";
@@ -29,7 +29,7 @@ async function run(
   const duration_ms = elapsedMs(started);
   if (result.code !== 0) {
     const output = result.output.split("\n").slice(-SETUP_OUTPUT_TAIL_LINES).join("\n");
-    throw new TenboxError(`setup failed (exit ${result.code}): ${cmd}`, "setup", { output });
+    throw setupError(result.code, cmd, output);
   }
   return { state: "ran", cmd, exit_code: result.code, duration_ms };
 }
