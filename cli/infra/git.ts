@@ -32,6 +32,7 @@ export const git = {
   branchExists,
   addWorktree,
   removeWorktree,
+  pruneWorktrees,
   deleteBranch,
   hasChanges,
   isMerged,
@@ -176,6 +177,11 @@ async function addWorktree(input: AddWorktreeInput): Promise<void> {
 /** Removes the worktree with whatever is in it; the caller checked for changes first. */
 async function removeWorktree(mainDir: string, worktree: string): Promise<void> {
   await run(["worktree", "remove", "--force", worktree], mainDir);
+}
+
+/** Forgets worktrees whose folder is gone, so their branches can be deleted. */
+async function pruneWorktrees(mainDir: string): Promise<void> {
+  await run(["worktree", "prune"], mainDir);
 }
 
 /** Deletes the branch even when it is not merged; the caller checked that first. */

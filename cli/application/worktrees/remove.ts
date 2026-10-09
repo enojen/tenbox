@@ -21,6 +21,7 @@ export interface RemoveStates {
 export async function remove(removal: WorktreeRemoval): Promise<RemoveStates> {
   const { project, taskWorktree, branch } = removal;
   const worktree = await removeWorktree(project.mainDir, taskWorktree);
+  await git.pruneWorktrees(project.mainDir);
   const branchState = await removeBranch(project.mainDir, branch);
   return { worktree, branch: branchState };
 }

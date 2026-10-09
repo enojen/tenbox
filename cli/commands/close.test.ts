@@ -87,6 +87,21 @@ describe("tenbox close", () => {
     expect(branches).toBe("");
   });
 
+  test("a worktree folder deleted by hand still closes and the branch is deleted", async () => {
+    await setup();
+    await rm(taskWorktree, { recursive: true, force: true });
+    const run = await closeT1();
+    const worktreeList = await git.run(["worktree", "list"], project.mainDir);
+    const branches = await branchList();
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(run.json).toMatchObject({
+      worktree: { state: "skipped" },
+      branch: { state: "deleted" },
+    });
+    expect(worktreeList).not.toContain("T-1");
+    expect(branches).toBe("");
+  });
+
   test("a tracked change or an untracked file stops the close", async () => {
     await setup();
     await files.write(path.join(taskWorktree, "a.txt"), "changed\n");
