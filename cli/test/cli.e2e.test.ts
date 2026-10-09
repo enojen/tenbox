@@ -5,7 +5,7 @@ import path from "node:path";
 import { isPlainObject } from "../../domain/utils.ts";
 import { git } from "../infra/git.ts";
 import { type Json, tenbox } from "./cli.ts";
-import { type TempProject, makeTempProject } from "./tempProject.ts";
+import { makeTempProject, type TempProject } from "./tempProject.ts";
 
 let project: TempProject;
 let wt: string;

@@ -3,17 +3,17 @@ import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { statsFile } from "../../domain/stats.ts";
 import { errorMessage } from "../../domain/utils.ts";
-import { env, log } from "../infra/env.ts";
-import { files } from "../infra/files.ts";
-import { gh } from "../infra/gh.ts";
-import { git } from "../infra/git.ts";
-import { makeTracker } from "../infra/tracker/index.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
 import { sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
+import { env, log } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
+import { gh } from "../infra/gh.ts";
+import { git } from "../infra/git.ts";
+import { makeTracker } from "../infra/tracker/index.ts";
 import type { CloseResult, StatsInfo } from "./results.ts";
 
 export interface CloseInput {

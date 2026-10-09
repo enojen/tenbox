@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 
 const MIGRATIONS_DIR = path.join(import.meta.dir, "migrations");
 

@@ -44,6 +44,6 @@
       "plugins": ["./rules/no-raw-git-in-application/rule.grit"]
     }
   ],
-  "assist": { "enabled": false },
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },
   "files": { "includes": ["cli/**", "domain/**", "server/**", "rules/**", "!rules/*/bad.ts"] }
 }

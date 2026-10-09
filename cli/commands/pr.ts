@@ -10,12 +10,12 @@ import {
   roundsDir,
   tenboxDir,
 } from "../../domain/task.ts";
-import { files } from "../infra/files.ts";
-import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
-import { git } from "../infra/git.ts";
 import { projects } from "../application/projects.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
+import { files } from "../infra/files.ts";
+import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
+import { git } from "../infra/git.ts";
 import type { PrInfo, PrResult, PrState } from "./results.ts";
 
 export interface PrInput {

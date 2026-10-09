@@ -1,10 +1,10 @@
 import { parseArgs } from "node:util";
+import { usageError } from "../../domain/errors/usage.ts";
 import {
   findMembershipType,
   MEMBERSHIP_TYPES,
   type MembershipType,
 } from "../../domain/membership.ts";
-import { usageError } from "../../domain/errors/usage.ts";
 import type { NewUser } from "../application/users.ts";
 
 const DEFAULT_TYPE: MembershipType = "member";

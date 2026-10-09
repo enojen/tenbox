@@ -6,7 +6,7 @@ import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tmuxTest } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
-import { startTask, type StartInput } from "./start.ts";
+import { type StartInput, startTask } from "./start.ts";
 
 let project: TempProject;
 let taskWorktree: string;

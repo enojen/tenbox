@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { TenboxError } from "../domain/errors/index.ts";
+import { usageError } from "../domain/errors/usage.ts";
+import { errorMessage, MS_PER_SECOND } from "../domain/utils.ts";
 import {
   type ArgSpec,
   flagValue,
@@ -8,19 +11,16 @@ import {
   stringValue,
   type Values,
 } from "./args.ts";
-import { usageError } from "../domain/errors/usage.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
-import { closeTask } from "./commands/close.ts";
 import { runChecks } from "./commands/check.ts";
+import { closeTask } from "./commands/close.ts";
 import { install } from "./commands/install.ts";
-import type { Failure } from "./commands/results.ts";
 import { planDone } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
+import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
-import { TenboxError } from "../domain/errors/index.ts";
-import { errorMessage, MS_PER_SECOND } from "../domain/utils.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 

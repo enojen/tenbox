@@ -1,4 +1,4 @@
-import { readPlan, parsePlan, type PlanResult, planFile } from "../../domain/plan.ts";
+import { type PlanResult, parsePlan, planFile, readPlan } from "../../domain/plan.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 

@@ -3,10 +3,10 @@ import { realpath, utimes } from "node:fs/promises";
 import path from "node:path";
 import { failureLine } from "../../domain/failures.ts";
 import { taskId } from "../../domain/ids.ts";
+import { baselineStore } from "../infra/baselineStore.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { baselineStore } from "../infra/baselineStore.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { runChecks } from "./check.ts";
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parsePlan, type PlanResult, readPlan } from "./plan.ts";
+import { type PlanResult, parsePlan, readPlan } from "./plan.ts";
 
 const valid: PlanResult = {
   summary: "s",

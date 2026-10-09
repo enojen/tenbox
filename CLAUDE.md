@@ -87,7 +87,7 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - Tests run against real temporary git repositories and directories, not fakes.
 - Prove first: no fix and no feature on a guess. Write the test, see it fail, write the code,
   see it pass; for a fix, undo it once and see the test fail again (`agents/worker.md`).
-- The `lint` check owns the rules on await, casts and magic numbers: the
+- The `lint` check owns the rules on await, casts, magic numbers and import order: the
   plugins in `rules/` (one folder per rule, with `rule.md`) and the rules in `biome.json`.
 - Biome formats `cli/`, `domain/`, `server/` and `rules/` at 100 columns (`biome.json`); the `format` check fails
   on unformatted code. Run `bunx biome format --write cli domain server rules` before a commit.
