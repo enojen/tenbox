@@ -15,6 +15,9 @@ interface LayerRule {
 
 const RULES: LayerRule[] = [
   { folder: "domain", allowed: ["domain"], allowedInTests: [] },
+  { folder: "cli", allowed: ["cli", "domain"], allowedInTests: [] },
+  { folder: "server", allowed: ["server", "domain"], allowedInTests: [] },
+  { folder: "server/infra", allowed: ["server/infra", "domain"], allowedInTests: [] },
   { folder: "cli/infra", allowed: ["cli/infra", "domain"], allowedInTests: ["cli/test"] },
 ];
 

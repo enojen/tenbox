@@ -103,6 +103,10 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
                 layers test
+server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
+            schema per route, `/openapi.json`, Swagger UI on `/docs`), infra/ (env, SQLite);
+            imports only server/ and domain/, never cli/; cli/ never imports server/
+            (`cli/test/layers.test.ts`); `server/application/` comes with the first use case
 agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js
 docs/       design.md (the target design), flow page and mockups

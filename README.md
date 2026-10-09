@@ -161,6 +161,12 @@ cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
   application/  use cases
   infra/        git, gh, tmux, shell, files, env, baselines on disk, tracker/ adapters
   test/         temporary projects and the CLI runner for tests
+server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`), loopback only
+  routes/       `GET /health` returns 200 `{"ok":true}`; `GET /openapi.json` is the OpenAPI 3.1
+                document built from the zod route schemas; `GET /docs` is Swagger UI; any
+                other path returns 404
+  infra/        env (`TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
+                `~/.tenbox-server/server.db`; Bun reads `.env`) and the SQLite database
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js
 docs/         design.md (the target design), flow page and mockups
