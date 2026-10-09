@@ -330,9 +330,22 @@ Risks:
 
 - These files are Claude Code's internal format, not a public API. Today's `stats` code
   takes the same risk (`infra/claudeSessions.ts`); a format change touches only that file.
-- **Verify:** that `journal.jsonl` and the agent times in `wf_*.json` are written while the
-  run is going. If the agent times come only at the end, round events go out when the
-  run ends, not live.
+- **Checked (TEN-349, Claude Code 2.1.295):** watched three plan runs and two build runs
+  while they ran.
+  - `journal.jsonl` is written live. A `launched` line comes at the start, then one
+    `started` line (`key`, `agentId`, `label`, `phase`) when an agent starts, and one
+    `result` line (`key`, `agentId`, `result`) when it ends. The lines have no time.
+  - `workflows/wf_*.json` is written once, when the run ends, in the same second as the
+    last journal line. It has the run's `startTime`, `durationMs` and `status`, and per
+    agent in `workflowProgress` the `label`, `agentType`, `model`, `startedAt`,
+    `durationMs`, `tokens` and `toolCalls`.
+  - Each agent also has `agent-<id>.meta.json` (written when it starts: `agentType`,
+    `description`, the label) and its transcript `agent-<id>.jsonl` (written live, every
+    line has a `timestamp`).
+  - So sync can send `round.reviewed` and worker `proof.added` live, from the journal. A
+    live time comes from the agent's transcript: its first line for the start, the line
+    of its result for the end. `workflow.done`, `build.done` and the agent numbers
+    (tokens, tool calls) go out when the run ends.
 
 ### task.started (`tenbox start`)
 
