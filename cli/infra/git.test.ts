@@ -107,3 +107,12 @@ test("push puts the branch on origin at HEAD and sets the upstream", async () =>
     await rm(origin, { recursive: true, force: true });
   }
 });
+
+test("listGeneratedFiles answers the paths marked linguist-generated", async () => {
+  await files.write(
+    path.join(project.mainDir, ".gitattributes"),
+    "gen.lock linguist-generated\nsub/** linguist-generated=false\n",
+  );
+  const generated = await git.listGeneratedFiles(project.mainDir, ["gen.lock", "a.txt", "sub/x"]);
+  expect(generated).toEqual(["gen.lock"]);
+});

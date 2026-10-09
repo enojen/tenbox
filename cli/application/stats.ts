@@ -99,9 +99,15 @@ async function readRounds(dir: string): Promise<StatsRound[]> {
 }
 
 async function readCode(input: StatsInput): Promise<StatsCode | null> {
-  const { mainDir, base, branch } = input;
+  const { mainDir, taskWorktree, base, branch } = input;
   const exists = await git.branchExists(mainDir, branch);
   if (!exists) return null;
   const changed = await git.listChangedFiles(mainDir, base, branch);
-  return sumCode(changed);
+  const hasWorktree = await files.isDir(taskWorktree);
+  const attrDir = hasWorktree ? taskWorktree : mainDir;
+  const generated = await git.listGeneratedFiles(
+    attrDir,
+    changed.map((file) => file.path),
+  );
+  return sumCode(changed.filter((file) => !generated.includes(file.path)));
 }

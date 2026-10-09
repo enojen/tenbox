@@ -23,6 +23,7 @@ export const git = {
   findConfig,
   findBranchCreated,
   listChangedFiles,
+  listGeneratedFiles,
   findCommonDir,
   findMainDir,
   refExists,
@@ -39,6 +40,10 @@ export const git = {
 const GIT_LOCALE = "C";
 const REFLOG_TIME = /@\{(\d+)\}$/;
 const BINARY_COUNT = "-";
+const GENERATED_ATTR = "linguist-generated";
+const GENERATED_VALUES = ["set", "true"];
+/** `check-attr -z` prints path, attribute and value, each ended by NUL. */
+const ATTR_FIELDS = 3;
 const NOT_A_REPOSITORY = "not a git repository";
 
 /** Decides from a failed git result whether it is the expected "not found" answer. */
@@ -123,6 +128,18 @@ async function listChangedFiles(dir: string, base: string, branch: string): Prom
   const numstat = await run(["diff", "--numstat", `${base}...${branch}`], dir);
   const lines = numstat.split("\n").filter((line) => line !== "");
   return lines.map(parseNumstatLine);
+}
+
+/** The paths whose `linguist-generated` attribute is set; `dir` decides which `.gitattributes` apply. */
+async function listGeneratedFiles(dir: string, paths: string[]): Promise<string[]> {
+  if (paths.length === 0) return [];
+  const out = await run(["check-attr", "-z", GENERATED_ATTR, "--", ...paths], dir);
+  const fields = out.split("\0");
+  const generated: string[] = [];
+  for (let i = 0; i + 2 < fields.length; i += ATTR_FIELDS) {
+    if (GENERATED_VALUES.includes(fields[i + 2] ?? "")) generated.push(fields[i] ?? "");
+  }
+  return generated;
 }
 
 /** `added<TAB>removed<TAB>path`; a binary file shows `-` for both counts. */

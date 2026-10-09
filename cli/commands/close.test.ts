@@ -210,6 +210,18 @@ describe("tenbox close", () => {
     expect(written.tenbox).toMatch(/^[0-9a-f]{40}$/);
   });
 
+  test("code leaves out files marked linguist-generated", async () => {
+    await setup();
+    await files.write(path.join(taskWorktree, ".gitattributes"), "bun.lock linguist-generated\n");
+    await files.write(path.join(taskWorktree, "bun.lock"), "1\n2\n3\n");
+    await files.write(path.join(taskWorktree, "src", "a.ts"), "1\n");
+    await git.run(["add", "."], taskWorktree);
+    await git.run(["commit", "-q", "-m", "code"], taskWorktree);
+    await closeT1("--force");
+    const text = await readStatsText();
+    expect(JSON.parse(text).code).toEqual({ added: 2, removed: 0, files: 2, test_added: 0 });
+  });
+
   test("a task with no plan or rounds still gets stats with null fields", async () => {
     await setup();
     const run = await closeT1();

@@ -67,6 +67,8 @@ Markdown text gives none. `proofs[].part` and `points[].part` hold the part numb
 Points: +1 per distinct proof, -1 per `unproven` item a reviewer returned in any
 build run of the task, at most one per part per build round.
 The reviewer's sentences are not kept. Schema 3.
+`code` leaves out generated files: those marked `linguist-generated` in `.gitattributes`. To
+mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds it in PR diffs too.
 
 | Variable | Does |
 |---|---|
