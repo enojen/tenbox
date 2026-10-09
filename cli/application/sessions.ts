@@ -3,6 +3,7 @@ import { noSessionError } from "../../domain/errors/tasks.ts";
 import { type ProjectId, type TaskId, tmuxSessionName } from "../../domain/ids.ts";
 import type { Names } from "../../domain/manifest.ts";
 import { tmuxDir } from "../../domain/project.ts";
+import { errorMessage } from "../../domain/utils.ts";
 import { claudeCommand, findClaude } from "../infra/claude.ts";
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -71,13 +72,27 @@ async function send(id: TaskId, target: TmuxTarget, text: string): Promise<void>
   await tmux.typeLine(target, text);
 }
 
-/** Kills the task's tmux server; nothing to do without `tmux` or without a running server. */
+/** Kills the task's tmux server if one runs, then removes its directory. */
 async function remove(server: string): Promise<SessionRemoveState> {
+  const state = await killServer(server);
+  await removeServerDir(server);
+  return state;
+}
+
+async function killServer(server: string): Promise<SessionRemoveState> {
   if (processes.which("tmux") === null) return "skipped";
   const running = await tmux.isRunning(server);
   if (!running) return "skipped";
   await tmux.killServer(server);
   return "killed";
+}
+
+async function removeServerDir(server: string): Promise<void> {
+  try {
+    await files.remove(server);
+  } catch (error) {
+    log(`tenbox close: tmux server dir not removed: ${errorMessage(error)}`);
+  }
 }
 
 function logTmux(message: string, state: TmuxState): TmuxState {

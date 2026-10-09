@@ -416,8 +416,24 @@ describe("tenbox close", () => {
     const run = await closeT1();
     expect(run.json).toMatchObject({ tmux: { session: SESSION, state: "killed" } });
     expect(tmux(["list-sessions"], server).exitCode).not.toBe(0);
+    const serverExists = await files.exists(server);
+    expect(serverExists).toBe(false);
     await rm(kept, { recursive: true });
     await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+    const again = await closeT1();
+    expect(again.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
+  });
+
+  test("a leftover tmux server dir is removed when no server runs; a missing dir is fine", async () => {
+    await setup();
+    const projectId = await manifests.ensureId(project.mainDir);
+    const server = tmuxDir(os.tmpdir(), projectId, taskId("T-1"));
+    servers.push(server);
+    await files.mkdir(server);
+    const run = await closeT1();
+    expect(run.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
+    const serverExists = await files.exists(server);
+    expect(serverExists).toBe(false);
     const again = await closeT1();
     expect(again.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
   });
