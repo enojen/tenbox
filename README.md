@@ -89,6 +89,7 @@ mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds i
 | `WTBASE_PATTERN` | The failure pattern when the manifest has none |
 | `CLAUDE_CONFIG_DIR` | Where `tenbox install` links to; default `~/.claude` |
 | `LINEAR_API_KEY` | The Linear key when the manifest has no `tracker.api_key` |
+| `CLICKUP_API_KEY` | The ClickUp key when the manifest has no `tracker.api_key` |
 | `TENBOX_DEBUG` | `1` logs spawned commands and prints stacks |
 
 ## The workflows: `workflows/`
@@ -176,7 +177,8 @@ checks:                          # name: command; tenbox check runs them all
   unit: bun test cli domain
 model: sonnet                    # optional: the --model of the task's claude session; default sonnet
 failure_pattern: "..."           # optional: a regex for a failure line; the default knows bun, vitest, jest and tsc
-tracker: { kind: linear }        # none (default) or linear; api_key here or LINEAR_API_KEY
+tracker: { kind: linear }        # none (default), linear or clickup; api_key here or LINEAR_API_KEY / CLICKUP_API_KEY
+# tracker: { kind: clickup, statuses: { in_progress: "doing", done: "complete" } }   # optional status names
 names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults
 ```
 
@@ -189,6 +191,11 @@ Layers, later ones win: `tenbox.yaml` (task worktree, else main checkout), then
 `none`: the task comes from `tenbox start --title`, and status changes are skipped.
 `linear`: `tenbox start` reads the issue over Linear's GraphQL API and sets it to in
 progress; `tenbox close` sets it to done.
+`clickup`: the same over ClickUp's REST API v2, with the native task id (custom task ids such
+as `WAG-12` are not supported). The statuses differ per list. In progress is the first
+`custom` status of the task's list, done is its `closed` status. A project can name them with
+`tracker.statuses` (`in_progress`, `done`; matched ignoring case); a name the list lacks is an
+error that lists the list's statuses.
 
 ## Repository layout
 

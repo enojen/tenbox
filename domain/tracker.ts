@@ -10,6 +10,12 @@ export interface TrackerTask {
   status: string;
 }
 
+/** One status change Tenbox asks of the tracker. */
+export interface StatusChange {
+  id: string;
+  status: TaskStatus;
+}
+
 /** The port to the tracker; `infra/tracker/` holds one adapter per kind. */
 export interface Tracker {
   readonly kind: TrackerKind;

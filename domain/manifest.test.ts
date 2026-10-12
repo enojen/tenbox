@@ -29,6 +29,17 @@ describe("mergeManifest", () => {
     expect(m.tracker).toEqual({ kind: "linear", api_key: "k" });
     expect("services" in m).toBe(false);
   });
+  test("clickup is a tracker kind with optional status names", () => {
+    const tracker = { kind: "clickup", statuses: { in_progress: "doing" } } as const;
+    const m = mergeManifest([{ file: "tenbox.yaml", value: { tracker } }]);
+    expect(m.tracker).toEqual(tracker);
+  });
+  test("a blank tracker status name is a manifest error", () => {
+    const tracker = { kind: "clickup", statuses: { done: "" } };
+    expect(() => mergeManifest([{ file: "tenbox.yaml", value: { tracker } }])).toThrow(
+      /tracker\.statuses\.done/,
+    );
+  });
   test("empty gives defaults", () => {
     const m = mergeManifest([]);
     expect(m.checks).toEqual({});

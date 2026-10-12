@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import type { TrackerConfig } from "../../../domain/manifest.ts";
-import type { TaskStatus, Tracker, TrackerTask } from "../../../domain/tracker.ts";
+import type { StatusChange, TaskStatus, Tracker, TrackerTask } from "../../../domain/tracker.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
 
@@ -28,11 +28,6 @@ const IssueDataSchema = z.object({ issue: IssueSchema.nullable() });
 
 type State = z.infer<typeof StateSchema>;
 type Issue = z.infer<typeof IssueSchema>;
-
-interface StatusChange {
-  id: string;
-  status: TaskStatus;
-}
 
 const ISSUE_QUERY = `
   query($id: String!) {

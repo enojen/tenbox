@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type Endpoint, endpointError, postJson } from "./http.ts";
+import { type Endpoint, endpointError, http } from "./http.ts";
 
 const EnvelopeSchema = z.object({
   data: z.unknown().optional(),
@@ -18,7 +18,11 @@ export interface GraphqlRequest<T> {
 /** Sends one query or mutation; GraphQL `errors` and a `data` that does not match fail it. */
 export async function graphqlQuery<T>(request: GraphqlRequest<T>): Promise<T> {
   const { endpoint, query, variables } = request;
-  const envelope = await postJson({ endpoint, body: { query, variables }, schema: EnvelopeSchema });
+  const envelope = await http.post({
+    endpoint,
+    body: { query, variables },
+    schema: EnvelopeSchema,
+  });
   throwOnErrors(endpoint, envelope);
   const data = request.data.safeParse(envelope.data);
   if (!data.success) throw endpointError(endpoint, "empty or unexpected data");

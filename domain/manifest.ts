@@ -3,11 +3,18 @@ import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject, issueLines } from "./utils.ts";
 
-export const TrackerKindSchema = z.enum(["none", "linear"]);
+export const TrackerKindSchema = z.enum(["none", "linear", "clickup"]);
+
+/** The tracker's own names for the two statuses Tenbox sets; a tracker's list may differ. */
+const StatusNamesSchema = z.object({
+  in_progress: z.string().min(1).optional(),
+  done: z.string().min(1).optional(),
+});
 
 const TrackerConfigSchema = z.object({
   kind: TrackerKindSchema.default("none"),
   api_key: z.string().optional(),
+  statuses: StatusNamesSchema.optional(),
 });
 
 const ID_PLACEHOLDER = "{id}";
@@ -71,6 +78,7 @@ const ManifestSchema = z.object({
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type TrackerKind = z.infer<typeof TrackerKindSchema>;
+export type StatusNames = z.infer<typeof StatusNamesSchema>;
 export type TrackerConfig = z.infer<typeof TrackerConfigSchema>;
 export type Names = z.infer<typeof NamesSchema>;
 

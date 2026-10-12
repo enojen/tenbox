@@ -14,16 +14,46 @@ export interface Endpoint {
   errorCode: string;
 }
 
-export interface JsonRequest<T> {
+type HttpMethod = "GET" | "POST" | "PUT";
+
+/** A request without a body; the answer must match `schema`. */
+interface JsonGet<T> {
   endpoint: Endpoint;
-  body: unknown;
   schema: z.ZodType<T>;
 }
 
-/** POST a JSON body and validate the JSON answer; every failure is a `TenboxError`. */
-export async function postJson<T>(request: JsonRequest<T>): Promise<T> {
+/** A request with a JSON body. */
+interface JsonRequest<T> extends JsonGet<T> {
+  body: unknown;
+}
+
+/** What `fetch` sends besides the endpoint: the method and the body, if any. */
+interface HttpCall {
+  method: HttpMethod;
+  body?: string;
+}
+
+/** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
+export const http = { get, post, put };
+
+/** GET, no body. */
+function get<T>(request: JsonGet<T>): Promise<T> {
+  return sendJson(request, { method: "GET" });
+}
+
+/** POST a JSON body. */
+function post<T>(request: JsonRequest<T>): Promise<T> {
+  return sendJson(request, { method: "POST", body: JSON.stringify(request.body) });
+}
+
+/** PUT a JSON body. */
+function put<T>(request: JsonRequest<T>): Promise<T> {
+  return sendJson(request, { method: "PUT", body: JSON.stringify(request.body) });
+}
+
+async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
   const { endpoint } = request;
-  const response = await send(endpoint, request.body);
+  const response = await send(endpoint, call);
   if (!response.ok) {
     const text = await response.text();
     const detail = text.slice(0, ERROR_BODY_CHARS);
@@ -40,12 +70,11 @@ export function endpointError(endpoint: Endpoint, message: string): TenboxError 
 }
 
 /** A network error or no answer in time is the service's failure, not an internal one. */
-async function send(endpoint: Endpoint, body: unknown): Promise<Response> {
+async function send(endpoint: Endpoint, call: HttpCall): Promise<Response> {
   try {
     return await fetch(endpoint.url, {
-      method: "POST",
+      ...call,
       headers: { "Content-Type": "application/json", ...endpoint.headers },
-      body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (e) {

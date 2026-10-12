@@ -1,5 +1,6 @@
 import type { TrackerConfig } from "../../../domain/manifest.ts";
 import type { Tracker } from "../../../domain/tracker.ts";
+import { clickupTracker } from "./clickup.ts";
 import { linearTracker } from "./linear.ts";
 import { noneTracker } from "./none.ts";
 
@@ -10,5 +11,7 @@ export function makeTracker(config: TrackerConfig): Tracker {
       return noneTracker;
     case "linear":
       return linearTracker(config);
+    case "clickup":
+      return clickupTracker(config);
   }
 }
