@@ -52,3 +52,28 @@ describe("clickupTracker", () => {
     );
   });
 });
+
+describe("clickup comment", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+  test("posts the text to the task's comment endpoint", async () => {
+    const calls: { url: string; body: string }[] = [];
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body) });
+        return Response.json({ id: 1 });
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
+    await tracker.comment({ id: "abc", text: "5 min, 1k tokens, 2 rounds" });
+    expect(calls).toEqual([
+      {
+        url: "https://api.clickup.com/api/v2/task/abc/comment",
+        body: '{"comment_text":"5 min, 1k tokens, 2 rounds"}',
+      },
+    ]);
+  });
+});

@@ -17,7 +17,7 @@ beforeEach(async () => {
   const dir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
   decisionsFile = path.join(dir, "decisions.md");
   questionsFile = path.join(dir, "questions.md");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   await files.write(questionsFile, QUESTIONS);
 });
 

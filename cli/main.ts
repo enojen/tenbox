@@ -13,6 +13,7 @@ import {
 } from "./args.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
+import { attachTask } from "./commands/attach.ts";
 import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
@@ -24,6 +25,7 @@ import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
+import { showStats } from "./commands/stats.ts";
 import { isWaitKind, waitForFile } from "./commands/wait.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
@@ -32,7 +34,8 @@ interface Command extends ArgSpec {
   run(positionals: string[], values: Values): Promise<unknown>;
 }
 
-const START_USAGE = 'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-tmux]';
+const START_USAGE =
+  'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-claude]';
 const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 600]";
 const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
@@ -44,7 +47,9 @@ const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
 const WAIT_USAGE = "tenbox wait <id> --for plan|build [--timeout 600]";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
+const STATS_USAGE = "tenbox stats <id>";
 const BUILD_USAGE = "tenbox build <id>";
+const ATTACH_USAGE = "tenbox attach <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -63,7 +68,7 @@ const COMMANDS: Record<string, Command> = {
       title: { type: "string" },
       base: { type: "string" },
       setup: { type: "boolean", default: true },
-      tmux: { type: "boolean", default: true },
+      claude: { type: "boolean", default: true },
     },
     run: (positionals, values) =>
       startTask({
@@ -71,7 +76,7 @@ const COMMANDS: Record<string, Command> = {
         title: stringValue(values, "title"),
         base: stringValue(values, "base"),
         setup: flagValue(values, "setup"),
-        tmux: flagValue(values, "tmux"),
+        claude: flagValue(values, "claude"),
       }),
   },
   check: {
@@ -157,6 +162,11 @@ const COMMANDS: Record<string, Command> = {
       return buildDone({ id: idArg(rest, BUILD_DONE_USAGE), json });
     },
   },
+  attach: {
+    usage: ATTACH_USAGE,
+    options: {},
+    run: (positionals) => attachTask(idArg(positionals, ATTACH_USAGE)),
+  },
   wait: {
     usage: WAIT_USAGE,
     options: {
@@ -182,6 +192,11 @@ const COMMANDS: Record<string, Command> = {
     usage: APPROVED_USAGE,
     options: {},
     run: (positionals) => checkApproved(idArg(positionals, APPROVED_USAGE)),
+  },
+  stats: {
+    usage: STATS_USAGE,
+    options: {},
+    run: (positionals) => showStats(idArg(positionals, STATS_USAGE)),
   },
   install: {
     usage: "tenbox install",

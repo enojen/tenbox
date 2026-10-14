@@ -10,4 +10,7 @@ export const noneTracker: Tracker = {
   updateStatus() {
     return Promise.resolve();
   },
+  comment() {
+    return Promise.resolve();
+  },
 };

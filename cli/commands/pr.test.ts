@@ -16,7 +16,7 @@ beforeEach(async () => {
   origin = await mkdtemp(path.join(os.tmpdir(), "tenbox-origin-"));
   await git.run(["init", "-q", "--bare", origin], project.mainDir);
   await git.run(["remote", "add", "origin", origin], project.mainDir);
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   taskWorktree = path.join(project.wtRoot, "demo", "T-1");
 });
 

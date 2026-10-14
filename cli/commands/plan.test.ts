@@ -24,7 +24,7 @@ const valid = {
 beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   planJson = path.join(project.wtRoot, "demo", "T-1", ".tenbox", "plan.json");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
 });
 
 afterEach(async () => {

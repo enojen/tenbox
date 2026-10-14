@@ -2,9 +2,11 @@ import type { Approval } from "../../domain/approval.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
+import type { UsageReport } from "../../domain/runs.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
-import type { SessionRemoveState, TmuxInfo } from "../application/sessions.ts";
+import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
+import type { StatsFrom } from "../application/stats.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
 import type { PrBranch } from "../infra/gh.ts";
 
@@ -27,12 +29,13 @@ export interface StartResult {
   task_md: string;
   setup: SetupResult;
   tracker: TrackerInfo;
-  tmux: TmuxInfo;
+  claude: SessionStartInfo;
 }
 
-interface SessionRemoveInfo {
-  session: string;
-  state: SessionRemoveState;
+export type SessionState = SessionStopState | `failed: ${string}`;
+
+interface SessionStopInfo {
+  state: SessionState;
 }
 
 interface WorktreeRemoveInfo {
@@ -67,6 +70,12 @@ interface RemoteBranchInfo {
   state: RemoteBranchState;
 }
 
+export type CommentState = "posted" | "skipped" | `failed: ${string}`;
+
+interface CommentInfo {
+  state: CommentState;
+}
+
 export interface CloseResult {
   ok: true;
   task: string;
@@ -74,20 +83,26 @@ export interface CloseResult {
   forced: boolean;
   pull: PullInfo;
   stats: StatsInfo;
-  tmux: SessionRemoveInfo;
+  session: SessionStopInfo;
   worktree: WorktreeRemoveInfo;
   branch: BranchRemoveInfo;
   remote_branch: RemoteBranchInfo;
   tracker: TrackerInfo;
+  comment: CommentInfo;
 }
 
 export interface SendBuildResult {
   ok: true;
   task: string;
-  session: string;
-  server: string;
-  /** The text typed into the session and submitted. */
+  /** The prompt the new background session started with. */
   sent: string;
+}
+
+export interface AttachResult {
+  ok: true;
+  task: string;
+  /** The id of the background session that was opened. */
+  session: string;
 }
 
 export type PrState = "created" | "updated";
@@ -117,6 +132,12 @@ export interface ProofResult {
 export interface DecideResult extends DecisionsSaved {
   ok: true;
   task: string;
+}
+
+export interface StatsResult extends UsageReport {
+  ok: true;
+  task: string;
+  source: StatsFrom;
 }
 
 export interface TaskFileResult {

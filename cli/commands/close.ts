@@ -5,13 +5,14 @@ import {
   mergeCommitError,
   unmergedError,
 } from "../../domain/errors/tasks.ts";
-import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
+import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
-import { type PrTimes, statsFile } from "../../domain/stats.ts";
+import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
+import type { Tracker } from "../../domain/tracker.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
-import { type SessionRemoveState, sessions } from "../application/sessions.ts";
+import { sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
@@ -19,9 +20,15 @@ import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
-import type { TmuxTarget } from "../infra/tmux.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
-import type { CloseResult, PullState, RemoteBranchState, StatsInfo } from "./results.ts";
+import type {
+  CloseResult,
+  CommentState,
+  PullState,
+  RemoteBranchState,
+  SessionState,
+  StatsInfo,
+} from "./results.ts";
 
 export interface CloseInput {
   id: TaskId;
@@ -39,8 +46,8 @@ interface CloseTarget {
 }
 
 /**
- * Writes `stats.json` in the task dir, kills the task's tmux server, removes the worktree and the
- * branch, sets the tracker to done. The task dir stays. The safety checks run first; a step with
+ * Writes `stats.json` in the task dir, stops the task's background sessions, removes the worktree and the
+ * branch, sets the tracker to done and posts the cost comment. The task dir stays. The safety checks run first; a step with
  * nothing to do is skipped.
  */
 export async function closeTask(input: CloseInput): Promise<CloseResult> {
@@ -50,18 +57,15 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const tracker = makeTracker(manifest.tracker);
   const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
-  // Read only: a project with no id yet has no task dirs and no task tmux server, and close
-  // must not write the manifest.
+  // Read only: a project with no id yet has no task dirs, and close must not write the manifest.
   const projectId = manifest.id;
   const dir = projectId === undefined ? null : taskDir(tenboxHome, projectId, id);
-  const target =
-    projectId === undefined ? null : sessions.tmuxTarget(manifest.names, projectId, id);
   const { base } = manifest;
   const closeTarget = { mainDir: project.mainDir, taskWorktree, branch, base };
   const { mergedOnGithub, pr } = await assertSafe(closeTarget, force);
   const pull = await pullBase(closeTarget, mergedOnGithub);
   const recordedProofs = await proofs.read(taskWorktree);
-  let statsInfo = SKIPPED_STATS;
+  let written: WrittenStats = { info: SKIPPED_STATS, stats: null };
   if (dir !== null) {
     const statsInput: StatsInput = {
       id,
@@ -75,24 +79,26 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
       recordedProofs,
       pr,
     };
-    statsInfo = await writeStats(statsInput);
+    written = await writeStats(statsInput);
   }
-  const tmuxState = await removeSession(target);
+  const session = await stopSessions({ id, taskWorktree });
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id, title: undefined }, tracker, "done");
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
+  const comment = await postComment({ id, tracker, stats: written.stats });
   return {
     ok: true,
     task: id,
     project: project.name,
     forced: force,
     pull: { base, state: pull },
-    stats: statsInfo,
-    tmux: { session: tmuxSessionName(manifest.names, id), state: tmuxState },
+    stats: written.info,
+    session: { state: session },
     worktree: { path: taskWorktree, state: removed.worktree },
     branch: { name: branch, state: removed.branch },
     remote_branch: { name: branch, state: remote },
     tracker: { kind: tracker.kind, status },
+    comment: { state: comment },
   };
 }
 
@@ -145,10 +151,10 @@ async function assertMerged(target: CloseTarget): Promise<SafeClose> {
 }
 
 /** A squash or rebase merge has one parent. */
-async function assertNotMergeCommit({ mainDir, branch }: CloseTarget, sha: string | null) {
+async function assertNotMergeCommit(target: CloseTarget, sha: string | null) {
   if (sha === null) return;
-  const parents = await gh.countParents(mainDir, sha);
-  if (parents > 1) throw mergeCommitError(branch);
+  const parents = await gh.countParents(target.mainDir, sha);
+  if (parents > 1) throw mergeCommitError(target.branch);
 }
 
 interface Merge {
@@ -176,17 +182,15 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
   };
 }
 
-async function findTestMerge({ mainDir, base, branch }: CloseTarget): Promise<Merge> {
+async function findTestMerge(target: CloseTarget): Promise<Merge> {
   log("tenbox close: gh pr view failed, using the test merge");
-  const merged = await git.isMerged(mainDir, base, branch);
+  const merged = await git.isMerged(target.mainDir, target.base, target.branch);
   return merged ? MERGED_IN_GIT : UNMERGED;
 }
 
 /** Moves the base of the main checkout to `origin`; a failure never stops the close. */
-async function pullBase(
-  { mainDir, base }: CloseTarget,
-  mergedOnGithub: boolean,
-): Promise<PullState> {
+async function pullBase(target: CloseTarget, mergedOnGithub: boolean): Promise<PullState> {
+  const { mainDir, base } = target;
   if (!mergedOnGithub) return "skipped";
   try {
     const current = await git.findBranch(mainDir);
@@ -200,9 +204,10 @@ async function pullBase(
 
 /** Runs after the tracker step; a failure never undoes the close. */
 async function removeRemoteBranch(
-  { mainDir, branch }: CloseTarget,
+  target: CloseTarget,
   mergedOnGithub: boolean,
 ): Promise<RemoteBranchState> {
+  const { mainDir, branch } = target;
   if (!mergedOnGithub) return "skipped";
   try {
     const exists = await git.remoteBranchExists(mainDir, branch);
@@ -214,22 +219,55 @@ async function removeRemoteBranch(
   }
 }
 
+interface WrittenStats {
+  info: StatsInfo;
+  /** The record that was written; null when nothing was. */
+  stats: TaskStats | null;
+}
+
 /** Runs before the worktree and branch are gone; a failure never stops the close. */
-async function writeStats(input: StatsInput): Promise<StatsInfo> {
+async function writeStats(input: StatsInput): Promise<WrittenStats> {
   const hasDir = await files.isDir(input.taskDir);
   const hasWorktree = await files.isDir(input.taskWorktree);
-  if (!hasDir || !hasWorktree) return SKIPPED_STATS;
+  if (!hasDir || !hasWorktree) return { info: SKIPPED_STATS, stats: null };
   const file = statsFile(input.taskDir);
   try {
     const computed = await stats.compute(input);
     await stats.save(computed, input.taskDir);
-    return { path: file, state: "written" };
+    return { info: { path: file, state: "written" }, stats: computed };
   } catch (e) {
-    return { path: file, state: `failed: ${errorMessage(e)}` };
+    return { info: { path: file, state: `failed: ${errorMessage(e)}` }, stats: null };
   }
 }
 
-/** No target: a project with no id has no task tmux server. */
-function removeSession(target: TmuxTarget | null): Promise<SessionRemoveState> {
-  return target === null ? Promise.resolve("skipped") : sessions.remove(target.server);
+interface SessionTarget {
+  id: TaskId;
+  taskWorktree: string;
+}
+
+/** A `claude` that fails must not stop the close: the worktree and branch still go. */
+async function stopSessions(target: SessionTarget): Promise<SessionState> {
+  try {
+    return await sessions.stop(target);
+  } catch (e) {
+    return `failed: ${errorMessage(e)}`;
+  }
+}
+
+interface CommentInput {
+  id: TaskId;
+  tracker: Tracker;
+  stats: TaskStats | null;
+}
+
+/** Needs the stats the close wrote; a failure never undoes the close. */
+async function postComment(input: CommentInput): Promise<CommentState> {
+  const { id, tracker, stats } = input;
+  if (stats === null || tracker.kind === "none") return "skipped";
+  try {
+    await tracker.comment({ id, text: costComment(stats) });
+    return "posted";
+  } catch (e) {
+    return `failed: ${errorMessage(e)}`;
+  }
 }

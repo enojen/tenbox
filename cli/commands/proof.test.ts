@@ -13,7 +13,7 @@ beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   const taskWorktree = path.join(project.wtRoot, "demo", "T-1");
   proofsFile = path.join(taskWorktree, ".tenbox", "proofs.json");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   await files.write(path.join(taskWorktree, ".tenbox", "parts", "01-x.md"), "status: todo\n");
 });
 

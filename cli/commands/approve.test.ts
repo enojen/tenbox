@@ -16,7 +16,7 @@ beforeEach(async () => {
   const taskWorktree = path.join(project.wtRoot, "demo", "T-1");
   planFile = path.join(taskWorktree, ".tenbox", "plan.md");
   approvedFile = path.join(taskWorktree, ".tenbox", "approved.json");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
 });
 
 afterEach(async () => {

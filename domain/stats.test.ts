@@ -1,5 +1,84 @@
-import { expect, test } from "bun:test";
-import { checksPassed, countPlan, countPoints, distinctProofs, sumCode } from "./stats.ts";
+import { describe, expect, test } from "bun:test";
+import {
+  checksPassed,
+  costComment,
+  countPlan,
+  countPoints,
+  distinctProofs,
+  readStatsAgents,
+  sumCode,
+  type TaskStats,
+} from "./stats.ts";
+
+const NO_USAGE = {
+  workflow: "w",
+  label: null,
+  phase: null,
+  role: null,
+  model: null,
+  started: null,
+  seconds: null,
+  tokens: null,
+  tool_calls: null,
+  round: null,
+  calls: null,
+  input: null,
+  cache_write: null,
+  cache_read: null,
+};
+
+function statsWith(output: (number | null)[], total: number | null): TaskStats {
+  return {
+    schema: 5,
+    project: "p",
+    task: "T-1",
+    title: null,
+    user: null,
+    tenbox: null,
+    forced: false,
+    timeline: {
+      opened: null,
+      plan_start: null,
+      plan_end: null,
+      build_start: null,
+      build_end: null,
+      closed: "2026-01-01T00:00:00Z",
+    },
+    minutes: {
+      plan: null,
+      wait_approval: null,
+      build: null,
+      review: null,
+      wait_merge: null,
+      total,
+    },
+    plan: null,
+    rounds: [
+      { number: 1, checks_passed: false },
+      { number: 2, checks_passed: true },
+    ],
+    review: null,
+    proofs: [],
+    points: [],
+    code: null,
+    agents: output.map((out) => ({ ...NO_USAGE, output: out })),
+  };
+}
+
+describe("costComment", () => {
+  test("sums output tokens over the agents in thousands", () => {
+    expect(costComment(statsWith([40_000, null, 48_400], 384))).toBe(
+      "384 min, 88k tokens, 2 rounds",
+    );
+  });
+  test("rounds the minutes to a whole number", () => {
+    expect(costComment(statsWith([1000], 384.7))).toBe("385 min, 1k tokens, 2 rounds");
+  });
+  test("without agents or minutes it is 0 min, 0k tokens", () => {
+    const empty = { ...statsWith([], null), agents: null };
+    expect(costComment(empty)).toBe("0 min, 0k tokens, 2 rounds");
+  });
+});
 
 test("countPlan lists each part's difficulty in order and the estimated lines", () => {
   const plan = countPlan({
@@ -97,4 +176,40 @@ test("distinctProofs and countPoints group a part file slug and its number as on
     unproven: [{ part: "01-x", reason: "r" }],
   });
   expect(points).toEqual([{ part: "01", points: 1 }]);
+});
+
+const AGENT = {
+  workflow: "tenbox-build",
+  label: "round 1: 01",
+  phase: "Build",
+  role: "worker",
+  model: "m",
+  started: "2026-01-01T00:00:00.000Z",
+  seconds: 10,
+  tokens: 1,
+  tool_calls: 1,
+  round: 1,
+  calls: 2,
+  input: 3,
+  output: 4,
+  cache_write: 5,
+  cache_read: 6,
+};
+
+test("readStatsAgents gives the agents of a schema 5 stats.json, or null agents", () => {
+  const withAgents = JSON.stringify({ schema: 5, agents: [AGENT] });
+  expect(readStatsAgents(withAgents)).toEqual([AGENT]);
+  expect(readStatsAgents(JSON.stringify({ schema: 5, agents: null }))).toEqual([]);
+});
+
+test.each([
+  ["text that is not JSON", "{nope"],
+  ["schema 3", JSON.stringify({ schema: 3, agents: [AGENT] })],
+  ["schema 4, whose agents have no usage", JSON.stringify({ schema: 4, agents: [AGENT] })],
+  [
+    "an agent without usage",
+    JSON.stringify({ schema: 5, agents: [{ ...AGENT, calls: undefined }] }),
+  ],
+])("readStatsAgents gives null for %s", (_name, text) => {
+  expect(readStatsAgents(text)).toBeNull();
 });

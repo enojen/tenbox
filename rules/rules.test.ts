@@ -50,7 +50,8 @@ function configFor(rule: RuleName): string {
 }
 
 /** The 1-based lines Biome reports for one sample under its rule alone. */
-async function reportedLines({ rule, sample }: Sample): Promise<number[]> {
+async function reportedLines(target: Sample): Promise<number[]> {
+  const { rule, sample } = target;
   const dir = await mkdtemp(path.join(os.tmpdir(), "tenbox-rule-"));
   tempDirs.push(dir);
   const file = path.join(dir, sample);
@@ -70,7 +71,8 @@ async function reportedLines({ rule, sample }: Sample): Promise<number[]> {
 }
 
 /** The 1-based lines of a sample that carry the lint marker. */
-async function markedLines({ rule, sample }: Sample): Promise<number[]> {
+async function markedLines(target: Sample): Promise<number[]> {
+  const { rule, sample } = target;
   const text = await readFile(path.join(RULES_DIR, rule, sample), "utf8");
   return text
     .split("\n")

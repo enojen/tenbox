@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import type { StatusNames, TrackerConfig } from "../../../domain/manifest.ts";
-import type { StatusChange, TaskStatus, Tracker, TrackerTask } from "../../../domain/tracker.ts";
+import type {
+  CommentRequest,
+  StatusChange,
+  TaskStatus,
+  Tracker,
+  TrackerTask,
+} from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
 
 const API = "https://api.clickup.com/api/v2";
@@ -50,6 +56,7 @@ export function clickupTracker(config: TrackerConfig): Tracker {
     kind: "clickup",
     getTask: (id) => getTask(connection, id),
     updateStatus: (id, status) => setStatus(connection, { id, status }),
+    comment: (request) => addComment(connection, request),
   };
 }
 
@@ -98,6 +105,14 @@ async function setStatus(connection: Connection, change: StatusChange): Promise<
   await http.put({
     endpoint: endpoint(connection, `/task/${encodeURIComponent(task.id)}`),
     body: { status },
+    schema: z.unknown(),
+  });
+}
+
+async function addComment(connection: Connection, request: CommentRequest): Promise<void> {
+  await http.post({
+    endpoint: endpoint(connection, `/task/${encodeURIComponent(request.id)}/comment`),
+    body: { comment_text: request.text },
     schema: z.unknown(),
   });
 }

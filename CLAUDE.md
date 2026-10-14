@@ -13,18 +13,19 @@ the README.
 Phase 1 is done: roles, `/tenbox-plan`, `/tenbox-build` without the Try phase,
 `tenbox start`, `check`, `install`, the Linear tracker. Phase 2 has `tenbox close` (the
 cleanup only, no sandbox and no merge), `tenbox pr` (push, then create or update the PR
-with `gh`), `tenbox build` (types `/tenbox-build` into the task's `claude` session on the
-task's own tmux server) and `tenbox merge-check` (merge the open task PRs in a temporary
+with `gh`), `tenbox build` (starts `claude --bg` with `/tenbox-build` in the task worktree;
+`tenbox start` does the same with `/tenbox-plan`, `tenbox attach` opens the session, `tenbox
+close` stops it), `tenbox stats` and `tenbox merge-check` (merge the open task PRs in a temporary
 worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`, which also
-pulls the base and deletes the remote branch after a MERGED PR); next is the ClickUp
-adapter. No sandbox yet.
+pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp tracker.
+No sandbox yet.
 
 ## Rules
 
 - TypeScript on Bun, few dependencies, no Python. Code, docs and agent prompts in English.
 - Must run on macOS and Linux from the first commit: `os.homedir()` and `path.join`, no
   GNU-only or BSD-only shell flags, hooks as `bun run hooks/<name>.ts`. Spawn only `git`,
-  `tmux`, `gh`, `docker`, `claude`.
+  `gh`, `docker`, `claude`.
 - Every CLI command prints JSON on stdout; human text goes to stderr.
 - Agent roles are Markdown with frontmatter in `agents/`; workflows are plain JavaScript
   in `workflows/`; check both against the current Claude Code docs, not memory.
@@ -74,6 +75,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 The roles carry the general code shape rules (`agents/worker.md`). For this repo also:
 
 - Signatures use named types (`rules/named-parameter-types`). A shape used twice gets a name.
+- A function takes its parameter object whole and destructures it in the body
+  (`rules/no-destructured-parameters`).
 - Layers and their direction: `domain/` imports nothing outside itself; `cli/infra/` imports
   only `domain/`; `cli/application/` imports both, directly: no ports bag, no dependency
   injection; `cli/commands/` imports all three. The one port is `Tracker`, because its
@@ -124,8 +127,8 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
     approvals  plans  checks  decisions
-  infra/        the outside world: files, git, gh, shell, tmux, processes, env, baselineStore,
-                claudeSettings, claudeSessions, http, graphql
+  infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http,
+                graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
                 layers test

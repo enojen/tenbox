@@ -8,8 +8,8 @@ export function ghNoPrError(branch: string): TenboxError {
   return new TenboxError(`no open PR for ${branch} after gh ran`, "gh");
 }
 
-export function tmuxError(subcommand: string | undefined, reason: string): TenboxError {
-  return new TenboxError(`tmux ${subcommand} failed: ${reason}`, "tmux");
+export function claudeError(subcommand: string, reason: string): TenboxError {
+  return new TenboxError(`claude ${subcommand} failed: ${reason}`, "claude");
 }
 
 export function noCommandError(command: string | undefined): TenboxError {

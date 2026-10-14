@@ -1,5 +1,5 @@
-import { setDefaultTimeout, test } from "bun:test";
-import { rm } from "node:fs/promises";
+import { setDefaultTimeout } from "bun:test";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { parseObject } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
@@ -20,10 +20,6 @@ export interface CliRun {
   err: string;
   json: Json;
 }
-
-/** Runs only where tmux is installed. */
-export const hasTmux = Bun.which("tmux") !== null;
-export const tmuxTest = hasTmux ? test : test.skip;
 
 /** Runs `tenbox <args>` with bun by full path, so tests may change `PATH`. */
 export async function tenbox(
@@ -47,36 +43,63 @@ export async function tenbox(
   return { code, out, err, json };
 }
 
-export interface TmuxRun {
-  exitCode: number;
-  stdout: string;
+/** One call of the fake `claude`: its working directory and its arguments. */
+interface ClaudeCall {
+  cwd: string;
+  args: string[];
 }
 
-/** Runs `tmux <args>` on `server` (a task's `TMUX_TMPDIR`), or without one on the test's own server. */
-export function tmux(args: string[], server: string | null = null): TmuxRun {
-  const extra = server === null ? {} : { TMUX_TMPDIR: server, TMUX: "" };
-  const result = Bun.spawnSync(["tmux", ...args], { env: { ...process.env, ...extra } });
-  return { exitCode: result.exitCode, stdout: result.stdout.toString().trim() };
+/** A background session as `claude agents --json` lists it. */
+interface FakeSession {
+  id: string;
+  cwd: string;
+  kind: "background" | "interactive";
+  startedAt: number;
 }
 
-/** Kills every task tmux server in the list, removes its dir and empties the list. */
-export async function removeServers(servers: string[]): Promise<void> {
-  for (const server of servers.splice(0)) {
-    if (hasTmux) tmux(["kill-server"], server);
-    await rm(server, { recursive: true, force: true });
-  }
+/**
+ * A fake `claude` in `<root>/claude-bin`. It logs each call, answers `agents` with the sessions
+ * set by `setSessions`, and fails with `failWith`'s text on stderr.
+ */
+export interface FakeClaude {
+  /** The env that puts the fake first in `PATH`. */
+  env: Record<string, string>;
+  calls(): Promise<ClaudeCall[]>;
+  setSessions(sessions: FakeSession[]): Promise<void>;
+  failWith(stderr: string): Promise<void>;
 }
 
-const POLL_MS = 50;
-const WAIT_MS = 5000;
+const EXECUTABLE = 0o755;
 
-/** The file's text once it has some; "" after five seconds. */
-export async function waitForText(file: string): Promise<string> {
-  const deadline = Date.now() + WAIT_MS;
-  while (Date.now() < deadline) {
-    const text = await files.read(file);
-    if (text) return text;
-    await Bun.sleep(POLL_MS);
-  }
-  return "";
+export async function makeFakeClaude(root: string): Promise<FakeClaude> {
+  const bin = path.join(root, "claude-bin");
+  const callsFile = path.join(root, "claude.calls");
+  const sessionsFile = path.join(root, "claude.sessions");
+  const failFile = path.join(root, "claude.fail");
+  const script = [
+    "#!/bin/sh",
+    `if [ -f "${failFile}" ]; then cat "${failFile}" >&2; exit 1; fi`,
+    `printf '%s' "$PWD" >> "${callsFile}"`,
+    `printf '\t%s' "$@" >> "${callsFile}"`,
+    `printf '\n' >> "${callsFile}"`,
+    `if [ "$1" = agents ]; then cat "${sessionsFile}" 2>/dev/null || echo '[]'; fi`,
+    "",
+  ].join("\n");
+  await files.write(path.join(bin, "claude"), script);
+  await chmod(path.join(bin, "claude"), EXECUTABLE);
+  return {
+    env: { PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    calls: () => readCalls(callsFile),
+    setSessions: (sessions) => files.write(sessionsFile, JSON.stringify(sessions)),
+    failWith: (stderr) => files.write(failFile, stderr),
+  };
+}
+
+async function readCalls(file: string): Promise<ClaudeCall[]> {
+  const text = await files.read(file);
+  const lines = (text ?? "").split("\n").filter((line) => line !== "");
+  return lines.map((line) => {
+    const [cwd = "", ...args] = line.split("\t");
+    return { cwd, args };
+  });
 }

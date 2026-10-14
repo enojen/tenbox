@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { hasTmux, tmux } from "./cli.ts";
 
 /** File path relative to the main checkout, mapped to its text. */
 export type ProjectFiles = Record<string, string>;
@@ -40,7 +39,6 @@ export async function makeTempProject(projectFiles: ProjectFiles): Promise<TempP
     tenboxHome,
     addTaskWorktree: (id) => addTaskWorktree(mainDir, path.join(wtRoot, PROJECT, id), tenboxHome),
     remove: async () => {
-      if (hasTmux) tmux(["kill-server"]);
       restoreEnv();
       await rm(root, { recursive: true, force: true });
     },
@@ -56,7 +54,8 @@ interface TempPaths {
 /** A value of `undefined` removes the variable. */
 type EnvValues = Record<string, string | undefined>;
 
-function testEnv({ root, wtRoot, tenboxHome }: TempPaths): EnvValues {
+function testEnv(paths: TempPaths): EnvValues {
+  const { root, wtRoot, tenboxHome } = paths;
   return {
     TENBOX_WT_ROOT: wtRoot,
     TENBOX_HOME: tenboxHome,
@@ -66,9 +65,6 @@ function testEnv({ root, wtRoot, tenboxHome }: TempPaths): EnvValues {
     GIT_AUTHOR_EMAIL: GIT_EMAIL,
     GIT_COMMITTER_NAME: GIT_AUTHOR,
     GIT_COMMITTER_EMAIL: GIT_EMAIL,
-    // tmux prefers `TMUX` over `TMUX_TMPDIR`; without both, tests never reach the user's server.
-    TMUX_TMPDIR: root,
-    TMUX: undefined,
   };
 }
 

@@ -1,28 +1,25 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { chmod, rm } from "node:fs/promises";
-import os from "node:os";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { taskDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { removeServers, tmux, tmuxTest, waitForText } from "../test/cli.ts";
+import { type FakeClaude, makeFakeClaude } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
-import type { StartResult } from "./results.ts";
 import { type StartInput, startTask } from "./start.ts";
 
 let project: TempProject;
 let taskWorktree: string;
 let startCwd: string;
 const startPath = process.env.PATH;
-const servers: string[] = [];
 
 const input = (extra: Partial<StartInput> = {}): StartInput => ({
   id: taskId("T-1"),
   title: "Cancel",
   base: undefined,
-  tmux: false,
+  claude: false,
   setup: true,
   ...extra,
 });
@@ -41,7 +38,6 @@ async function setup(manifest: string): Promise<void> {
 }
 
 afterEach(async () => {
-  await removeServers(servers);
   process.env.PATH = startPath;
   process.chdir(startCwd);
   await project.remove();
@@ -62,7 +58,7 @@ test("creates the worktree, .tenbox, excludes, settings and runs setup", async (
   expect(settings).toEqual({ worktree: { baseRef: "head" } });
   expect(r.setup).toMatchObject({ state: "ran", cmd: "echo ready > setup.txt", exit_code: 0 });
   expect(setupOutput).toBe("ready\n");
-  expect([r.tracker.status, r.tmux.state]).toEqual(["skipped", "skipped"]);
+  expect([r.tracker.status, r.claude.state]).toEqual(["skipped", "skipped"]);
 });
 
 test("reuses an existing worktree and keeps task.md and other settings keys", async () => {
@@ -107,51 +103,77 @@ test("a failing setup is an error with the output tail", async () => {
   });
 });
 
-/** A fake `claude` that appends its args, one per line, to `<root>/claude.args` and stays up. */
-async function useFakeClaude(): Promise<string> {
-  const bin = path.join(project.root, "bin");
-  const args = path.join(project.root, "claude.args");
-  const script = `#!/bin/sh\nprintf '%s\\n' "$@" >> "${args}"\nsleep 30\n`;
-  await files.write(path.join(bin, "claude"), script);
-  await chmod(path.join(bin, "claude"), 0o755);
-  process.env.PATH = `${bin}${path.delimiter}${startPath}`;
-  return args;
+async function useFakeClaude(): Promise<FakeClaude> {
+  const fake = await makeFakeClaude(project.root);
+  process.env.PATH = fake.env.PATH;
+  return fake;
 }
 
-async function startOnServer(extra: Partial<StartInput> = {}): Promise<StartResult> {
-  const r = await startTask(input({ tmux: true, ...extra }));
-  servers.push(r.tmux.server);
-  return r;
-}
-
-tmuxTest("starts claude with the plan on the task's own tmux server, once", async () => {
+test("starts claude --bg with the plan in the task worktree", async () => {
   await setup("project: demo\n");
-  const argsFile = await useFakeClaude();
-  const first = await startOnServer();
-  const second = await startOnServer();
+  const fake = await useFakeClaude();
+  const r = await startTask(input({ claude: true, setup: false }));
   const id = await manifests.ensureId(project.mainDir);
   const dir = taskDir(project.tenboxHome, id, taskId("T-1"));
-  expect([first.tmux.state, second.tmux.state]).toEqual(["started", "exists"]);
-  expect(first.tmux.server).toBe(path.join(os.tmpdir(), `tenbox-${id}-T-1`));
-  expect(tmux(["has-session", "-t", "=tenbox-T-1"], first.tmux.server).exitCode).toBe(0);
-  expect(tmux(["has-session", "-t", "=tenbox-T-1"]).exitCode).not.toBe(0);
-  const args = await waitForText(argsFile);
-  expect(args.trimEnd().split("\n")).toEqual([
-    "--model",
-    "sonnet",
-    "--add-dir",
-    dir,
-    "--",
-    "/tenbox-plan T-1",
-  ]);
+  const real = await files.realPath(taskWorktree);
+  const calls = await fake.calls();
+  expect(r.claude).toEqual({ session: "tenbox-T-1", state: "started" });
+  expect(calls.at(-1)).toEqual({
+    cwd: real,
+    args: [
+      "--bg",
+      "--model",
+      "sonnet",
+      "--add-dir",
+      dir,
+      "-n",
+      "tenbox-T-1",
+      "--allowedTools",
+      "Workflow",
+      "--",
+      "/tenbox-plan T-1",
+    ],
+  });
 });
 
-tmuxTest("the manifest model goes to claude --model", async () => {
+test("a background session in the task worktree is kept: exists, no second claude --bg", async () => {
+  await setup("project: demo\n");
+  await startTask(input({ setup: false }));
+  const fake = await useFakeClaude();
+  const real = await files.realPath(taskWorktree);
+  await fake.setSessions([{ id: "bg1", cwd: real, kind: "background", startedAt: 1 }]);
+  const r = await startTask(input({ claude: true, setup: false }));
+  const calls = await fake.calls();
+  expect(r.claude.state).toBe("exists");
+  expect(calls.map((call) => call.args[0])).toEqual(["agents"]);
+});
+
+test("the manifest model goes to claude --model", async () => {
   await setup("project: demo\nmodel: opus\n");
-  const argsFile = await useFakeClaude();
-  await startOnServer();
-  const args = await waitForText(argsFile);
-  expect(args.split("\n").slice(0, 2)).toEqual(["--model", "opus"]);
+  const fake = await useFakeClaude();
+  await startTask(input({ claude: true, setup: false }));
+  const calls = await fake.calls();
+  expect(calls.at(-1)?.args.slice(0, 3)).toEqual(["--bg", "--model", "opus"]);
+});
+
+test("without claude in PATH the claude step is unavailable", async () => {
+  await setup("project: demo\n");
+  const gitOnly = path.join(project.root, "git-bin");
+  await files.mkdir(gitOnly);
+  await files.symlink(Bun.which("git") ?? "git", path.join(gitOnly, "git"));
+  process.env.PATH = gitOnly;
+  const r = await startTask(input({ claude: true, setup: false }));
+  expect(r.claude.state).toBe("unavailable");
+});
+
+test("a claude --bg that fails, as on an untrusted workspace, fails start with its message", async () => {
+  await setup("project: demo\n");
+  const fake = await useFakeClaude();
+  await fake.failWith("Workspace not trusted. Run `claude` once.");
+  await expect(startTask(input({ claude: true, setup: false }))).rejects.toMatchObject({
+    code: "claude",
+    message: expect.stringContaining("Workspace not trusted"),
+  });
 });
 
 test("invalid settings.local.json fails with code settings naming the file", async () => {

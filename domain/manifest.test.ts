@@ -65,9 +65,9 @@ test("failure_pattern must compile", () => {
 
 describe("names", () => {
   test("defaults", () => {
-    expect(mergeManifest([]).names).toEqual({ branch: "feat/{id}", tmux: "tenbox-{id}" });
+    expect(mergeManifest([]).names).toEqual({ branch: "feat/{id}", session: "tenbox-{id}" });
   });
-  test("one {id} each, safe for git and tmux", () => {
+  test("one {id} each, the branch safe for git", () => {
     expect(
       mergeManifest([{ file: "tenbox.yaml", value: { names: { branch: "task/{id}" } } }]).names
         .branch,
@@ -77,11 +77,17 @@ describe("names", () => {
         /names\.branch/,
       );
     }
-    for (const tmux of ["tb.{id}", "tb:{id}", "tb"]) {
-      expect(() => mergeManifest([{ file: "tenbox.yaml", value: { names: { tmux } } }])).toThrow(
-        /names\.tmux/,
+    for (const session of ["tb", "{id}-{id}"]) {
+      expect(() => mergeManifest([{ file: "tenbox.yaml", value: { names: { session } } }])).toThrow(
+        /names\.session/,
       );
     }
+    const dotted = { file: "tenbox.yaml", value: { names: { session: "tb.{id}" } } };
+    expect(mergeManifest([dotted]).names.session).toBe("tb.{id}");
+  });
+  test("an unknown key, such as the old tmux, is an error", () => {
+    const old = { file: "tenbox.yaml", value: { names: { tmux: "tb-{id}" } } };
+    expect(() => mergeManifest([old])).toThrow(/names.*tmux/);
   });
 });
 

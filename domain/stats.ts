@@ -1,14 +1,15 @@
 import path from "node:path";
+import { z } from "zod";
 import type { BuildResult, Unproven } from "./build.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
-import type { RunAgent, RunMinutes, RunTimeline } from "./runs.ts";
+import { type RunAgent, RunAgentSchema, type RunMinutes, type RunTimeline } from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
-export const STATS_SCHEMA = 4;
+export const STATS_SCHEMA = 5;
 
 /** `stats.json` in a task dir. */
 export const statsFile = (dir: string): string => path.join(dir, "stats.json");
@@ -162,4 +163,25 @@ export function countPoints(input: PointsInput): StatsPoints[] {
   for (const proof of proofs) add(proof.part, 1);
   for (const item of unproven) add(partIdOf(item.part), -1);
   return [...points].map(([part, total]) => ({ part, points: total }));
+}
+
+const TOKENS_PER_K = 1000;
+
+/** The close comment: total minutes, output tokens in thousands, number of rounds. */
+export function costComment(stats: TaskStats): string {
+  const output = (stats.agents ?? []).reduce((sum, agent) => sum + (agent.output ?? 0), 0);
+  const minutes = Math.round(stats.minutes.total ?? 0);
+  const tokens = Math.round(output / TOKENS_PER_K);
+  return `${minutes} min, ${tokens}k tokens, ${stats.rounds.length} rounds`;
+}
+
+const StatsAgentsSchema = z.object({
+  schema: z.literal(STATS_SCHEMA),
+  agents: z.array(RunAgentSchema).nullable(),
+});
+
+/** The agents in `stats.json` text; none when it had no session files. Null when the text is not a stats record of this schema. */
+export function readStatsAgents(text: string): RunAgent[] | null {
+  const parsed = StatsAgentsSchema.safeParse(parseObject(text));
+  return parsed.success ? (parsed.data.agents ?? []) : null;
 }

@@ -13,7 +13,7 @@ let tenboxDir: string;
 beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   tenboxDir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
 });
 
 afterEach(async () => {

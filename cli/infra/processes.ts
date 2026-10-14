@@ -23,8 +23,8 @@ const ENOENT = "ENOENT";
 /** Process groups still running, so `stopAll` can end them when tenbox itself is stopped. */
 const running = new Set<number>();
 
-/** Runs a program without a shell: Tenbox starts only git, tmux, gh, docker and claude. */
-export const processes = { run, stopAll, which };
+/** Runs a program without a shell: Tenbox starts only git, gh, docker and claude. */
+export const processes = { run, runInTerminal, stopAll, which };
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
@@ -56,6 +56,17 @@ async function run(cmd: string[], options: ProcessOptions = {}): Promise<Process
     clearTimeout(timer);
     running.delete(proc.pid);
   }
+}
+
+/** Hands the terminal to the program until it exits; returns its exit code. */
+async function runInTerminal(cmd: string[], options: ProcessOptions = {}): Promise<number> {
+  const proc = Bun.spawn(cmd, {
+    cwd: options.cwd ?? process.cwd(),
+    env: { ...process.env, ...options.env },
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  const code = await proc.exited;
+  return code;
 }
 
 async function start(

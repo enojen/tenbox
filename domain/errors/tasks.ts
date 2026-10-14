@@ -20,7 +20,7 @@ export function planChangedError(id: string): TenboxError {
 }
 
 export function noSessionError(id: string): TenboxError {
-  return new TenboxError(`${id} has no tmux session; run: tenbox start ${id}`, "no-session");
+  return new TenboxError(`${id} has no background session; run: tenbox build ${id}`, "no-session");
 }
 
 export function dirtyBeforePrError(taskWorktree: string): TenboxError {
@@ -100,5 +100,19 @@ export function unknownQuestionError(question: string, count: number): TenboxErr
   return new TenboxError(
     `"${question}" fits ${found} of questions.md; it must fit exactly one`,
     "unknown-question",
+  );
+}
+
+export function noStatsError(id: string): TenboxError {
+  return new TenboxError(
+    `${id} has no stats.json and no Claude Code session files; run: tenbox start ${id}`,
+    "no-stats",
+  );
+}
+
+export function oldStatsError(id: string): TenboxError {
+  return new TenboxError(
+    `${id} has a stats.json of an older schema without token numbers and no Claude Code session files`,
+    "old-stats",
   );
 }

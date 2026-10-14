@@ -59,7 +59,8 @@ function linkTarget(pair: DirPair, name: string): LinkTarget {
 }
 
 /** Creates the link when nothing is in its place; reports what it found or did. */
-async function ensureLink({ source, link }: LinkTarget): Promise<LinkState> {
+async function ensureLink(target: LinkTarget): Promise<LinkState> {
+  const { source, link } = target;
   const current = await files.readLink(link);
   if (current === source) return "unchanged";
   // `exists` follows symlinks, so a dangling foreign link needs the `readLink` test too.

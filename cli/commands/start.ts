@@ -1,4 +1,4 @@
-import { type TaskId, taskBranch } from "../../domain/ids.ts";
+import { sessionName, type TaskId, taskBranch } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
@@ -16,11 +16,12 @@ export interface StartInput {
   title: string | undefined;
   /** Default: the manifest's `base`. */
   base: string | undefined;
-  tmux: boolean;
+  /** False with `--no-claude`: no background `claude` with the plan. */
+  claude: boolean;
   setup: boolean;
 }
 
-/** Worktree + branch from `base`, task dir with `task.md` linked as `.tenbox`, setup, tmux session on the task's own server with `claude`. */
+/** Worktree + branch from `base`, task dir with `task.md` linked as `.tenbox`, setup, then `claude --bg` with the plan in the task worktree. */
 export async function startTask(input: StartInput): Promise<StartResult> {
   const { id } = input;
   const { project, manifest } = await projects.get(env().cwd);
@@ -30,7 +31,6 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const task = await tasks.get(input, tracker);
   const taskWorktree = taskWorktreeDir(env().wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
-  const target = sessions.tmuxTarget(manifest.names, projectId, id);
   const { tenboxHome } = env();
   await projects.save(tenboxHome, { id: projectId, name: project.name });
   const dir = taskDir(tenboxHome, projectId, id);
@@ -38,8 +38,16 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const task_md = await tasks.ensureFiles(taskWorktree, task);
   const setup = await setups.run(taskWorktree, manifest.setup, input.setup);
   const status = await tasks.updateStatus(input, tracker, "in_progress");
-  const start = { id, target, taskWorktree, taskDir: dir, model: manifest.model };
-  const tmux = await sessions.ensure(target, input.tmux ? start : null);
+  const claude = await sessions.ensure({
+    target: { id, taskWorktree },
+    start: {
+      model: manifest.model,
+      addDir: dir,
+      name: sessionName(manifest.names, id),
+      prompt: `/tenbox-plan ${id}`,
+    },
+    enabled: input.claude,
+  });
   return {
     ok: true,
     task: id,
@@ -52,6 +60,6 @@ export async function startTask(input: StartInput): Promise<StartResult> {
     task_md,
     setup,
     tracker: { kind: tracker.kind, status },
-    tmux,
+    claude,
   };
 }

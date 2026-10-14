@@ -1,101 +1,100 @@
-import os from "node:os";
 import { noSessionError } from "../../domain/errors/tasks.ts";
-import { type ProjectId, type TaskId, tmuxSessionName } from "../../domain/ids.ts";
-import type { Names } from "../../domain/manifest.ts";
-import { tmuxDir } from "../../domain/project.ts";
-import { errorMessage } from "../../domain/utils.ts";
-import { claudeCommand, findClaude } from "../infra/claude.ts";
+import { noCommandError } from "../../domain/errors/tools.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import {
+  type BackgroundSession,
+  type ClaudeRun,
+  type ClaudeStart,
+  claude,
+} from "../infra/claude/background.ts";
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
-import { processes } from "../infra/processes.ts";
-import { attachCommand, type TmuxTarget, tmux } from "../infra/tmux.ts";
 
-type TmuxState = "started" | "exists" | "skipped" | "unavailable";
+type SessionStartState = "started" | "exists" | "skipped" | "unavailable";
 
-export type SessionRemoveState = "killed" | "skipped";
+export type SessionStopState = "stopped" | "skipped";
 
-export interface TmuxInfo {
+export interface SessionStartInfo {
+  /** The `-n` name of the session. */
   session: string;
-  server: string;
-  state: TmuxState;
-  attach: string;
+  state: SessionStartState;
 }
 
-/** What `claude` starts with in the task's session. */
-interface SessionStart {
+/** A background `claude` session in one task worktree. */
+interface SessionTarget {
   id: TaskId;
-  target: TmuxTarget;
   taskWorktree: string;
-  taskDir: string;
-  model: string;
 }
 
-/** The task's tmux session, on the task's own tmux server, with `claude` in it. */
-export const sessions = { tmuxTarget, ensure, send, remove };
-
-/** The task's session on the task's own tmux server. */
-function tmuxTarget(names: Names, projectId: ProjectId, id: TaskId): TmuxTarget {
-  return { server: tmuxDir(os.tmpdir(), projectId, id), session: tmuxSessionName(names, id) };
+interface SessionEnsureInput {
+  target: SessionTarget;
+  start: ClaudeStart;
+  /** False with `--no-claude`. */
+  enabled: boolean;
 }
 
-/** Starts the session with `claude` running `/tenbox-plan <id>`; null `start` means not asked for. */
-async function ensure(target: TmuxTarget, start: SessionStart | null): Promise<TmuxInfo> {
-  const info = { ...target, attach: attachCommand(target) };
-  if (start === null) return { ...info, state: "skipped" };
-  const state = await startSession(start);
-  return { ...info, state };
+/** The task's background `claude` sessions, all started in its task worktree. */
+export const sessions = { ensure, run, attach, stop };
+
+/** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
+async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
+  const { target, start, enabled } = input;
+  const session = start.name;
+  if (!enabled) return { session, state: "skipped" };
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) return logStart(session, "unavailable", "claude not found in PATH");
+  const existing = await claude.listBackground(claudeRun);
+  if (existing.length > 0) return logStart(session, "exists", "a background session exists");
+  await claude.startBackground(claudeRun, start);
+  return logStart(session, "started", `session ${session} started`);
 }
 
-async function startSession(start: SessionStart): Promise<TmuxState> {
-  const { target } = start;
-  const exists = await tmux.hasSession(target);
-  if (exists) return logTmux(`session ${target.session} exists`, "exists");
-  const claude = findClaude();
-  if (claude === null) {
-    return logTmux("claude not found in PATH, session not started", "unavailable");
-  }
-  await files.mkdir(target.server);
-  const command = claudeCommand(claude, {
-    model: start.model,
-    addDir: start.taskDir,
-    prompt: `/tenbox-plan ${start.id}`,
-  });
-  await tmux.newSession(target, start.taskWorktree, command);
-  return logTmux(`session ${target.session} started`, "started");
+/** `tenbox build`: starts a new session; claude's own message when it refuses. */
+async function run(target: SessionTarget, start: ClaudeStart): Promise<void> {
+  const claudeRun = await requireRun(target);
+  await claude.startBackground(claudeRun, start);
 }
 
-/** Types `text` as one line into the task's `claude`; `no-session` without a session. */
-async function send(id: TaskId, target: TmuxTarget, text: string): Promise<void> {
-  if (processes.which("tmux") === null) throw noSessionError(id);
-  const exists = await tmux.hasSession(target);
-  if (!exists) throw noSessionError(id);
-  await tmux.typeLine(target, text);
+/** Opens the newest session in this terminal and returns its id; `no-session` without one. */
+async function attach(target: SessionTarget): Promise<string> {
+  const claudeRun = await requireRun(target);
+  const found = await claude.listBackground(claudeRun);
+  const newest = [...found].sort(byStart).at(-1);
+  if (newest === undefined) throw noSessionError(target.id);
+  await claude.attach(claudeRun, newest.id);
+  return newest.id;
 }
 
-/** Kills the task's tmux server if one runs, then removes its directory. */
-async function remove(server: string): Promise<SessionRemoveState> {
-  const state = await killServer(server);
-  await removeServerDir(server);
-  return state;
+/** `tenbox close`: stops every session of the task worktree; the transcripts stay. */
+async function stop(target: SessionTarget): Promise<SessionStopState> {
+  const exists = await files.isDir(target.taskWorktree);
+  if (!exists) return "skipped";
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) return "skipped";
+  const found = await claude.listBackground(claudeRun);
+  for (const session of found) await claude.stop(claudeRun, session.id);
+  return found.length > 0 ? "stopped" : "skipped";
 }
 
-async function killServer(server: string): Promise<SessionRemoveState> {
-  if (processes.which("tmux") === null) return "skipped";
-  const running = await tmux.isRunning(server);
-  if (!running) return "skipped";
-  await tmux.killServer(server);
-  return "killed";
+/** The `claude` binary in the task worktree, whose real path Claude Code records; null without `claude`. */
+async function openRun(target: SessionTarget): Promise<ClaudeRun | null> {
+  const binary = claude.find();
+  if (binary === null) return null;
+  const cwd = await files.realPath(target.taskWorktree);
+  return { claude: binary, cwd };
 }
 
-async function removeServerDir(server: string): Promise<void> {
-  try {
-    await files.remove(server);
-  } catch (error) {
-    log(`tenbox close: tmux server dir not removed: ${errorMessage(error)}`);
-  }
+async function requireRun(target: SessionTarget): Promise<ClaudeRun> {
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) throw noCommandError("claude");
+  return claudeRun;
 }
 
-function logTmux(message: string, state: TmuxState): TmuxState {
-  log(`tenbox start: tmux ${message}`);
-  return state;
+function byStart(a: BackgroundSession, b: BackgroundSession): number {
+  return a.startedAt - b.startedAt;
+}
+
+function logStart(session: string, state: SessionStartState, message: string): SessionStartInfo {
+  log(`tenbox start: claude ${message}`);
+  return { session, state };
 }

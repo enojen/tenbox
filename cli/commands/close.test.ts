@@ -1,18 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
-import { taskDir, tmuxDir } from "../../domain/project.ts";
+import { taskDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
-import { projectDir } from "../infra/claudeSessions.ts";
+import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type CliRun, removeServers, tenbox, tmux, tmuxTest } from "../test/cli.ts";
+import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
-const SESSION = "tenbox-T-1";
 const MS_PER_MINUTE = 60_000;
 const DAY_MS = 86_400_000;
 const EXECUTABLE = 0o755;
@@ -32,12 +30,11 @@ const PLAN_RESULT = JSON.stringify({
 let project: TempProject;
 let taskWorktree: string;
 let kept: string;
-const servers: string[] = [];
 
 async function setup(): Promise<void> {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   taskWorktree = path.join(project.wtRoot, "demo", "T-1");
-  await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
+  await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   const id = await manifests.ensureId(project.mainDir);
   kept = taskDir(project.tenboxHome, id, taskId("T-1"));
 }
@@ -67,17 +64,8 @@ async function expectUntouched(run: CliRun): Promise<void> {
 }
 
 afterEach(async () => {
-  await removeServers(servers);
   await project.remove();
 });
-
-/** A `PATH` with a fake `claude` that only waits, so `tenbox start` can start its session. */
-async function fakeClaude(): Promise<Record<string, string>> {
-  const bin = path.join(project.root, "claude-bin");
-  await files.write(path.join(bin, "claude"), "#!/bin/sh\nsleep 30\n");
-  await chmod(path.join(bin, "claude"), EXECUTABLE);
-  return { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
-}
 
 describe("tenbox close", () => {
   test("closes a clean task and removes worktree and branch, the task dir stays", async () => {
@@ -249,7 +237,7 @@ describe("tenbox close", () => {
       expect(calls).toBe(false);
     });
 
-    test("a MERGED PR gives review and wait_merge minutes, schema 4, no human_review", async () => {
+    test("a MERGED PR gives review and wait_merge minutes, schema 5, no human_review", async () => {
       await setup();
       await commitOn(taskWorktree, "b.txt");
       const rawHead = await git.run(["rev-parse", "HEAD"], taskWorktree);
@@ -268,7 +256,7 @@ describe("tenbox close", () => {
       await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
       const text = await readStatsText();
       const written = JSON.parse(text);
-      expect(written.schema).toBe(4);
+      expect(written.schema).toBe(5);
       expect(written.minutes).toMatchObject({ review: 10, wait_merge: 20 });
       expect(written.minutes).not.toHaveProperty("human_review");
     });
@@ -443,58 +431,97 @@ describe("tenbox close", () => {
     expect(second).toBe(first);
     expect(run.json).toMatchObject({
       stats: { path: null, state: "skipped" },
-      tmux: { state: "skipped" },
+      session: { state: "skipped" },
       worktree: { state: "skipped" },
       branch: { state: "skipped" },
       tracker: { status: "skipped" },
     });
   });
 
-  tmuxTest("kills the task's tmux server; with no server running it is skipped", async () => {
+  test("stops the task's background sessions; with none it is skipped", async () => {
     await setup();
-    const withClaude = await fakeClaude();
-    await tenbox(["start", "T-1", "--title", "x"], project.mainDir, withClaude);
-    const projectId = await manifests.ensureId(project.mainDir);
-    const server = tmuxDir(os.tmpdir(), projectId, taskId("T-1"));
-    servers.push(server);
-    const run = await closeT1();
-    expect(run.json).toMatchObject({ tmux: { session: SESSION, state: "killed" } });
-    expect(tmux(["list-sessions"], server).exitCode).not.toBe(0);
-    const serverExists = await files.exists(server);
-    expect(serverExists).toBe(false);
+    const fake = await makeFakeClaude(project.root);
+    const real = await files.realPath(taskWorktree);
+    await fake.setSessions([
+      { id: "plan", cwd: real, kind: "background", startedAt: 1 },
+      { id: "build", cwd: real, kind: "background", startedAt: 2 },
+      { id: "shell", cwd: real, kind: "interactive", startedAt: 3 },
+    ]);
+    const run = await tenbox(["close", "T-1"], project.mainDir, fake.env);
+    const calls = await fake.calls();
+    expect(run.json).toMatchObject({ ok: true, session: { state: "stopped" } });
+    expect(Object.keys(run.json).sort()).toEqual([
+      "branch",
+      "comment",
+      "forced",
+      "ok",
+      "project",
+      "pull",
+      "remote_branch",
+      "session",
+      "stats",
+      "task",
+      "tracker",
+      "worktree",
+    ]);
+    expect(calls.map((call) => call.args).slice(1)).toEqual([
+      ["stop", "plan"],
+      ["stop", "build"],
+    ]);
+    await fake.setSessions([]);
     await rm(kept, { recursive: true });
-    await tenbox(["start", "T-1", "--title", "x", "--no-tmux"], project.mainDir);
-    const again = await closeT1();
-    expect(again.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
+    await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
+    const again = await tenbox(["close", "T-1"], project.mainDir, fake.env);
+    expect(again.json).toMatchObject({ ok: true, session: { state: "skipped" } });
   });
 
-  test("a leftover tmux server dir is removed when no server runs; a missing dir is fine", async () => {
-    await setup();
-    const projectId = await manifests.ensureId(project.mainDir);
-    const server = tmuxDir(os.tmpdir(), projectId, taskId("T-1"));
-    servers.push(server);
-    await files.mkdir(server);
-    const run = await closeT1();
-    expect(run.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
-    const serverExists = await files.exists(server);
-    expect(serverExists).toBe(false);
-    const again = await closeT1();
-    expect(again.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
-  });
-
-  tmuxTest("without tmux in PATH the tmux step is skipped", async () => {
+  test("without claude in PATH the session step is skipped", async () => {
     await setup();
     const bin = path.join(project.root, "bin");
     await files.mkdir(bin);
     await files.symlink(Bun.which("git") ?? "git", path.join(bin, "git"));
-    const noTmux = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
-    expect(noTmux.json).toMatchObject({ ok: true, tmux: { state: "skipped" } });
+    const noClaude = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+    expect(noClaude.json).toMatchObject({ ok: true, session: { state: "skipped" } });
+  });
+
+  test("a claude that fails gives session failed: <reason> and the close goes on", async () => {
+    await setup();
+    const fake = await makeFakeClaude(project.root);
+    await fake.failWith("Workspace not trusted");
+    const run = await tenbox(["close", "T-1"], project.mainDir, fake.env);
+    const worktreeExists = await files.exists(taskWorktree);
+    expect(run.json).toMatchObject({
+      ok: true,
+      session: { state: "failed: claude agents failed: Workspace not trusted" },
+      worktree: { state: "removed" },
+    });
+    expect(worktreeExists).toBe(false);
   });
 
   test("with tracker none the tracker status is skipped", async () => {
     await setup();
     const run = await closeT1();
     expect(run.json).toMatchObject({ tracker: { kind: "none", status: "skipped" } });
+  });
+
+  test("with tracker none the cost comment is skipped", async () => {
+    await setup();
+    const run = await closeT1();
+    expect(run.json).toMatchObject({ ok: true, comment: { state: "skipped" } });
+  });
+
+  test("a tracker that fails the comment gives failed: <reason> and the close is ok", async () => {
+    project = await makeTempProject({
+      "tenbox.yaml": "project: demo\ntracker: { kind: clickup, api_key: bad }\n",
+      "a.txt": "a\n",
+    });
+    taskWorktree = path.join(project.wtRoot, "demo", "T-1");
+    await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
+    const run = await closeT1();
+    expect(run.json).toMatchObject({
+      ok: true,
+      comment: { state: expect.stringMatching(/^failed: /) },
+    });
   });
 
   test("writes stats.json with git and task file numbers", async () => {
@@ -522,7 +549,7 @@ describe("tenbox close", () => {
       stats: { path: path.join(kept, "stats.json"), state: "written" },
     });
     expect(written).toMatchObject({
-      schema: 4,
+      schema: 5,
       project: "demo",
       task: "T-1",
       title: "x",
@@ -705,6 +732,12 @@ describe("tenbox close stats from Claude Code session files", () => {
         seconds: i === 0 ? 60 : 180,
         tokens: 1000,
         tool_calls: 3,
+        round: i === 0 ? null : 1,
+        calls: null,
+        input: null,
+        output: null,
+        cache_write: null,
+        cache_read: null,
       })),
     );
     expect(text).not.toContain(MARKER);

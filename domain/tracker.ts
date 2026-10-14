@@ -16,9 +16,16 @@ export interface StatusChange {
   status: TaskStatus;
 }
 
+/** One comment Tenbox asks the tracker to add to a task. */
+export interface CommentRequest {
+  id: string;
+  text: string;
+}
+
 /** The port to the tracker; `infra/tracker/` holds one adapter per kind. */
 export interface Tracker {
   readonly kind: TrackerKind;
   getTask(id: string): Promise<TrackerTask>;
   updateStatus(id: string, status: TaskStatus): Promise<void>;
+  comment(request: CommentRequest): Promise<void>;
 }

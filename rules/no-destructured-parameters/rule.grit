@@ -1,0 +1,5 @@
+language js
+
+JsFormalParameter(binding=JsObjectBindingPattern()) as $parameter where {
+  register_diagnostic(span=$parameter, message="Take the parameter whole and destructure it in the body: `function f(input: Input) { const { a } = input; }`.")
+}

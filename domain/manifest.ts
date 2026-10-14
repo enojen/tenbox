@@ -19,7 +19,6 @@ const TrackerConfigSchema = z.object({
 
 const ID_PLACEHOLDER = "{id}";
 const GIT_REF_FORBIDDEN = [" ", "\t", "~", "^", ":", "?", "*", "[", "\\", ".."];
-const TMUX_FORBIDDEN = [".", ":"];
 
 function hasOnePlaceholder(template: string): boolean {
   return template.split(ID_PLACEHOLDER).length === 2;
@@ -29,19 +28,22 @@ function usesNone(forbidden: string[]): (template: string) => boolean {
   return (template) => !forbidden.some((piece) => template.includes(piece));
 }
 
-function nameTemplate(forbidden: string[], tool: string) {
+function nameTemplate() {
   return z
     .string()
     .min(1)
-    .refine(hasOnePlaceholder, { message: `must contain ${ID_PLACEHOLDER} exactly once` })
-    .refine(usesNone(forbidden), { message: `contains characters ${tool} does not allow` });
+    .refine(hasOnePlaceholder, { message: `must contain ${ID_PLACEHOLDER} exactly once` });
 }
 
 /** `{id}` is replaced with the task id. */
-export const NamesSchema = z.object({
-  branch: nameTemplate(GIT_REF_FORBIDDEN, "git").default("feat/{id}"),
-  tmux: nameTemplate(TMUX_FORBIDDEN, "tmux").default("tenbox-{id}"),
-});
+export const NamesSchema = z
+  .object({
+    branch: nameTemplate()
+      .refine(usesNone(GIT_REF_FORBIDDEN), { message: "contains characters git does not allow" })
+      .default("feat/{id}"),
+    session: nameTemplate().default("tenbox-{id}"),
+  })
+  .strict();
 
 function compiles(pattern: string): boolean {
   try {

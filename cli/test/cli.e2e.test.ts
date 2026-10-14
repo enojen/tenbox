@@ -35,7 +35,7 @@ afterAll(async () => {
 
 describe("tenbox start", () => {
   test("creates worktree, branch, .tenbox/task.md, excludes, settings, runs setup", async () => {
-    const r = await tenbox(["start", "T-1", "--title", "First task", "--no-tmux"], main);
+    const r = await tenbox(["start", "T-1", "--title", "First task", "--no-claude"], main);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({
       ok: true,
@@ -60,13 +60,13 @@ describe("tenbox start", () => {
   });
   test("is idempotent", async () => {
     const r = await tenbox(
-      ["start", "T-1", "--title", "First task", "--no-tmux", "--no-setup"],
+      ["start", "T-1", "--title", "First task", "--no-claude", "--no-setup"],
       main,
     );
     expect(r.json).toMatchObject({ ok: true, created: false, setup: { state: "skipped" } });
   });
   test("needs --title without a tracker", async () => {
-    const r = await tenbox(["start", "T-2", "--no-tmux"], main);
+    const r = await tenbox(["start", "T-2", "--no-claude"], main);
     expect(r.code).toBe(1);
     expect(r.json).toMatchObject({ ok: false, code: "no-tracker" });
   });
@@ -116,7 +116,7 @@ describe("errors and debug", () => {
   test("a missing git binary is no-command", async () => {
     const empty = path.join(project.root, "empty-path");
     await Bun.write(path.join(empty, ".keep"), "");
-    const args = ["start", "T-9", "--title", "x", "--no-tmux", "--no-setup"];
+    const args = ["start", "T-9", "--title", "x", "--no-claude", "--no-setup"];
     const r = await tenbox(args, main, { PATH: empty });
     expect(r.code).toBe(1);
     expect(r.json).toMatchObject({ ok: false, code: "no-command" });
@@ -141,7 +141,7 @@ describe("errors and debug", () => {
     }
   });
   test("TENBOX_DEBUG=1 logs each run and keeps stdout the same", async () => {
-    const args = ["start", "T-1", "--title", "First task", "--no-tmux", "--no-setup"];
+    const args = ["start", "T-1", "--title", "First task", "--no-claude", "--no-setup"];
     const plain = await tenbox(args, main);
     const debug = await tenbox(args, main, { TENBOX_DEBUG: "1" });
     expect(debug.json).toEqual(plain.json);

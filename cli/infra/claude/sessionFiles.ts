@@ -1,13 +1,15 @@
 import path from "node:path";
-import type { RunAgent, WorkflowRun } from "../../domain/runs.ts";
-import { isPlainObject, MS_PER_SECOND, parseObject } from "../../domain/utils.ts";
-import { env } from "./env.ts";
-import { files } from "./files.ts";
+import { type RunAgent, roundOfLabel, type Usage, type WorkflowRun } from "../../../domain/runs.ts";
+import { isPlainObject, MS_PER_SECOND, parseObject } from "../../../domain/utils.ts";
+import { env } from "../env.ts";
+import { files } from "../files.ts";
+import { readUsage } from "./transcripts.ts";
 
 /*
  * Claude Code's session files, the only place that knows their format (not a public API).
  * `<claudeDir>/projects/<cwd>/<session>/workflows/wf_*.json` holds one workflow run with its
- * agents. Prompts and result text are never returned.
+ * agents. The tokens come from `<session>/subagents/workflows/<run>/agent-<agentId>.jsonl`.
+ * Prompts and result text are never returned.
  */
 export const claudeSessions = { listRuns };
 
@@ -56,7 +58,12 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
   if (typeof workflowName !== "string") return null;
   if (typeof startTime !== "number" || typeof durationMs !== "number") return null;
   const progress = Array.isArray(json.workflowProgress) ? json.workflowProgress : [];
-  const agents = progress.filter(isAgentEntry).map((entry) => toAgent(workflowName, entry));
+  const transcripts = transcriptDir(file);
+  const agents: RunAgent[] = [];
+  for (const entry of progress.filter(isAgentEntry)) {
+    const agent = await toAgent({ workflow: workflowName, entry, transcripts });
+    agents.push(agent);
+  }
   return {
     workflow: workflowName,
     started: isoTime(startTime),
@@ -66,11 +73,26 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
   };
 }
 
-function toAgent(workflow: string, entry: Json): RunAgent {
-  const { startedAt, durationMs } = entry;
+/** `<session>/subagents/workflows/<run>`, for the run file `<session>/workflows/<run>.json`. */
+function transcriptDir(runFile: string): string {
+  const session = path.dirname(path.dirname(runFile));
+  return path.join(session, "subagents", "workflows", path.basename(runFile, ".json"));
+}
+
+interface AgentSource {
+  workflow: string;
+  entry: Json;
+  transcripts: string;
+}
+
+async function toAgent(source: AgentSource): Promise<RunAgent> {
+  const { workflow, entry, transcripts } = source;
+  const { startedAt, durationMs, agentId } = entry;
+  const label = text(entry.label);
+  const usage = await readAgentUsage(transcripts, agentId);
   return {
     workflow,
-    label: text(entry.label),
+    label,
     phase: text(entry.phaseTitle),
     role: text(entry.agentType),
     model: text(entry.model),
@@ -78,7 +100,18 @@ function toAgent(workflow: string, entry: Json): RunAgent {
     seconds: typeof durationMs === "number" ? Math.round(durationMs / MS_PER_SECOND) : null,
     tokens: count(entry.tokens),
     tool_calls: count(entry.toolCalls),
+    round: roundOfLabel(label),
+    calls: usage?.calls ?? null,
+    input: usage?.input ?? null,
+    output: usage?.output ?? null,
+    cache_write: usage?.cache_write ?? null,
+    cache_read: usage?.cache_read ?? null,
   };
+}
+
+function readAgentUsage(transcripts: string, agentId: unknown): Promise<Usage | null> {
+  if (typeof agentId !== "string") return Promise.resolve(null);
+  return readUsage(path.join(transcripts, `agent-${agentId}.jsonl`));
 }
 
 const isAgentEntry = (entry: unknown): entry is Json =>

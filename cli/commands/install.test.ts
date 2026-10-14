@@ -56,10 +56,10 @@ describe("install", () => {
       ...workflowNames.map((name) => ({ dir: "workflows", name })),
     ];
     expect(r.links).toEqual(
-      expected.map(({ dir, name }) => ({
-        name,
-        source: path.join(tenboxRoot, dir, name),
-        link: path.join(claudeDir, dir, name),
+      expected.map((file) => ({
+        name: file.name,
+        source: path.join(tenboxRoot, file.dir, file.name),
+        link: path.join(claudeDir, file.dir, file.name),
         state: "linked",
       })),
     );

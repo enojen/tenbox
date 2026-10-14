@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import type { TrackerConfig } from "../../../domain/manifest.ts";
-import type { StatusChange, TaskStatus, Tracker, TrackerTask } from "../../../domain/tracker.ts";
+import type {
+  CommentRequest,
+  StatusChange,
+  TaskStatus,
+  Tracker,
+  TrackerTask,
+} from "../../../domain/tracker.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
 
@@ -43,6 +49,11 @@ const STATUS_MUTATION = `
     issueUpdate(id: $id, input: { stateId: $stateId }) { success }
   }`;
 
+const COMMENT_MUTATION = `
+  mutation($issueId: String!, $body: String!) {
+    commentCreate(input: { issueId: $issueId, body: $body }) { success }
+  }`;
+
 /** Linear over its GraphQL API. The key comes from `tracker.api_key` or `LINEAR_API_KEY`. */
 export function linearTracker(config: TrackerConfig): Tracker {
   const endpoint = linearEndpoint(config);
@@ -50,6 +61,7 @@ export function linearTracker(config: TrackerConfig): Tracker {
     kind: "linear",
     getTask: (id) => fetchTask(endpoint, id),
     updateStatus: (id, status) => updateIssueStatus(endpoint, { id, status }),
+    comment: (request) => commentOnIssue(endpoint, request),
   };
 }
 
@@ -104,6 +116,16 @@ async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Prom
     endpoint,
     query: STATUS_MUTATION,
     variables: { id: issue.id, stateId: state.id },
+    data: z.unknown(),
+  });
+}
+
+async function commentOnIssue(endpoint: Endpoint, comment: CommentRequest): Promise<void> {
+  const issue = await fetchIssue(endpoint, comment.id);
+  await graphqlQuery({
+    endpoint,
+    query: COMMENT_MUTATION,
+    variables: { issueId: issue.id, body: comment.text },
     data: z.unknown(),
   });
 }

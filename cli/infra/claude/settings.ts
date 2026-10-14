@@ -1,7 +1,7 @@
 import path from "node:path";
-import { settingsError } from "../../domain/errors/tools.ts";
-import { isPlainObject, parseJson } from "../../domain/utils.ts";
-import { files } from "./files.ts";
+import { settingsError } from "../../../domain/errors/tools.ts";
+import { isPlainObject, parseJson } from "../../../domain/utils.ts";
+import { files } from "../files.ts";
 
 /** Claude Code's local settings in a checkout: `.claude/settings.local.json`. */
 export const claudeSettings = { ensureHeadBaseRef };

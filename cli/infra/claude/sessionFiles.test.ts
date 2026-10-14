@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import path from "node:path";
-import { makeTempProject, type TempProject } from "../test/tempProject.ts";
-import { claudeSessions, projectDir } from "./claudeSessions.ts";
-import { env } from "./env.ts";
-import { files } from "./files.ts";
+import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
+import { env } from "../env.ts";
+import { files } from "../files.ts";
+import { claudeSessions, projectDir } from "./sessionFiles.ts";
 
 const CWD = "/home/me/wt/my_app.v2/T-1";
 const STARTED_MS = Date.parse("2026-01-01T00:00:00.000Z");
@@ -23,7 +23,31 @@ afterEach(async () => {
   await project.remove();
 });
 
+const usage = (input: number, output: number, write: number, read: number) => ({
+  input_tokens: input,
+  output_tokens: output,
+  cache_creation_input_tokens: write,
+  cache_read_input_tokens: read,
+});
+
+const assistant = (id: string, tokens: ReturnType<typeof usage>) =>
+  JSON.stringify({ type: "assistant", message: { id, usage: tokens, content: MARKER } });
+
+/** Message m1 is on two lines (streaming: the last line has the final output count). */
+async function writeTranscript(): Promise<void> {
+  const lines = [
+    JSON.stringify({ type: "user", message: { content: MARKER } }),
+    assistant("m1", usage(10, 8, 5, 40)),
+    assistant("m1", usage(10, 300, 5, 40)),
+    "{broken line",
+    assistant("m2", usage(20, 100, 2, 50)),
+  ];
+  const transcript = path.join(sessionDir, "subagents", "workflows", "wf_1", "agent-a1.jsonl");
+  await files.write(transcript, `${lines.join("\n")}\n`);
+}
+
 async function writeRun(): Promise<void> {
+  await writeTranscript();
   const run = {
     workflowName: "tenbox-build",
     startTime: STARTED_MS,
@@ -61,7 +85,7 @@ test("without a session directory there are no runs", async () => {
   expect(runs).toBeNull();
 });
 
-test("reads a run with its agents, without prompt or result text", async () => {
+test("reads a run with its agents and their usage, without prompt or result text", async () => {
   await writeRun();
   const runs = await claudeSessions.listRuns(CWD);
   expect(runs).toHaveLength(1);
@@ -82,6 +106,12 @@ test("reads a run with its agents, without prompt or result text", async () => {
       seconds: 42,
       tokens: 77654,
       tool_calls: 14,
+      round: 1,
+      calls: 2,
+      input: 30,
+      output: 400,
+      cache_write: 7,
+      cache_read: 90,
     },
     {
       workflow: "tenbox-build",
@@ -93,6 +123,12 @@ test("reads a run with its agents, without prompt or result text", async () => {
       seconds: null,
       tokens: null,
       tool_calls: null,
+      round: 1,
+      calls: null,
+      input: null,
+      output: null,
+      cache_write: null,
+      cache_read: null,
     },
   ]);
   expect(JSON.stringify(runs?.[0]?.agents)).not.toContain(MARKER);
