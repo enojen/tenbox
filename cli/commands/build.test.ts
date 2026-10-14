@@ -135,6 +135,10 @@ describe("tenbox build done", () => {
     questions: ["kept"],
   };
 
+  afterEach(async () => {
+    await project.remove();
+  });
+
   beforeEach(async () => {
     project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
     const tenboxDir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
