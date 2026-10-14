@@ -1,8 +1,23 @@
 import { z } from "zod";
+import { BUILD_STATUS } from "./build.ts";
 import { BaselineSourceSchema } from "./failures.ts";
 import { PlanPartSchema } from "./plan.ts";
+import { PR_STATE } from "./pr.ts";
 
 const EVENT_SCHEMA_VERSION = 1;
+
+/** How `/tenbox-build` ended; `ready` is the `ready-for-you` build status. */
+const BUILD_DONE_STATUS = {
+  ready: "ready",
+  failed: BUILD_STATUS.failed,
+  needsYou: BUILD_STATUS.needsYou,
+} as const;
+
+/** Who sent the feedback of a round. */
+const FEEDBACK_FROM = { auto: "auto", human: "human" } as const;
+
+/** Who recorded a proof: the build or `tenbox proof`. */
+const PROOF_SOURCE = { worker: "worker", manual: "manual" } as const;
 
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
@@ -67,12 +82,12 @@ export const EventSchema = z.discriminatedUnion("event", [
   taskEvent("plan.approved").extend({ plan_sha: planSha }),
   taskEvent("build.started").extend({ max_rounds: count }),
   taskEvent("build.done").extend({
-    status: z.enum(["ready", "failed", "needs-you"]),
+    status: z.enum(BUILD_DONE_STATUS),
     rounds: count,
   }),
   taskEvent("feedback.sent").extend({
     round: text,
-    from: z.enum(["auto", "human"]),
+    from: z.enum(FEEDBACK_FROM),
     must_fix: count,
   }),
   base.extend({ event: z.literal("round.started"), round: text }),
@@ -97,7 +112,7 @@ export const EventSchema = z.discriminatedUnion("event", [
     file: text,
     test: text,
     failure: z.string(),
-    source: z.enum(["worker", "manual"]),
+    source: z.enum(PROOF_SOURCE),
   }),
   taskEvent("workflow.done").extend({
     workflow: text,
@@ -107,7 +122,7 @@ export const EventSchema = z.discriminatedUnion("event", [
   taskEvent("pr.saved").extend({
     number: count,
     url: text,
-    state: z.enum(["created", "updated"]),
+    state: z.enum(PR_STATE),
     draft: z.boolean(),
   }),
   taskEvent("pr.merged").extend({ number: count }),

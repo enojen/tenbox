@@ -3,7 +3,10 @@ import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
 import { deepMerge, isPlainObject, issueLines } from "./utils.ts";
 
-export const TrackerKindSchema = z.enum(["none", "linear", "clickup"]);
+/** The trackers Tenbox has an adapter for; `none` is no tracker. */
+export const TRACKER_KIND = { none: "none", linear: "linear", clickup: "clickup" } as const;
+
+export const TrackerKindSchema = z.enum(TRACKER_KIND);
 
 /** The tracker's own names for the two statuses Tenbox sets; a tracker's list may differ. */
 const StatusNamesSchema = z.object({
@@ -12,7 +15,7 @@ const StatusNamesSchema = z.object({
 });
 
 const TrackerConfigSchema = z.object({
-  kind: TrackerKindSchema.default("none"),
+  kind: TrackerKindSchema.default(TRACKER_KIND.none),
   api_key: z.string().optional(),
   statuses: StatusNamesSchema.optional(),
 });
@@ -56,7 +59,10 @@ function compiles(pattern: string): boolean {
 
 const CheckCommandsSchema = z.record(z.string(), z.string().min(1));
 
-export const CHECK_TIERS = ["fast", "full"] as const;
+/** `fast` runs every round, `full` once at the close of a round. */
+export const CHECK_TIER = { fast: "fast", full: "full" } as const;
+
+export const CHECK_TIERS = Object.values(CHECK_TIER);
 
 function isTiered(value: Record<string, unknown>): boolean {
   return CHECK_TIERS.some((tier) => isPlainObject(value[tier]));
@@ -116,9 +122,9 @@ const ManifestSchema = z.object({
   notify: NotifySchema.prefault({}),
 });
 
-export type CheckTier = (typeof CHECK_TIERS)[number];
+export type CheckTier = (typeof CHECK_TIER)[keyof typeof CHECK_TIER];
 export type Manifest = z.infer<typeof ManifestSchema>;
-export type TrackerKind = z.infer<typeof TrackerKindSchema>;
+export type TrackerKind = (typeof TRACKER_KIND)[keyof typeof TRACKER_KIND];
 export type StatusNames = z.infer<typeof StatusNamesSchema>;
 export type TrackerConfig = z.infer<typeof TrackerConfigSchema>;
 export type Names = z.infer<typeof NamesSchema>;

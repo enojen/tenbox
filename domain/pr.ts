@@ -1,6 +1,11 @@
 import type { TaskId } from "./ids.ts";
 import { parseObject } from "./utils.ts";
 
+/** What `tenbox pr` did with the PR. */
+export const PR_STATE = { created: "created", updated: "updated" } as const;
+
+export type PrState = (typeof PR_STATE)[keyof typeof PR_STATE];
+
 /** `<id> · <title>`, or just the id when the task has no title. */
 export function prTitle(id: TaskId, title: string | null): string {
   return title ? `${id} · ${title}` : id;

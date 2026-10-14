@@ -9,8 +9,13 @@ import { files } from "../infra/files.ts";
 import { pollUntil } from "../infra/poll.ts";
 import type { TaskFileResult, WaitRoundResult } from "./results.ts";
 
-type WaitFileKind = "plan" | "build";
-export type WaitKind = WaitFileKind | "round";
+/** The three things `tenbox wait` can wait for. */
+const WAIT_KIND = { plan: "plan", build: "build", round: "round" } as const;
+
+type WaitFileKind = typeof WAIT_KIND.plan | typeof WAIT_KIND.build;
+export type WaitKind = (typeof WAIT_KIND)[keyof typeof WAIT_KIND];
+
+const WAIT_KINDS: string[] = Object.values(WAIT_KIND);
 
 export interface WaitInput {
   id: TaskId;
@@ -20,11 +25,11 @@ export interface WaitInput {
 
 /** True for the three things `tenbox wait` can wait for. */
 export const isWaitKind = (value: string | undefined): value is WaitKind =>
-  value === "plan" || value === "build" || value === "round";
+  value !== undefined && WAIT_KINDS.includes(value);
 
 const FILE_OF: Record<WaitFileKind, (dir: string) => string> = {
-  plan: planFile,
-  build: buildFile,
+  [WAIT_KIND.plan]: planFile,
+  [WAIT_KIND.build]: buildFile,
 };
 
 /** What `tenbox wait` waits for: a name for the timeout message and a check that is null until done. */
@@ -45,7 +50,7 @@ async function pollOrTimeout<T>(poll: TimedPoll<T>): Promise<T> {
 
 /** `plan.json` or `build.json` of the task exists, or the next round change. */
 export function waitFor(input: WaitInput): Promise<TaskFileResult | WaitRoundResult> {
-  if (input.kind === "round") return waitForRound(input);
+  if (input.kind === WAIT_KIND.round) return waitForRound(input);
   return waitForFile({ ...input, kind: input.kind });
 }
 

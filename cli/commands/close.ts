@@ -6,10 +6,11 @@ import {
   unmergedError,
 } from "../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
+import { TRACKER_KIND } from "../../domain/manifest.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
-import type { Tracker } from "../../domain/tracker.ts";
-import { errorMessage } from "../../domain/utils.ts";
+import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
+import { failedState } from "../../domain/utils.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
 import { sessions } from "../application/sessions.ts";
@@ -36,7 +37,22 @@ export interface CloseInput {
   force: boolean;
 }
 
-const SKIPPED_STATS: StatsInfo = { path: null, state: "skipped" };
+/** What the close did with `stats.json`. */
+export const STATS_STATE = { written: "written", skipped: "skipped" } as const;
+
+/** What the close did with the base of the main checkout. */
+export const PULL_STATE = { pulled: "pulled", skipped: "skipped" } as const;
+
+/** What the close did with the task branch on `origin`. */
+export const REMOTE_BRANCH_STATE = { deleted: "deleted", skipped: "skipped" } as const;
+
+/** What the close did with the cost comment on the tracker task. */
+export const COMMENT_STATE = { posted: "posted", skipped: "skipped" } as const;
+
+/** Who says the branch is merged: GitHub, a test merge in git, or nobody. */
+const MERGE_SOURCE = { github: "github", git: "git", unmerged: "unmerged" } as const;
+
+const SKIPPED_STATS: StatsInfo = { path: null, state: STATS_STATE.skipped };
 
 interface CloseTarget {
   mainDir: string;
@@ -83,7 +99,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   }
   const session = await stopSessions({ id, taskWorktree });
   const removed = await worktrees.remove({ project, taskWorktree, branch });
-  const status = await tasks.updateStatus({ id, title: undefined }, tracker, "done");
+  const status = await tasks.updateStatus({ id, title: undefined }, tracker, TASK_STATUS.done);
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
   const comment = await postComment({ id, tracker, stats: written.stats });
   return {
@@ -144,8 +160,8 @@ async function assertClean(target: CloseTarget): Promise<void> {
 /** Throws when the branch is not merged. */
 async function assertMerged(target: CloseTarget): Promise<SafeClose> {
   const merge = await findMerge(target);
-  if (merge.source === "unmerged") throw unmergedError(target.branch, target.base);
-  if (merge.source === "git") return NO_GITHUB;
+  if (merge.source === MERGE_SOURCE.unmerged) throw unmergedError(target.branch, target.base);
+  if (merge.source === MERGE_SOURCE.git) return NO_GITHUB;
   await assertNotMergeCommit(target, merge.commit);
   return { mergedOnGithub: true, pr: merge.pr };
 }
@@ -158,14 +174,14 @@ async function assertNotMergeCommit(target: CloseTarget, sha: string | null) {
 }
 
 interface Merge {
-  source: "github" | "git" | "unmerged";
+  source: (typeof MERGE_SOURCE)[keyof typeof MERGE_SOURCE];
   /** The merge commit GitHub reports; null when there is none. */
   commit: string | null;
   pr: PrTimes | null;
 }
 
-const UNMERGED: Merge = { source: "unmerged", commit: null, pr: null };
-const MERGED_IN_GIT: Merge = { source: "git", commit: null, pr: null };
+const UNMERGED: Merge = { source: MERGE_SOURCE.unmerged, commit: null, pr: null };
+const MERGED_IN_GIT: Merge = { source: MERGE_SOURCE.git, commit: null, pr: null };
 
 /** A found PR decides alone; without one, a test merge into the base decides. */
 async function findMerge(target: CloseTarget): Promise<Merge> {
@@ -176,7 +192,7 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
   if (pr === null) return findTestMerge(target);
   if (!gh.isMergedAt(pr, head)) return UNMERGED;
   return {
-    source: "github",
+    source: MERGE_SOURCE.github,
     commit: pr.mergeCommit?.oid ?? null,
     pr: { createdAt: pr.createdAt, mergedAt: pr.mergedAt ?? null },
   };
@@ -191,14 +207,14 @@ async function findTestMerge(target: CloseTarget): Promise<Merge> {
 /** Moves the base of the main checkout to `origin`; a failure never stops the close. */
 async function pullBase(target: CloseTarget, mergedOnGithub: boolean): Promise<PullState> {
   const { mainDir, base } = target;
-  if (!mergedOnGithub) return "skipped";
+  if (!mergedOnGithub) return PULL_STATE.skipped;
   try {
     const current = await git.findBranch(mainDir);
-    if (current !== base) return "skipped";
+    if (current !== base) return PULL_STATE.skipped;
     await git.pull(mainDir, base);
-    return "pulled";
+    return PULL_STATE.pulled;
   } catch (e) {
-    return `failed: ${errorMessage(e)}`;
+    return failedState(e);
   }
 }
 
@@ -208,14 +224,14 @@ async function removeRemoteBranch(
   mergedOnGithub: boolean,
 ): Promise<RemoteBranchState> {
   const { mainDir, branch } = target;
-  if (!mergedOnGithub) return "skipped";
+  if (!mergedOnGithub) return REMOTE_BRANCH_STATE.skipped;
   try {
     const exists = await git.remoteBranchExists(mainDir, branch);
-    if (!exists) return "skipped";
+    if (!exists) return REMOTE_BRANCH_STATE.skipped;
     await git.deleteRemoteBranch(mainDir, branch);
-    return "deleted";
+    return REMOTE_BRANCH_STATE.deleted;
   } catch (e) {
-    return `failed: ${errorMessage(e)}`;
+    return failedState(e);
   }
 }
 
@@ -234,9 +250,9 @@ async function writeStats(input: StatsInput): Promise<WrittenStats> {
   try {
     const computed = await stats.compute(input);
     await stats.save(computed, input.taskDir);
-    return { info: { path: file, state: "written" }, stats: computed };
+    return { info: { path: file, state: STATS_STATE.written }, stats: computed };
   } catch (e) {
-    return { info: { path: file, state: `failed: ${errorMessage(e)}` }, stats: null };
+    return { info: { path: file, state: failedState(e) }, stats: null };
   }
 }
 
@@ -250,7 +266,7 @@ async function stopSessions(target: SessionTarget): Promise<SessionState> {
   try {
     return await sessions.stop(target);
   } catch (e) {
-    return `failed: ${errorMessage(e)}`;
+    return failedState(e);
   }
 }
 
@@ -263,11 +279,11 @@ interface CommentInput {
 /** Needs the stats the close wrote; a failure never undoes the close. */
 async function postComment(input: CommentInput): Promise<CommentState> {
   const { id, tracker, stats } = input;
-  if (stats === null || tracker.kind === "none") return "skipped";
+  if (stats === null || tracker.kind === TRACKER_KIND.none) return COMMENT_STATE.skipped;
   try {
     await tracker.comment({ id, text: costComment(stats) });
-    return "posted";
+    return COMMENT_STATE.posted;
   } catch (e) {
-    return `failed: ${errorMessage(e)}`;
+    return failedState(e);
   }
 }

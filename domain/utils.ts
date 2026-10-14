@@ -44,6 +44,11 @@ export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);
 
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** The state of a step that threw and did not stop the command. */
+export type FailedState = `failed: ${string}`;
+
+export const failedState = (e: unknown): FailedState => `failed: ${errorMessage(e)}`;
+
 /** One line per zod issue, `path: message`; `(root)` for the value itself. */
 export const issueLines = (error: z.ZodError): string[] =>
   error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);

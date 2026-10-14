@@ -26,6 +26,16 @@ const LENSES = {
   contract: { text: 'API and other contract changes, backwards compatibility' },
 }
 
+// Copy of BUILD_STATUS in domain/build.ts (a workflow cannot import TypeScript).
+const BUILD_STATUS = {
+  readyForYou: 'ready-for-you',
+  needsYou: 'needs-you',
+  failed: 'failed',
+  notApproved: 'not-approved',
+}
+// The worker statuses in agents/worker.md (no TypeScript source).
+const WORKER_STATUS = { done: 'done', blocked: 'blocked' }
+
 const PARTS = {
   type: 'object',
   properties: {
@@ -45,7 +55,7 @@ const NON_BLANK = { type: 'string', pattern: '\\S' }
 const BUILT = {
   type: 'object',
   properties: {
-    status: { enum: ['done', 'blocked'] },
+    status: { enum: Object.values(WORKER_STATUS) },
     commit: { type: 'string' },
     // A blocked worker's question; `recommended` is the 1-based number of one of the options.
     decision: {
@@ -123,7 +133,7 @@ phase('Build')
 const approved = await agent(`Run \`tenbox approved ${task}\` and return its JSON.`,
   { agentType: 'runner', schema: APPROVED, phase: 'Build', label: 'approval' })
 if (!approved?.ok || !approved.file) {
-  return finish({ status: 'not-approved', error: approved?.error ?? 'tenbox approved did not run' })
+  return finish({ status: BUILD_STATUS.notApproved, error: approved?.error ?? 'tenbox approved did not run' })
 }
 
 let feedback = input.feedback ?? 'none'
@@ -149,7 +159,7 @@ for (let round = 1; round <= maxRounds; round++) {
     const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}${answerLine(round, part.id)}`,
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
     proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (!built || built.status === 'blocked') return finish({ status: 'needs-you', round, part: part.id, ...(built?.decision && { decision: built.decision }), attention, nice_to_have: niceToHave, unproven, proofs })
+    if (!built || built.status === WORKER_STATUS.blocked) return finish({ status: BUILD_STATUS.needsYou, round, part: part.id, ...(built?.decision && { decision: built.decision }), attention, nice_to_have: niceToHave, unproven, proofs })
   }
 
   phase('Checks')
@@ -187,7 +197,7 @@ for (let round = 1; round <= maxRounds; round++) {
     continue
   }
   return finish({
-    status: 'ready-for-you',
+    status: BUILD_STATUS.readyForYou,
     round,
     attention,
     nice_to_have: niceToHave,
@@ -195,4 +205,4 @@ for (let round = 1; round <= maxRounds; round++) {
     proofs,
   })
 }
-return finish({ status: 'failed', round: maxRounds, feedback, attention, nice_to_have: niceToHave, unproven, proofs })
+return finish({ status: BUILD_STATUS.failed, round: maxRounds, feedback, attention, nice_to_have: niceToHave, unproven, proofs })

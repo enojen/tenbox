@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
-import type { TrackerConfig } from "../../../domain/manifest.ts";
-import type {
-  CommentRequest,
-  StatusChange,
-  TaskStatus,
-  Tracker,
-  TrackerTask,
+import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
+import {
+  type CommentRequest,
+  type StatusChange,
+  TASK_STATUS,
+  type TaskStatus,
+  type Tracker,
+  type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
@@ -58,7 +59,7 @@ const COMMENT_MUTATION = `
 export function linearTracker(config: TrackerConfig): Tracker {
   const endpoint = linearEndpoint(config);
   return {
-    kind: "linear",
+    kind: TRACKER_KIND.linear,
     getTask: (id) => fetchTask(endpoint, id),
     updateStatus: (id, status) => updateIssueStatus(endpoint, { id, status }),
     comment: (request) => commentOnIssue(endpoint, request),
@@ -131,7 +132,7 @@ async function commentOnIssue(endpoint: Endpoint, comment: CommentRequest): Prom
 }
 
 function pickState(states: State[], status: TaskStatus): State | undefined {
-  const wantedType = status === "done" ? "completed" : "started";
+  const wantedType = status === TASK_STATUS.done ? "completed" : "started";
   return [...states]
     .sort((a, b) => a.position - b.position)
     .find((state) => state.type === wantedType);

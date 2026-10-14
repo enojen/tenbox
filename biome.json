@@ -73,6 +73,10 @@
     {
       "includes": ["**", "!**/*.test.ts", "!**/cli/infra/files.ts", "!**/cli/main.ts"],
       "plugins": ["./rules/write-json-once/rule.grit"]
+    },
+    {
+      "includes": ["**", "!**/*.test.ts"],
+      "plugins": ["./rules/no-state-literal-compare/rule.grit"]
     }
   ],
   "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },

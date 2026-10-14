@@ -2,7 +2,7 @@ import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
-import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
+import { checksSummary, PR_STATE, type PrState, prBody, prTitle } from "../../domain/pr.ts";
 import {
   checksFile,
   planMdFile,
@@ -18,7 +18,7 @@ import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { gh, type OpenPr, type PrText } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
-import type { PrInfo, PrResult, PrState } from "./results.ts";
+import type { PrInfo, PrResult } from "./results.ts";
 
 export interface PrInput {
   id: TaskId;
@@ -37,7 +37,7 @@ export async function openPr(input: PrInput): Promise<PrResult> {
   const commit = await git.findHead(taskWorktree);
   const text = await readPrText(id, taskWorktree);
   const pr = await createOrUpdate({ dir: taskWorktree, branch, base: manifest.base, text, ready });
-  if (pr.state === "created") {
+  if (pr.state === PR_STATE.created) {
     const notification = { id, state: NOTIFICATION_STATE.prOpened, detail: pr.url };
     await notifications.send({ taskWorktree, notification });
   }
@@ -89,12 +89,12 @@ async function createOrUpdate(input: CreateOrUpdateInput): Promise<PrInfo> {
   if (open === null) {
     await gh.create(dir, { ...text, branch, base, draft: !ready });
     const created = await getOpen(dir, branch);
-    return describe(created, "created");
+    return describe(created, PR_STATE.created);
   }
   await gh.edit(dir, open.number, text);
   if (ready && open.draft) await gh.markReady(dir, open.number);
   const updated = await getOpen(dir, branch);
-  return describe(updated, "updated");
+  return describe(updated, PR_STATE.updated);
 }
 
 async function getOpen(dir: string, branch: string): Promise<OpenPr> {

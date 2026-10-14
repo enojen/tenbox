@@ -1,5 +1,6 @@
 import { sessionName, type TaskId, taskBranch } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
+import { TASK_STATUS } from "../../domain/tracker.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
@@ -37,7 +38,7 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const created = await worktrees.ensure({ project, taskWorktree, taskDir: dir, branch, base });
   const task_md = await tasks.ensureFiles(taskWorktree, task);
   const setup = await setups.run(taskWorktree, manifest.setup, input.setup);
-  const status = await tasks.updateStatus(input, tracker, "in_progress");
+  const status = await tasks.updateStatus(input, tracker, TASK_STATUS.inProgress);
   const claude = await sessions.ensure({
     target: { id, taskWorktree },
     start: {

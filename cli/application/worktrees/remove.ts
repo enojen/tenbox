@@ -2,9 +2,14 @@ import type { Project } from "../../../domain/project.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
 
-export type WorktreeRemoveState = "removed" | "skipped";
+const WORKTREE_REMOVE_STATE = { removed: "removed", skipped: "skipped" } as const;
 
-export type BranchRemoveState = "deleted" | "skipped";
+export type WorktreeRemoveState =
+  (typeof WORKTREE_REMOVE_STATE)[keyof typeof WORKTREE_REMOVE_STATE];
+
+const BRANCH_REMOVE_STATE = { deleted: "deleted", skipped: "skipped" } as const;
+
+export type BranchRemoveState = (typeof BRANCH_REMOVE_STATE)[keyof typeof BRANCH_REMOVE_STATE];
 
 export interface WorktreeRemoval {
   project: Project;
@@ -28,14 +33,14 @@ export async function remove(removal: WorktreeRemoval): Promise<RemoveStates> {
 
 async function removeWorktree(mainDir: string, taskWorktree: string): Promise<WorktreeRemoveState> {
   const exists = await files.isDir(taskWorktree);
-  if (!exists) return "skipped";
+  if (!exists) return WORKTREE_REMOVE_STATE.skipped;
   await git.removeWorktree(mainDir, taskWorktree);
-  return "removed";
+  return WORKTREE_REMOVE_STATE.removed;
 }
 
 async function removeBranch(mainDir: string, branch: string): Promise<BranchRemoveState> {
   const exists = await git.branchExists(mainDir, branch);
-  if (!exists) return "skipped";
+  if (!exists) return BRANCH_REMOVE_STATE.skipped;
   await git.deleteBranch(mainDir, branch);
-  return "deleted";
+  return BRANCH_REMOVE_STATE.deleted;
 }

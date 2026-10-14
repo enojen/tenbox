@@ -1,4 +1,5 @@
 import type { TaskId } from "../../domain/ids.ts";
+import { TRACKER_KIND } from "../../domain/manifest.ts";
 import {
   partsDir,
   readTaskFile,
@@ -12,7 +13,7 @@ import {
   tenboxDir,
 } from "../../domain/task.ts";
 import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
-import { errorMessage } from "../../domain/utils.ts";
+import { type FailedState, failedState } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 interface TaskSource {
@@ -21,13 +22,30 @@ interface TaskSource {
   title: string | undefined;
 }
 
+/** The status of a task that has a title and no tracker. */
+const UNTRACKED_STATUS = "todo";
+
+/** The tracker step when Tenbox does not change the status. */
+const STATUS_SKIPPED = "skipped";
+
+/** What the tracker step did: the status set, skipped, or why it failed. */
+export type StatusUpdate = TaskStatus | typeof STATUS_SKIPPED | FailedState;
+
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
 export const tasks = { get, find, ensureFiles, updateStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
   const { id, title } = source;
-  if (title) return { id, title, description: "", url: "", status: "todo", tracker: "none" };
+  if (title)
+    return {
+      id,
+      title,
+      description: "",
+      url: "",
+      status: UNTRACKED_STATUS,
+      tracker: TRACKER_KIND.none,
+    };
   const found = await tracker.getTask(id);
   return { ...found, id, tracker: tracker.kind };
 }
@@ -57,12 +75,12 @@ async function updateStatus(
   source: TaskSource,
   tracker: Tracker,
   status: TaskStatus,
-): Promise<string> {
-  if (source.title || tracker.kind === "none") return "skipped";
+): Promise<StatusUpdate> {
+  if (source.title || tracker.kind === TRACKER_KIND.none) return STATUS_SKIPPED;
   try {
     await tracker.updateStatus(source.id, status);
     return status;
   } catch (e) {
-    return `failed: ${errorMessage(e)}`;
+    return failedState(e);
   }
 }

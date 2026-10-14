@@ -3,21 +3,26 @@ import type { Approval } from "../../domain/approval.ts";
 import type { RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
+import type { PrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { UsageReport } from "../../domain/runs.ts";
+import type { FailedState } from "../../domain/utils.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
+import type { StatusUpdate } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
 import type { PrBranch } from "../infra/gh.ts";
+import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
+import type { LINK_STATE } from "./install.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
 interface TrackerInfo {
   kind: TrackerKind;
-  status: string;
+  status: StatusUpdate;
 }
 
 export interface StartResult {
@@ -35,7 +40,7 @@ export interface StartResult {
   claude: SessionStartInfo;
 }
 
-export type SessionState = SessionStopState | `failed: ${string}`;
+export type SessionState = SessionStopState | FailedState;
 
 interface SessionStopInfo {
   state: SessionState;
@@ -51,7 +56,7 @@ interface BranchRemoveInfo {
   state: BranchRemoveState;
 }
 
-type StatsState = "written" | "skipped" | `failed: ${string}`;
+type StatsState = (typeof STATS_STATE)[keyof typeof STATS_STATE] | FailedState;
 
 export interface StatsInfo {
   /** Null when the stats were skipped. */
@@ -59,21 +64,23 @@ export interface StatsInfo {
   state: StatsState;
 }
 
-export type PullState = "pulled" | "skipped" | `failed: ${string}`;
+export type PullState = (typeof PULL_STATE)[keyof typeof PULL_STATE] | FailedState;
 
 interface PullInfo {
   base: string;
   state: PullState;
 }
 
-export type RemoteBranchState = "deleted" | "skipped" | `failed: ${string}`;
+export type RemoteBranchState =
+  | (typeof REMOTE_BRANCH_STATE)[keyof typeof REMOTE_BRANCH_STATE]
+  | FailedState;
 
 interface RemoteBranchInfo {
   name: string;
   state: RemoteBranchState;
 }
 
-export type CommentState = "posted" | "skipped" | `failed: ${string}`;
+export type CommentState = (typeof COMMENT_STATE)[keyof typeof COMMENT_STATE] | FailedState;
 
 interface CommentInfo {
   state: CommentState;
@@ -107,8 +114,6 @@ export interface AttachResult {
   /** The id of the background session that was opened. */
   session: string;
 }
-
-export type PrState = "created" | "updated";
 
 export interface PrInfo {
   number: number;
@@ -241,7 +246,7 @@ export interface LinkTarget {
   link: string;
 }
 
-export type LinkState = "linked" | "unchanged" | "skipped";
+export type LinkState = (typeof LINK_STATE)[keyof typeof LINK_STATE];
 
 export interface LinkEntry extends LinkTarget {
   state: LinkState;

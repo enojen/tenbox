@@ -3,9 +3,11 @@ import { elapsedMs } from "../../domain/utils.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";
 
+const SETUP_STATE = { ran: "ran", skipped: "skipped" } as const;
+
 /** The setup ran and passed. */
 interface SetupRan {
-  state: "ran";
+  state: typeof SETUP_STATE.ran;
   cmd: string;
   exit_code: number;
   duration_ms: number;
@@ -13,7 +15,7 @@ interface SetupRan {
 
 /** The setup did not run: `--no-setup` or no `setup:` in the manifest. */
 interface SetupSkipped {
-  state: "skipped";
+  state: typeof SETUP_STATE.skipped;
   reason: string;
 }
 
@@ -33,8 +35,8 @@ async function run(
   cmd: string | undefined,
   wanted: boolean,
 ): Promise<SetupResult> {
-  if (!wanted) return { state: "skipped", reason: "--no-setup" };
-  if (!cmd) return { state: "skipped", reason: "no setup: in tenbox.yaml" };
+  if (!wanted) return { state: SETUP_STATE.skipped, reason: "--no-setup" };
+  if (!cmd) return { state: SETUP_STATE.skipped, reason: "no setup: in tenbox.yaml" };
   log(`tenbox start: setup: ${cmd}`);
   const started = performance.now();
   const result = await shell.run(cmd, { cwd: taskWorktree, timeoutMs: SETUP_TIMEOUT_MS });
@@ -43,5 +45,5 @@ async function run(
     const output = result.output.split("\n").slice(-SETUP_OUTPUT_TAIL_LINES).join("\n");
     throw setupError(result.code, cmd, output);
   }
-  return { state: "ran", cmd, exit_code: result.code, duration_ms };
+  return { state: SETUP_STATE.ran, cmd, exit_code: result.code, duration_ms };
 }

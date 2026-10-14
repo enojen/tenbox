@@ -20,8 +20,15 @@ export function failureLine(raw: string): FailureLine {
 
 /** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */
 /** Where a check's baseline came from: the base commit, the newest stored, taken in main, or none. */
-export const BaselineSourceSchema = z.enum(["exact", "newest", "main", "none"]);
-export type BaselineSource = z.infer<typeof BaselineSourceSchema>;
+export const BASELINE_SOURCE = {
+  exact: "exact",
+  newest: "newest",
+  main: "main",
+  none: "none",
+} as const;
+
+export const BaselineSourceSchema = z.enum(BASELINE_SOURCE);
+export type BaselineSource = (typeof BASELINE_SOURCE)[keyof typeof BASELINE_SOURCE];
 
 export interface Baseline {
   sha: string;

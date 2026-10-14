@@ -11,9 +11,18 @@ import {
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 
-type SessionStartState = "started" | "exists" | "skipped" | "unavailable";
+const SESSION_START_STATE = {
+  started: "started",
+  exists: "exists",
+  skipped: "skipped",
+  unavailable: "unavailable",
+} as const;
 
-export type SessionStopState = "stopped" | "skipped";
+type SessionStartState = (typeof SESSION_START_STATE)[keyof typeof SESSION_START_STATE];
+
+const SESSION_STOP_STATE = { stopped: "stopped", skipped: "skipped" } as const;
+
+export type SessionStopState = (typeof SESSION_STOP_STATE)[keyof typeof SESSION_STOP_STATE];
 
 export interface SessionStartInfo {
   /** The `-n` name of the session. */
@@ -41,13 +50,17 @@ export const sessions = { ensure, run, resume, attach, stop };
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
   const { target, start, enabled } = input;
   const session = start.name;
-  if (!enabled) return { session, state: "skipped" };
+  if (!enabled) return { session, state: SESSION_START_STATE.skipped };
   const claudeRun = await openRun(target);
-  if (claudeRun === null) return logStart(session, "unavailable", "claude not found in PATH");
+  if (claudeRun === null) {
+    return logStart(session, SESSION_START_STATE.unavailable, "claude not found in PATH");
+  }
   const existing = await claude.listBackground(claudeRun);
-  if (existing.length > 0) return logStart(session, "exists", "a background session exists");
+  if (existing.length > 0) {
+    return logStart(session, SESSION_START_STATE.exists, "a background session exists");
+  }
   await claude.startBackground(claudeRun, start);
-  return logStart(session, "started", `session ${session} started`);
+  return logStart(session, SESSION_START_STATE.started, `session ${session} started`);
 }
 
 /** `tenbox build`: starts a new session; claude's own message when it refuses. */
@@ -76,12 +89,12 @@ async function attach(target: SessionTarget): Promise<string> {
 /** `tenbox close`: stops every session of the task worktree; the transcripts stay. */
 async function stop(target: SessionTarget): Promise<SessionStopState> {
   const exists = await files.isDir(target.taskWorktree);
-  if (!exists) return "skipped";
+  if (!exists) return SESSION_STOP_STATE.skipped;
   const claudeRun = await openRun(target);
-  if (claudeRun === null) return "skipped";
+  if (claudeRun === null) return SESSION_STOP_STATE.skipped;
   const found = await claude.listBackground(claudeRun);
   for (const session of found) await claude.stop(claudeRun, session.id);
-  return found.length > 0 ? "stopped" : "skipped";
+  return found.length > 0 ? SESSION_STOP_STATE.stopped : SESSION_STOP_STATE.skipped;
 }
 
 /** The `claude` binary in the task worktree, whose real path Claude Code records; null without `claude`. */

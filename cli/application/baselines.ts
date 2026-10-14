@@ -1,4 +1,9 @@
-import { type Baseline, type BaselineSource, parseFailures } from "../../domain/failures.ts";
+import {
+  BASELINE_SOURCE,
+  type Baseline,
+  type BaselineSource,
+  parseFailures,
+} from "../../domain/failures.ts";
 import { shortSha } from "../../domain/ids.ts";
 import type { Project } from "../../domain/project.ts";
 import { type BaselineKey, baselineStore } from "../infra/baselineStore.ts";
@@ -35,9 +40,9 @@ async function find(request: BaselineRequest): Promise<BaselineHit | null> {
 
 async function findStored(key: BaselineKey, sha: string): Promise<BaselineHit | null> {
   const exact = await baselineStore.find(key, sha);
-  if (exact) return { ...exact, source: "exact" };
+  if (exact) return { ...exact, source: BASELINE_SOURCE.exact };
   const newest = await baselineStore.findNewest(key);
-  return newest ? { ...newest, source: "newest" } : null;
+  return newest ? { ...newest, source: BASELINE_SOURCE.newest } : null;
 }
 
 /** Main must sit at the base commit, and the check must not already run in main. */
@@ -58,5 +63,5 @@ async function takeBaseline(key: BaselineKey, request: BaselineRequest): Promise
   const lines = parseFailures(ran.output, exitCode, pattern);
   const meta = { date: new Date().toISOString(), cmd, exit_code: exitCode };
   await baselineStore.save(key, { sha: baseSha, lines }, meta);
-  return { sha: baseSha, lines, source: "main" };
+  return { sha: baseSha, lines, source: BASELINE_SOURCE.main };
 }

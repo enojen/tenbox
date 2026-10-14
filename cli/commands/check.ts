@@ -4,7 +4,7 @@ import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import type { CheckTier } from "../../domain/manifest.ts";
+import { CHECK_TIER, type CheckTier } from "../../domain/manifest.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import type { Project } from "../../domain/project.ts";
 import {
@@ -154,7 +154,7 @@ async function getChecks(
  */
 async function ensureRound(taskWorktree: string, input: CheckInput): Promise<RoundDir> {
   const existing = await files.list(roundsDir(tenboxDir(taskWorktree)));
-  const fallback = input.tier === "full" ? currentRound(existing) : nextRound(existing);
+  const fallback = input.tier === CHECK_TIER.full ? currentRound(existing) : nextRound(existing);
   const number = input.round ?? fallback;
   const dir = roundDir(tenboxDir(taskWorktree), number);
   await files.mkdir(path.join(dir, "checks"));

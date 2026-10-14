@@ -1,0 +1,17 @@
+language js
+
+or {
+  `$left === $right`,
+  `$left !== $right`
+} as $compare where {
+  or {
+    and { $left <: JsStringLiteralExpression(), $right <: JsStaticMemberExpression(member=$name) },
+    and { $right <: JsStringLiteralExpression(), $left <: JsStaticMemberExpression(member=$name) }
+  },
+  $name <: or {
+    `state`,
+    `status`,
+    `kind`
+  },
+  register_diagnostic(span=$compare, message="No state string in a compare: use the named constant of the module that makes the state.")
+}

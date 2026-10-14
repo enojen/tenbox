@@ -5,6 +5,9 @@ import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import type { InstallResult, LinkEntry, LinkState, LinkTarget } from "./results.ts";
 
+/** What `tenbox install` found or did for one link. */
+export const LINK_STATE = { linked: "linked", unchanged: "unchanged", skipped: "skipped" } as const;
+
 /** The checkout directories that `~/.claude/` gets a copy of, as symlinks. */
 const LINKED_DIRS: string[] = ["agents", "workflows"];
 
@@ -30,7 +33,7 @@ export async function install(tenboxRoot: string = env().tenboxRoot): Promise<In
     links.push(...entries);
   }
   for (const entry of links) log(`tenbox install: ${entry.state} ${entry.link}`);
-  const ok = links.every((entry) => entry.state !== "skipped");
+  const ok = links.every((entry) => entry.state !== LINK_STATE.skipped);
   return { ok, claude_dir: claudeDir, links };
 }
 
@@ -62,11 +65,11 @@ function linkTarget(pair: DirPair, name: string): LinkTarget {
 async function ensureLink(target: LinkTarget): Promise<LinkState> {
   const { source, link } = target;
   const current = await files.readLink(link);
-  if (current === source) return "unchanged";
+  if (current === source) return LINK_STATE.unchanged;
   // `exists` follows symlinks, so a dangling foreign link needs the `readLink` test too.
-  if (current !== null) return "skipped";
+  if (current !== null) return LINK_STATE.skipped;
   const occupied = await files.exists(link);
-  if (occupied) return "skipped";
+  if (occupied) return LINK_STATE.skipped;
   await files.symlink(source, link);
-  return "linked";
+  return LINK_STATE.linked;
 }

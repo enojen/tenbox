@@ -1,6 +1,9 @@
 import type { TrackerKind } from "./manifest.ts";
 
-export type TaskStatus = "in_progress" | "done";
+/** The two statuses Tenbox sets on a tracker task. */
+export const TASK_STATUS = { inProgress: "in_progress", done: "done" } as const;
+
+export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
 
 export interface TrackerTask {
   id: string;

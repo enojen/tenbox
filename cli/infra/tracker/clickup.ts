@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
-import type { StatusNames, TrackerConfig } from "../../../domain/manifest.ts";
-import type {
-  CommentRequest,
-  StatusChange,
-  TaskStatus,
-  Tracker,
-  TrackerTask,
+import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
+import {
+  type CommentRequest,
+  type StatusChange,
+  TASK_STATUS,
+  type TaskStatus,
+  type Tracker,
+  type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
 
@@ -53,7 +54,7 @@ export function clickupTracker(config: TrackerConfig): Tracker {
   }
   const connection = { headers: { Authorization: apiKey }, names: config.statuses ?? {} };
   return {
-    kind: "clickup",
+    kind: TRACKER_KIND.clickup,
     getTask: (id) => getTask(connection, id),
     updateStatus: (id, status) => setStatus(connection, { id, status }),
     comment: (request) => addComment(connection, request),
@@ -122,7 +123,7 @@ export function pickStatus(choice: StatusChoice): string {
   const sorted = [...choice.statuses].sort((a, b) => a.orderindex - b.orderindex);
   const name = choice.names[choice.status];
   if (name) return pickNamed(sorted, name, choice.listId);
-  const wantedType = choice.status === "done" ? "closed" : "custom";
+  const wantedType = choice.status === TASK_STATUS.done ? "closed" : "custom";
   const found = sorted.find((s) => s.type === wantedType);
   if (!found) {
     throw trackerError(`ClickUp: no ${choice.status} status in list ${choice.listId}`);
