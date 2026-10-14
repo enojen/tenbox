@@ -2,6 +2,7 @@ import type { Approval } from "../../domain/approval.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
+import type { DecisionsSaved } from "../application/decisions.ts";
 import type { SessionRemoveState, TmuxInfo } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
@@ -111,6 +112,11 @@ export interface ProofResult {
   task: string;
   proof: StatsProof;
   file: string;
+}
+
+export interface DecideResult extends DecisionsSaved {
+  ok: true;
+  task: string;
 }
 
 export interface TaskFileResult {

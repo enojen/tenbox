@@ -86,3 +86,19 @@ export function inTaskWorktreeError(taskWorktree: string): TenboxError {
     "in-task-worktree",
   );
 }
+
+export function badDecisionsError(issues: string[]): TenboxError {
+  return new TenboxError(
+    `the decisions are not valid: ${issues.join("; ")}`,
+    "bad-decisions",
+    issues,
+  );
+}
+
+export function unknownQuestionError(question: string, count: number): TenboxError {
+  const found = count === 0 ? "no line" : `${count} lines`;
+  return new TenboxError(
+    `"${question}" fits ${found} of questions.md; it must fit exactly one`,
+    "unknown-question",
+  );
+}
