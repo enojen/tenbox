@@ -69,7 +69,7 @@ that sits at the base commit, and saves the result. Without any baseline, every 
 line is new.
 
 **`stats.json`** (in the task dir): timeline, minutes per step (plan, wait for approval,
-build, human review), plan difficulty and estimated lines (from `plan.json`, null without it), the title (from `task.json`), rounds, review counts, code
+build, review, wait for merge), plan difficulty and estimated lines (from `plan.json`, null without it), the title (from `task.json`), rounds, review counts, code
 lines, and each workflow agent with its model, seconds and tokens. It also holds the worker
 `proofs` (part, test file, test name, failure text) and `points` per part. Proofs come from
 `proofs.json` (`tenbox proof` and `tenbox build done`); a part file's Markdown text gives none.
@@ -78,7 +78,10 @@ The review counts (`must_fix` 0 only for `ready-for-you`, `nice_to_have`, `atten
 files give only times, agents and tokens. `proofs[].part` and `points[].part` hold the part number (`01`, not
 `01-users`). The same part number, test file and test name counts once, the first one.
 Points: +1 per distinct proof, -1 per `unproven` item in `build.json`, at most one per part per build round.
-The reviewer's sentences are not kept. Schema 3.
+The reviewer's sentences are not kept.
+`minutes.review` is the end of the last build run to the PR's creation; `minutes.wait_merge` is
+the PR's creation to its merge. Both come from the one `gh pr view` call of the close and are null
+without a PR and with `--force`. The time from the merge to the close is not kept. Schema 4.
 `code` leaves out generated files: those marked `linguist-generated` in `.gitattributes`. To
 mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds it in PR diffs too.
 

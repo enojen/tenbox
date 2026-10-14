@@ -8,7 +8,7 @@ import { parseObject } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
-export const STATS_SCHEMA = 3;
+export const STATS_SCHEMA = 4;
 
 /** `stats.json` in a task dir. */
 export const statsFile = (dir: string): string => path.join(dir, "stats.json");
@@ -21,8 +21,21 @@ interface StatsTimeline extends RunTimeline {
   closed: string;
 }
 
-interface StatsMinutes extends RunMinutes {
+export interface PrMinutes {
+  /** Build end to the PR's creation; null without a PR. */
+  review: number | null;
+  /** The PR's creation to its merge; null without a PR. */
+  wait_merge: number | null;
+}
+
+interface StatsMinutes extends RunMinutes, PrMinutes {
   total: number | null;
+}
+
+/** When GitHub says the PR was created and merged. */
+export interface PrTimes {
+  createdAt: string;
+  mergedAt: string | null;
 }
 
 export interface StatsPlan {

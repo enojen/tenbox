@@ -7,7 +7,7 @@ import {
 } from "../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch, tmuxSessionName } from "../../domain/ids.ts";
 import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
-import { statsFile } from "../../domain/stats.ts";
+import { type PrTimes, statsFile } from "../../domain/stats.ts";
 import { errorMessage } from "../../domain/utils.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
@@ -58,7 +58,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     projectId === undefined ? null : sessions.tmuxTarget(manifest.names, projectId, id);
   const { base } = manifest;
   const closeTarget = { mainDir: project.mainDir, taskWorktree, branch, base };
-  const mergedOnGithub = await assertSafe(closeTarget, force);
+  const { mergedOnGithub, pr } = await assertSafe(closeTarget, force);
   const pull = await pullBase(closeTarget, mergedOnGithub);
   const recordedProofs = await proofs.read(taskWorktree);
   let statsInfo = SKIPPED_STATS;
@@ -73,6 +73,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
       branch,
       base,
       recordedProofs,
+      pr,
     };
     statsInfo = await writeStats(statsInput);
   }
@@ -95,13 +96,22 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   };
 }
 
+interface SafeClose {
+  /** True when GitHub said the PR is merged. */
+  mergedOnGithub: boolean;
+  /** The times of the PR GitHub reported; null without one. */
+  pr: PrTimes | null;
+}
+
+const NO_GITHUB: SafeClose = { mergedOnGithub: false, pr: null };
+
 /**
  * Throws before anything changes. `force` skips the dirty, unmerged and merge-commit checks, not
- * the one for the task worktree. Returns true when GitHub said the PR is merged.
+ * the one for the task worktree.
  */
-async function assertSafe(target: CloseTarget, force: boolean): Promise<boolean> {
+async function assertSafe(target: CloseTarget, force: boolean): Promise<SafeClose> {
   await assertOutsideWorktree(target.taskWorktree);
-  if (force) return false;
+  if (force) return NO_GITHUB;
   await assertClean(target);
   return assertMerged(target);
 }
@@ -125,13 +135,13 @@ async function assertClean(target: CloseTarget): Promise<void> {
   throw dirtyBeforeCloseError(target.taskWorktree);
 }
 
-/** True when GitHub said the PR is merged; throws when the branch is not merged. */
-async function assertMerged(target: CloseTarget): Promise<boolean> {
+/** Throws when the branch is not merged. */
+async function assertMerged(target: CloseTarget): Promise<SafeClose> {
   const merge = await findMerge(target);
   if (merge.source === "unmerged") throw unmergedError(target.branch, target.base);
-  if (merge.source === "git") return false;
+  if (merge.source === "git") return NO_GITHUB;
   await assertNotMergeCommit(target, merge.commit);
-  return true;
+  return { mergedOnGithub: true, pr: merge.pr };
 }
 
 /** A squash or rebase merge has one parent. */
@@ -145,10 +155,11 @@ interface Merge {
   source: "github" | "git" | "unmerged";
   /** The merge commit GitHub reports; null when there is none. */
   commit: string | null;
+  pr: PrTimes | null;
 }
 
-const UNMERGED: Merge = { source: "unmerged", commit: null };
-const MERGED_IN_GIT: Merge = { source: "git", commit: null };
+const UNMERGED: Merge = { source: "unmerged", commit: null, pr: null };
+const MERGED_IN_GIT: Merge = { source: "git", commit: null, pr: null };
 
 /** A found PR decides alone; without one, a test merge into the base decides. */
 async function findMerge(target: CloseTarget): Promise<Merge> {
@@ -158,7 +169,11 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
   const pr = await gh.findPr(mainDir, branch);
   if (pr === null) return findTestMerge(target);
   if (!gh.isMergedAt(pr, head)) return UNMERGED;
-  return { source: "github", commit: pr.mergeCommit?.oid ?? null };
+  return {
+    source: "github",
+    commit: pr.mergeCommit?.oid ?? null,
+    pr: { createdAt: pr.createdAt, mergedAt: pr.mergedAt ?? null },
+  };
 }
 
 async function findTestMerge({ mainDir, base, branch }: CloseTarget): Promise<Merge> {

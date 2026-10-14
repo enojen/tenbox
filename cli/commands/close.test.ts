@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { taskDir, tmuxDir } from "../../domain/project.ts";
-import { minutesBetween } from "../../domain/utils.ts";
 import { manifests } from "../application/manifests.ts";
 import { projectDir } from "../infra/claudeSessions.ts";
 import { env } from "../infra/env.ts";
@@ -163,8 +162,10 @@ describe("tenbox close", () => {
       return bin;
     }
 
+    const CREATED = "2026-01-01T00:00:00Z";
+
     const answer = (state: string, sha: string) =>
-      `echo '{"state":"${state}","headRefOid":"${sha}"}'`;
+      `echo '{"state":"${state}","headRefOid":"${sha}","createdAt":"${CREATED}"}'`;
 
     /** Squash-merges the branch, then changes the same line on main, so the test merge fails. */
     async function squashThenConflict(): Promise<string> {
@@ -248,9 +249,52 @@ describe("tenbox close", () => {
       expect(calls).toBe(false);
     });
 
+    test("a MERGED PR gives review and wait_merge minutes, schema 4, no human_review", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const rawHead = await git.run(["rev-parse", "HEAD"], taskWorktree);
+      const buildStart = Date.now();
+      await writeRun({
+        name: "wf_build",
+        workflow: "tenbox-build",
+        startMs: buildStart,
+        minutes: 3,
+      });
+      const buildEnd = buildStart + 3 * MS_PER_MINUTE;
+      const created = new Date(buildEnd + 10 * MS_PER_MINUTE).toISOString();
+      const merged = new Date(buildEnd + 30 * MS_PER_MINUTE).toISOString();
+      const json = `{"state":"MERGED","headRefOid":"${rawHead.trim()}","createdAt":"${created}","mergedAt":"${merged}"}`;
+      const bin = await ghPath(`case "$1" in\n  pr) echo '${json}';;\n  api) echo 1;;\nesac`);
+      await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const text = await readStatsText();
+      const written = JSON.parse(text);
+      expect(written.schema).toBe(4);
+      expect(written.minutes).toMatchObject({ review: 10, wait_merge: 20 });
+      expect(written.minutes).not.toHaveProperty("human_review");
+    });
+
+    test("without a PR review and wait_merge are null", async () => {
+      await setup();
+      const bin = await ghPath("exit 1");
+      await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const text = await readStatsText();
+      const written = JSON.parse(text);
+      expect(written.minutes).toMatchObject({ review: null, wait_merge: null });
+    });
+
+    test("--force writes review and wait_merge as null", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const bin = await ghPath("exit 1");
+      await tenbox(["close", "T-1", "--force"], project.mainDir, { PATH: bin });
+      const text = await readStatsText();
+      const written = JSON.parse(text);
+      expect(written.minutes).toMatchObject({ review: null, wait_merge: null });
+    });
+
     /** A `gh` that says MERGED at `head`; `parents` is what the commit lookup prints. */
     const mergedGh = (head: string, parents: number) =>
-      `case "$1" in\n  pr) echo '{"state":"MERGED","headRefOid":"${head}","mergeCommit":{"oid":"m1"}}';;\n  api) echo ${parents};;\nesac`;
+      `case "$1" in\n  pr) echo '{"state":"MERGED","headRefOid":"${head}","mergeCommit":{"oid":"m1"},"createdAt":"${CREATED}"}';;\n  api) echo ${parents};;\nesac`;
 
     /** A bare `origin` with `main` and the task branch pushed. */
     async function addOrigin(): Promise<string> {
@@ -478,7 +522,7 @@ describe("tenbox close", () => {
       stats: { path: path.join(kept, "stats.json"), state: "written" },
     });
     expect(written).toMatchObject({
-      schema: 3,
+      schema: 4,
       project: "demo",
       task: "T-1",
       title: "x",
@@ -642,12 +686,12 @@ describe("tenbox close stats from Claude Code session files", () => {
       build_start: iso(buildStart),
       build_end: iso(buildStart + 3 * MS_PER_MINUTE),
     });
-    const humanReview = minutesBetween(written.timeline.build_end, written.timeline.closed);
     expect(written.minutes).toMatchObject({
       plan: 1,
       wait_approval: 1,
       build: 3,
-      human_review: humanReview,
+      review: null,
+      wait_merge: null,
     });
     expect(written.review).toBeNull();
     expect(written.agents).toEqual(
@@ -673,7 +717,12 @@ describe("tenbox close stats from Claude Code session files", () => {
     const text = await readStatsText();
     const written = JSON.parse(text);
     expect(written).toMatchObject({ review: null, agents: null });
-    expect(written.minutes).toMatchObject({ plan: null, build: null, human_review: null });
+    expect(written.minutes).toMatchObject({
+      plan: null,
+      build: null,
+      review: null,
+      wait_merge: null,
+    });
   });
 });
 

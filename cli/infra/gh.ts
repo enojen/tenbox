@@ -40,11 +40,13 @@ export interface PrBranch {
 /** `gh pr list` shows 30 by default. */
 const LIST_LIMIT = "100";
 
-/** The output of `gh pr view --json state,headRefOid,mergeCommit`. */
+/** The output of `gh pr view --json state,headRefOid,mergeCommit,createdAt,mergedAt`. */
 const PrViewSchema = z.object({
   state: z.enum(["OPEN", "CLOSED", "MERGED"]),
   headRefOid: z.string(),
   mergeCommit: z.object({ oid: z.string() }).nullish(),
+  createdAt: z.string(),
+  mergedAt: z.string().nullish(),
 });
 type PrState = z.infer<typeof PrViewSchema>;
 const MERGED = "MERGED";
@@ -66,7 +68,7 @@ async function run(args: string[], cwd: string): Promise<string> {
 
 /** The PR of the branch, or null when there is none or `gh` cannot answer (missing, no login). */
 async function findPr(dir: string, branch: string): Promise<PrState | null> {
-  const args = ["pr", "view", branch, "--json", "state,headRefOid,mergeCommit"];
+  const args = ["pr", "view", branch, "--json", "state,headRefOid,mergeCommit,createdAt,mergedAt"];
   try {
     const result = await processes.run(["gh", ...args], { cwd: dir });
     if (result.code !== 0) return null;

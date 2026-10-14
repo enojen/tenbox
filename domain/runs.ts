@@ -39,7 +39,6 @@ export interface RunMinutes {
   plan: number | null;
   wait_approval: number | null;
   build: number | null;
-  human_review: number | null;
 }
 
 /** What the runs add to the stats; agents are null without session files. */
@@ -50,11 +49,7 @@ export interface RunSummary {
 }
 
 /** The runs that started at or after `opened`: older ones belong to an older worktree. */
-export function summarizeRuns(
-  all: WorkflowRun[] | null,
-  opened: string | null,
-  closed: string,
-): RunSummary {
+export function summarizeRuns(all: WorkflowRun[] | null, opened: string | null): RunSummary {
   const runs = runsSince(all ?? [], opened);
   const plan = runs.filter((run) => run.workflow === PLAN_WORKFLOW);
   const build = runs.filter((run) => run.workflow === BUILD_WORKFLOW);
@@ -70,7 +65,6 @@ export function summarizeRuns(
       plan: sumMinutes(plan),
       wait_approval: waitMinutes(timeline),
       build: sumMinutes(build),
-      human_review: minutesBetween(timeline.build_end, closed),
     },
     agents: all === null ? null : runs.flatMap((run) => run.agents),
   };

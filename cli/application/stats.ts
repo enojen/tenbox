@@ -7,6 +7,8 @@ import {
   countPoints,
   countReview,
   distinctProofs,
+  type PrMinutes,
+  type PrTimes,
   STATS_SCHEMA,
   type StatsCode,
   type StatsRound,
@@ -38,6 +40,8 @@ export interface StatsInput {
   base: string;
   /** From `.tenbox/proofs.json`. */
   recordedProofs: StatsProof[];
+  /** The merged PR; null without one and with `--force`. */
+  pr: PrTimes | null;
 }
 
 /** Stats: the record of one closed task, `stats.json` in its task dir. */
@@ -58,7 +62,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
   const rounds = await readRounds(taskDir);
   const code = await readCode(input);
   const runs = await claudeSessions.listRuns(taskWorktree);
-  const summary = summarizeRuns(runs, opened, closed);
+  const summary = summarizeRuns(runs, opened);
   const taskProofs = distinctProofs(recordedProofs.map(trimProof));
   return {
     schema: STATS_SCHEMA,
@@ -69,7 +73,11 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     tenbox,
     forced,
     timeline: { opened, ...summary.timeline, closed },
-    minutes: { ...summary.minutes, total: minutesBetween(opened, closed) },
+    minutes: {
+      ...summary.minutes,
+      ...prMinutes(summary.timeline.build_end, input.pr),
+      total: minutesBetween(opened, closed),
+    },
     plan,
     rounds,
     review: countReview(build),
@@ -81,6 +89,13 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     }),
     code,
     agents: summary.agents,
+  };
+}
+
+function prMinutes(buildEnd: string | null, pr: PrTimes | null): PrMinutes {
+  return {
+    review: minutesBetween(buildEnd, pr?.createdAt ?? null),
+    wait_merge: minutesBetween(pr?.createdAt ?? null, pr?.mergedAt ?? null),
   };
 }
 
