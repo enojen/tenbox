@@ -1,4 +1,4 @@
-import { BUILD_STATUS, type BuildResult, type DecisionCard } from "./build.ts";
+import { BUILD_STATUS, type BuildResult, CARD_KIND, type DecisionCard } from "./build.ts";
 import type { TaskId } from "./ids.ts";
 import { isPlainObject } from "./utils.ts";
 
@@ -12,6 +12,29 @@ interface WorkflowAnswer {
 
 /** How `tenbox answer --auto` ends. */
 export const AUTO_ANSWER_STATE = { answered: "answered", skipped: "skipped" } as const;
+
+/** Kinds Tenbox never auto-answers, whatever `auto` says. */
+const NEVER_AUTO: readonly DecisionCard["kind"][] = CARD_KIND.filter(
+  (kind) => kind !== "scope" && kind !== "other",
+);
+
+/** 30 minutes: a card that may be auto-answered waits this long for a person. */
+const AUTO_ANSWER_MS = 1_800_000;
+
+/** True when the card has `auto` and its kind is not never-auto. */
+export function isAutoAllowed(card: DecisionCard): boolean {
+  return card.auto && !NEVER_AUTO.includes(card.kind);
+}
+
+/** The card's `deadline`: `now` + 30 minutes when auto is allowed, else null; no key without a card. */
+export function addDeadline(result: BuildResult, now: Date): BuildResult {
+  const { decision } = result;
+  if (decision === undefined) return result;
+  const deadline = isAutoAllowed(decision)
+    ? new Date(now.getTime() + AUTO_ANSWER_MS).toISOString()
+    : null;
+  return { ...result, deadline };
+}
 
 /** A card that `tenbox answer --auto` may answer: its deadline and its recommended option. */
 export interface AutoCard {
@@ -58,6 +81,7 @@ export function argsWithAnswer(input: RunAnswer): object {
 export function autoCardOf(result: BuildResult | null): AutoCard | null {
   if (result?.status !== BUILD_STATUS.needsYou || result.answered !== undefined) return null;
   const { decision, deadline } = result;
-  if (decision?.auto !== true || typeof deadline !== "string") return null;
+  if (decision === undefined || !isAutoAllowed(decision) || typeof deadline !== "string")
+    return null;
   return { deadline, recommended: decision.recommended };
 }

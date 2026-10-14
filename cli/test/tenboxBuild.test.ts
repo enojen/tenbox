@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
+import { CARD_KIND } from "../../domain/build.ts";
 
 const WORKFLOW = path.join(import.meta.dir, "..", "..", "workflows", "tenbox-build.js");
+const WORKER_ROLE = path.join(import.meta.dir, "..", "..", "agents", "worker.md");
 const EXPORT_PREFIX = /^export /m;
+const KIND_ENUM = /kind: \{ enum: \[([^\]]*)\] \}/;
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
 interface ReviewReply {
@@ -224,6 +227,17 @@ const round1Reply: ReviewReply = {
   unproven: [],
 };
 
+test("the worker schema and the worker role name the card kinds of CARD_KIND", async () => {
+  const script = await Bun.file(WORKFLOW).text();
+  const kinds = script
+    .match(KIND_ENUM)?.[1]
+    ?.split(",")
+    .map((kind) => kind.trim().slice(1, -1));
+  expect(kinds).toEqual([...CARD_KIND]);
+  const role = await Bun.file(WORKER_ROLE).text();
+  for (const kind of CARD_KIND) expect(role).toContain(`\`${kind}\``);
+});
+
 test("the reviewer schema caps nice_to_have at 3 items", async () => {
   const { reviewerSchema } = await runTwoReviewedRounds(round1Reply);
   expect(reviewerSchema?.properties.nice_to_have.maxItems).toBe(MAX_NICE_TO_HAVE);
@@ -327,6 +341,7 @@ const decisionCard = {
   recommended: 1,
   reason: "r",
   auto: true,
+  kind: "scope",
 };
 
 test("a blocked worker's decision card goes into the needs-you result with its part", async () => {

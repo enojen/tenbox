@@ -211,12 +211,13 @@ describe("tenbox build done", () => {
   });
 
   const THIRTY_MINUTES_MS = 1_800_000;
-  const card = (auto: boolean, recommended = 1) => ({
+  const card = (auto: boolean, recommended = 1, kind = "scope") => ({
     title: "Which store?",
     options: ["files", "sqlite"],
     recommended,
     reason: "r",
     auto,
+    kind,
   });
 
   test("a needs-you card with auto is written with a deadline 30 minutes after the call", async () => {
@@ -242,6 +243,25 @@ describe("tenbox build done", () => {
     const buildExists = await files.exists(buildJson);
     expect(buildExists).toBe(false);
   });
+
+  test("a never-auto card with auto true is written with a null deadline and starts no timer", async () => {
+    await buildDone(...withJson({ status: "needs-you", decision: card(true, 1, "migration") }));
+    const written = await readJson(buildJson);
+    const log = await files.exists(path.join(path.dirname(buildJson), "auto-answer.log"));
+    expect(written.deadline).toBeNull();
+    expect(log).toBe(false);
+  });
+
+  test.each([undefined, "foo"])(
+    "a card with kind %p is bad-build and writes nothing",
+    async (kind) => {
+      const { kind: _kind, ...rest } = card(true);
+      const decision = kind === undefined ? rest : { ...rest, kind };
+      const run = await buildDone(...withJson({ status: "needs-you", decision }));
+      const buildExists = await files.exists(buildJson);
+      expect([run.code, run.json.code, buildExists]).toEqual([1, "bad-build", false]);
+    },
+  );
 
   test("a missing --json is a usage error", async () => {
     const run = await buildDone();

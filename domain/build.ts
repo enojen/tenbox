@@ -24,6 +24,18 @@ export const BUILD_STATUS = {
   notApproved: "not-approved",
 } as const;
 
+/** What a card is about; the worker picks the closest kind. */
+export const CARD_KIND = [
+  "migration",
+  "data-delete",
+  "feature-delete",
+  "contract",
+  "paid-service",
+  "locked-file",
+  "scope",
+  "other",
+] as const;
+
 /** What a blocked worker asks; `recommended` is the 1-based number of one of the options. */
 const DecisionCardSchema = z
   .object({
@@ -32,6 +44,7 @@ const DecisionCardSchema = z
     recommended: z.number().int().positive(),
     reason: z.string(),
     auto: z.boolean(),
+    kind: z.enum(CARD_KIND),
   })
   .refine((card) => card.recommended <= card.options.length, {
     message: "must be the number of one of the options",
@@ -56,7 +69,7 @@ const BuildResultSchema = z.looseObject({
   /** The part of the blocked worker, with `needs-you`. */
   part: z.string().optional(),
   decision: DecisionCardSchema.optional(),
-  /** When the recommended option is taken; null when the card has no `auto`. */
+  /** When the recommended option is taken; null when the card may not be auto-answered. */
   deadline: z.iso.datetime().nullable().optional(),
   answered: AnsweredSchema.optional(),
 });
@@ -95,17 +108,6 @@ export function parseBuild(text: string): BuildResult {
 export function readBuild(text: string): BuildResult | null {
   const parsed = BuildResultSchema.safeParse(parseObject(text));
   return parsed.success ? parsed.data : null;
-}
-
-/** 30 minutes: a card with `auto` waits this long for a person. */
-const AUTO_ANSWER_MS = 1_800_000;
-
-/** The card's `deadline`: `now` + 30 minutes with `auto`, else null; no key without a card. */
-export function addDeadline(result: BuildResult, now: Date): BuildResult {
-  const { decision } = result;
-  if (decision === undefined) return result;
-  const deadline = decision.auto ? new Date(now.getTime() + AUTO_ANSWER_MS).toISOString() : null;
-  return { ...result, deadline };
 }
 
 /** The card to answer; `no-decision` without a `needs-you` card, `answered` once answered. */

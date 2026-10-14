@@ -26,6 +26,7 @@ const card = {
   recommended: 1,
   reason: "r",
   auto: true,
+  kind: "scope",
 };
 
 const needsYou = {
@@ -220,6 +221,22 @@ describe("tenbox answer --auto", () => {
     const build = await readBuild();
     expect(decisions).toBe("");
     expect(build?.answered).toBeUndefined();
+  });
+
+  test("a never-auto card with auto true is skipped after its deadline and nothing changes", async () => {
+    await setup({ ...needsYou, decision: { ...card, kind: "migration" } });
+    await writeBuildRun();
+    await setDeadline(-1_000);
+    const answered = await run("answer", "T-1", "--auto");
+    expect([answered.code, answered.json]).toEqual([
+      0,
+      { ok: true, task: "T-1", state: "skipped" },
+    ]);
+    const decisions = await readText("decisions.md");
+    const build = await readBuild();
+    expect(decisions).toBe("");
+    expect(build?.answered).toBeUndefined();
+    expect(build?.status).toBe("needs-you");
   });
 
   test("an answered card is skipped and keeps its answer", async () => {

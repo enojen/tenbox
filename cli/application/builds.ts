@@ -1,10 +1,5 @@
-import {
-  addDeadline,
-  type BuildResult,
-  buildFile,
-  parseBuild,
-  readBuild,
-} from "../../domain/build.ts";
+import { addDeadline } from "../../domain/answers.ts";
+import { type BuildResult, buildFile, parseBuild, readBuild } from "../../domain/build.ts";
 import { trimProof } from "../../domain/proof.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";

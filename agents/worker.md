@@ -77,10 +77,13 @@ When you are blocked, return one `decision` with `status: blocked`:
 - `options`: the answers to choose from, one line each.
 - `recommended`: the number of the option you recommend, counted from 1.
 - `reason`: why you recommend it.
+- `kind`: what the question is about, the closest of `migration`, `data-delete`,
+  `feature-delete`, `contract` (external contract change), `paid-service`, `locked-file`
+  (anything in `locked`), `scope`, `other`. Tenbox never auto-answers the first six, even
+  with `auto: true`: pick the closest kind, do not use `other` for a risky question.
 - `auto`: `true` when Tenbox may take the recommended option after 30 minutes with no
-  answer. Set `false` when any option is on the never-auto list: a migration, a deletion of
-  data or of a feature, an external contract change, a paid service, or anything in
-  `locked`.
+  answer. Set `false` when you want a person to answer. It has no effect on the six
+  never-auto kinds.
 
 The person answers with `tenbox answer <id> <n>`. The workflow then runs you again with
 the chosen option in your prompt, and `decisions.md` has the answer.

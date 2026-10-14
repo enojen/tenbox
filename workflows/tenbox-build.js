@@ -66,8 +66,9 @@ const BUILT = {
         recommended: { type: 'integer', minimum: 1 },
         reason: { type: 'string' },
         auto: { type: 'boolean' },
+        kind: { enum: ['migration', 'data-delete', 'feature-delete', 'contract', 'paid-service', 'locked-file', 'scope', 'other'] },
       },
-      required: ['title', 'options', 'recommended', 'reason', 'auto'],
+      required: ['title', 'options', 'recommended', 'reason', 'auto', 'kind'],
     },
     proofs: {
       type: 'array',
