@@ -1,10 +1,15 @@
-import { test } from "bun:test";
+import { setDefaultTimeout, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { parseObject } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
+
+/** A test that runs the real CLI starts git and bun processes. Alone it takes under 2 s; in a
+ * build round, with every check and agent running at once, it passed bun's default 5 s. */
+const CLI_TEST_TIMEOUT_MS = 30_000;
+setDefaultTimeout(CLI_TEST_TIMEOUT_MS);
 
 export type Json = Record<string, unknown>;
 
@@ -57,7 +62,7 @@ export function tmux(args: string[], server: string | null = null): TmuxRun {
 /** Kills every task tmux server in the list, removes its dir and empties the list. */
 export async function removeServers(servers: string[]): Promise<void> {
   for (const server of servers.splice(0)) {
-    tmux(["kill-server"], server);
+    if (hasTmux) tmux(["kill-server"], server);
     await rm(server, { recursive: true, force: true });
   }
 }
