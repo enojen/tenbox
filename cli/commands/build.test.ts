@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { files } from "../infra/files.ts";
-import { type CliRun, type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
+import {
+  type CliRun,
+  type FakeClaude,
+  type FakeSession,
+  makeFakeClaude,
+  tenbox,
+} from "../test/cli.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
@@ -67,6 +73,43 @@ describe("tenbox build", () => {
       "--",
       "/tenbox-build T-1",
     ]);
+  });
+
+  const session = (cwd: string, state: string): FakeSession => ({
+    id: "s1",
+    cwd,
+    kind: "background",
+    startedAt: 1,
+    state,
+  });
+
+  test.each(["working", "blocked"])(
+    "a %s session of the task worktree is session-busy",
+    async (state) => {
+      await setup();
+      await approve();
+      const real = await files.realPath(taskWorktree());
+      await fake.setSessions([session(real, state)]);
+      const built = await run("build", "T-1");
+      const prompts = await bgPrompts();
+      expect([built.code, built.json.code]).toEqual([1, "session-busy"]);
+      expect(built.json.error).toContain("tenbox attach T-1");
+      expect(prompts).toEqual([]);
+    },
+  );
+
+  test.each([
+    ["a done session", "done", true],
+    ["a busy session in another directory", "working", false],
+  ])("%s does not block the build", async (_name, state, here) => {
+    await setup();
+    await approve();
+    const real = await files.realPath(taskWorktree());
+    await fake.setSessions([session(here ? real : project.root, state)]);
+    const built = await run("build", "T-1");
+    const prompts = await bgPrompts();
+    expect([built.code, built.json.ok]).toEqual([0, true]);
+    expect(prompts).toEqual(["/tenbox-build T-1"]);
   });
 
   test("a claude --bg that fails gives its message", async () => {

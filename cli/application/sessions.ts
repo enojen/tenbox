@@ -1,4 +1,4 @@
-import { noSessionError } from "../../domain/errors/tasks.ts";
+import { noSessionError, sessionBusyError } from "../../domain/errors/tasks.ts";
 import { noCommandError } from "../../domain/errors/tools.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import {
@@ -63,9 +63,11 @@ async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
   return logStart(session, SESSION_START_STATE.started, `session ${session} started`);
 }
 
-/** `tenbox build`: starts a new session; claude's own message when it refuses. */
+/** `tenbox build`: starts a new session unless one is busy; claude's own message when it refuses. */
 async function run(target: SessionTarget, start: ClaudeStart): Promise<void> {
   const claudeRun = await requireRun(target);
+  const found = await claude.listBackground(claudeRun);
+  if (found.some((session) => session.busy)) throw sessionBusyError(target.id);
   await claude.startBackground(claudeRun, start);
 }
 

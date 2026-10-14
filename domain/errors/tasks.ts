@@ -23,6 +23,13 @@ export function noSessionError(id: string): TenboxError {
   return new TenboxError(`${id} has no background session; run: tenbox build ${id}`, "no-session");
 }
 
+export function sessionBusyError(id: string): TenboxError {
+  return new TenboxError(
+    `${id} has a busy background session; run: tenbox attach ${id}`,
+    "session-busy",
+  );
+}
+
 export function dirtyBeforePrError(taskWorktree: string): TenboxError {
   return new TenboxError(`${taskWorktree} has uncommitted changes; commit them first`, "dirty");
 }

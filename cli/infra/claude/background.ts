@@ -20,6 +20,8 @@ export interface BackgroundSession {
   id: string;
   cwd: string;
   startedAt: number;
+  /** True while the session works or waits for a person. */
+  busy: boolean;
 }
 
 /** A command run in one directory with the `claude` binary found in `PATH`. */
@@ -48,10 +50,19 @@ export function resumePrompt(run: ResumableRun, args: object): string {
 
 /** The output of `claude agents --json`: interactive and background sessions. */
 const AgentListSchema = z.array(
-  z.object({ id: z.string().optional(), cwd: z.string(), kind: z.string(), startedAt: z.number() }),
+  z.object({
+    id: z.string().optional(),
+    cwd: z.string(),
+    kind: z.string(),
+    startedAt: z.number(),
+    state: z.string().optional(),
+  }),
 );
 
 const BACKGROUND = "background";
+
+/** The `state` values of a session that a second build must not disturb. */
+const BUSY_STATES = ["working", "blocked"];
 
 /** The `claude` binary in `PATH`, or null. */
 function find(): string | null {
@@ -81,9 +92,9 @@ async function listBackground(run: ClaudeRun): Promise<BackgroundSession[]> {
   const parsed = AgentListSchema.safeParse(parseJson(stdout));
   if (!parsed.success) throw claudeError("agents", "output is not a session list");
   const sessions: BackgroundSession[] = [];
-  for (const { id, cwd, kind, startedAt } of parsed.data) {
+  for (const { id, cwd, kind, startedAt, state } of parsed.data) {
     if (kind === BACKGROUND && id !== undefined && cwd === run.cwd) {
-      sessions.push({ id, cwd, startedAt });
+      sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(state ?? "") });
     }
   }
   return sessions;

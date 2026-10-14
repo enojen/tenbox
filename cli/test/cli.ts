@@ -50,11 +50,13 @@ interface ClaudeCall {
 }
 
 /** A background session as `claude agents --json` lists it. */
-interface FakeSession {
+export interface FakeSession {
   id: string;
   cwd: string;
   kind: "background" | "interactive";
   startedAt: number;
+  /** The `state` of a background session: working, blocked, done. */
+  state?: string;
 }
 
 /**
