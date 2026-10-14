@@ -133,3 +133,69 @@ test("reads a run with its agents and their usage, without prompt or result text
   ]);
   expect(JSON.stringify(runs?.[0]?.agents)).not.toContain(MARKER);
 });
+
+interface RunFileFields {
+  session: string;
+  runId: string;
+  workflowName: string;
+  startTime: number;
+}
+
+async function writeRunFile(fields: RunFileFields): Promise<void> {
+  const { session, runId, workflowName, startTime } = fields;
+  const dir = path.join(projectDir(env().claudeDir, CWD), session, "workflows");
+  const scriptPath = path.join(dir, "scripts", `${workflowName}-${runId}.js`);
+  const run = { runId, workflowName, startTime, scriptPath, args: `args of ${runId}` };
+  await files.write(path.join(dir, `${runId}.json`), JSON.stringify(run));
+}
+
+test("the last run of a workflow is the newest one, with its session folder", async () => {
+  await writeRunFile({
+    session: "s-1",
+    runId: "wf_old",
+    workflowName: "tenbox-build",
+    startTime: 1,
+  });
+  await writeRunFile({
+    session: "s-2",
+    runId: "wf_new",
+    workflowName: "tenbox-build",
+    startTime: 3,
+  });
+  await writeRunFile({
+    session: "s-3",
+    runId: "wf_plan",
+    workflowName: "tenbox-plan",
+    startTime: 5,
+  });
+  await files.write(
+    path.join(projectDir(env().claudeDir, CWD), "s-4", "workflows", "wf_x.json"),
+    "{",
+  );
+  const run = await claudeSessions.findLastRun(CWD, "tenbox-build");
+  expect(run).toEqual({
+    runId: "wf_new",
+    scriptPath: path.join(
+      projectDir(env().claudeDir, CWD),
+      "s-2",
+      "workflows",
+      "scripts",
+      "tenbox-build-wf_new.js",
+    ),
+    args: "args of wf_new",
+    session: "s-2",
+  });
+});
+
+test("without a run of the workflow there is no last run", async () => {
+  await writeRunFile({
+    session: "s-1",
+    runId: "wf_plan",
+    workflowName: "tenbox-plan",
+    startTime: 1,
+  });
+  const run = await claudeSessions.findLastRun(CWD, "tenbox-build");
+  const missing = await claudeSessions.findLastRun("/no/such/dir", "tenbox-build");
+  expect(run).toBeNull();
+  expect(missing).toBeNull();
+});

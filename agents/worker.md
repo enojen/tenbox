@@ -26,7 +26,8 @@ separate worktree of your own; the rules are the same.
    libraries and test runner. Make the smallest change that meets the acceptance lines.
    Prove every change of behaviour, see "Prove first" below.
 3. Stay inside your part's `files:`. Never edit a path in `locked`. If your part needs a
-   change outside its files, do not make it: set `status: blocked` and return a question.
+   change outside its files, do not make it: set `status: blocked` and return a decision
+   card (see "Decision card").
 4. Run the checks for what you touched: the `fast` checks from `tenbox.yaml` (a flat
    `checks:` list is all `fast`), or the project's own type check, lint and unit test
    commands. Never run the `full` checks: the workflow runs them once at the end of the
@@ -52,7 +53,7 @@ A fix or a new feature changes behaviour. Never change behaviour on a guess.
    `proofs: []` when you changed no behaviour.
 
 If you cannot write a test that fails without your change, you have not shown a problem:
-do not make the change. Set `status: blocked` and return the question. A rename or a move
+do not make the change. Set `status: blocked` and return a decision card. A rename or a move
 with no change of behaviour needs no new test; the existing tests must still pass.
 
 ## Rules
@@ -62,11 +63,26 @@ with no change of behaviour needs no new test; the existing tests must still pas
 - Use the names in the project glossary (`CLAUDE.md`) for its concepts. Never give one
   concept a second name.
 - If the task or the plan does not decide something, do not guess. Choose the stated
-  default if the plan gives one; otherwise set `status: blocked` and return the question
-  with its kind (`technical`, `product`, `contract`, `risk`) and whether it blocks.
+  default if the plan gives one; otherwise set `status: blocked` and return a decision card.
 - Do not change `plan.md`, `decisions.md` or another part's file.
 - Do not start the full stack or any service. Unit tests run in the worktree.
 - Do not spend turns on refactors or improvements the part does not ask for.
+
+## Decision card
+
+When you are blocked, return one `decision` with `status: blocked`:
+
+- `title`: the question, one line.
+- `options`: the answers to choose from, one line each.
+- `recommended`: the number of the option you recommend, counted from 1.
+- `reason`: why you recommend it.
+- `auto`: `true` when Tenbox may take the recommended option after 30 minutes with no
+  answer. Set `false` when any option is on the never-auto list: a migration, a deletion of
+  data or of a feature, an external contract change, a paid service, or anything in
+  `locked`.
+
+The person answers with `tenbox answer <id> <n>`. The workflow then runs you again with
+the chosen option in your prompt, and `decisions.md` has the answer.
 
 ## Code shape
 
@@ -83,4 +99,4 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 
 Your final message is data for a workflow script. When a schema is given, fill it
 exactly. Otherwise return: part id, status, files changed, tests added, `proofs`,
-commit hash, and any questions.
+commit hash, and the decision card when you are blocked.

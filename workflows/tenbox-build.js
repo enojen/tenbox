@@ -1,7 +1,7 @@
 export const meta = {
   name: 'tenbox-build',
   description: 'Build, check and review one Tenbox task, round after round, until it passes or needs you',
-  whenToUse: 'In a task worktree after the plan is approved. args: the task id, or { task, feedback, maxRounds }.',
+  whenToUse: 'In a task worktree after the plan is approved. args: the task id, or { task, feedback, maxRounds, answer }.',
   phases: [{ title: 'Build' }, { title: 'Checks' }, { title: 'Review' }],
 }
 
@@ -9,6 +9,12 @@ const input = typeof args === 'string' ? { task: args } : (args ?? {})
 const task = input.task
 if (!task) throw new Error('args: the task id, for example "TEN-301"')
 const maxRounds = input.maxRounds ?? 3
+// `tenbox answer` resumes the run with { round, part, option, text }. Only that worker's prompt
+// changes, so every earlier agent returns from the resume cache.
+const answer = input.answer
+const answerLine = (round, partId) => answer && answer.round === round && answer.part === partId
+  ? `\nYour decision card is answered: option ${answer.option}: ${answer.text}`
+  : ''
 // Roles run on their frontmatter model; a hard part and a strong lens get this one.
 const STRONG_MODEL = 'opus'
 const strongModelIf = (needed) => (needed ? { model: STRONG_MODEL } : {})
@@ -41,7 +47,18 @@ const BUILT = {
   properties: {
     status: { enum: ['done', 'blocked'] },
     commit: { type: 'string' },
-    questions: { type: 'array', items: { type: 'string' } },
+    // A blocked worker's question; `recommended` is the 1-based number of one of the options.
+    decision: {
+      type: 'object',
+      properties: {
+        title: NON_BLANK,
+        options: { type: 'array', items: NON_BLANK, minItems: 1 },
+        recommended: { type: 'integer', minimum: 1 },
+        reason: { type: 'string' },
+        auto: { type: 'boolean' },
+      },
+      required: ['title', 'options', 'recommended', 'reason', 'auto'],
+    },
     proofs: {
       type: 'array',
       items: {
@@ -129,10 +146,10 @@ for (let round = 1; round <= maxRounds; round++) {
     { agentType: 'planner', schema: PARTS, phase: 'Build', label: `round ${round}: parts` })
   // One after another: without separate worktrees, parallel workers would edit the same tree.
   for (const part of parts) {
-    const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}`,
+    const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}${answerLine(round, part.id)}`,
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
     proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (!built || built.status === 'blocked') return finish({ status: 'needs-you', round, part: part.id, questions: built?.questions ?? [], attention, nice_to_have: niceToHave, unproven, proofs })
+    if (!built || built.status === 'blocked') return finish({ status: 'needs-you', round, part: part.id, ...(built?.decision && { decision: built.decision }), attention, nice_to_have: niceToHave, unproven, proofs })
   }
 
   phase('Checks')

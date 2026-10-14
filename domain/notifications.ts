@@ -18,16 +18,21 @@ export interface Notification {
   state: NotificationState;
   /** What happened, in a few words; left out when the state says it all. */
   detail?: string;
+  /** The recommended option of a `needs-you` decision card; the line then names `tenbox answer`. */
+  recommended?: number;
 }
 
 const SEPARATOR = " · ";
 
-const NEXT_COMMAND: Record<NotificationState, (id: TaskId) => string> = {
-  [NOTIFICATION_STATE.needsYou]: (id) => `tenbox attach ${id}`,
-  [NOTIFICATION_STATE.readyForYou]: (id) => `tenbox pr ${id}`,
-  [NOTIFICATION_STATE.failed]: (id) => `tenbox attach ${id}`,
-  [NOTIFICATION_STATE.checkFailed]: (id) => `tenbox attach ${id}`,
-  [NOTIFICATION_STATE.prOpened]: (id) => `tenbox close ${id}`,
+const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => string> = {
+  [NOTIFICATION_STATE.needsYou]: (n) =>
+    n.recommended === undefined
+      ? `tenbox attach ${n.id}`
+      : `tenbox answer ${n.id} ${n.recommended}`,
+  [NOTIFICATION_STATE.readyForYou]: (n) => `tenbox pr ${n.id}`,
+  [NOTIFICATION_STATE.failed]: (n) => `tenbox attach ${n.id}`,
+  [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox attach ${n.id}`,
+  [NOTIFICATION_STATE.prOpened]: (n) => `tenbox close ${n.id}`,
 };
 
 /** The state of a build end status a person must act on; null for `not-approved`. */
@@ -39,5 +44,5 @@ export function notificationStateOf(status: BuildStatus): NotificationState | nu
 export function notificationLine(notification: Notification): string {
   const { project, id, state, detail } = notification;
   const parts = [project, id, state, ...(detail === undefined ? [] : [detail])];
-  return `${parts.join(SEPARATOR)} → ${NEXT_COMMAND[state](id)}`;
+  return `${parts.join(SEPARATOR)} → ${NEXT_COMMAND[state](notification)}`;
 }

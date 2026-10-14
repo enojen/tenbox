@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
-import { errorMessage, MS_PER_SECOND } from "../domain/utils.ts";
+import { errorMessage, isDigits, MS_PER_SECOND } from "../domain/utils.ts";
 import {
   type ArgSpec,
   flagValue,
@@ -12,6 +12,7 @@ import {
   tierValue,
   type Values,
 } from "./args.ts";
+import { answerCard } from "./commands/answer.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
 import { attachTask } from "./commands/attach.ts";
@@ -47,6 +48,7 @@ const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]'";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
 const WAIT_USAGE = "tenbox wait <id> --for plan|build|round [--timeout 600]";
+const ANSWER_USAGE = "tenbox answer <id> <n>";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
@@ -185,6 +187,15 @@ const COMMANDS: Record<string, Command> = {
         kind,
         timeoutSeconds: intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS,
       });
+    },
+  },
+  answer: {
+    usage: ANSWER_USAGE,
+    options: {},
+    run: (positionals) => {
+      const [, option = ""] = positionals;
+      if (!isDigits(option)) throw usageError(`usage: ${ANSWER_USAGE}`);
+      return answerCard({ id: idArg(positionals, ANSWER_USAGE), option: Number(option) });
     },
   },
   approve: {

@@ -3,6 +3,7 @@ import { noCommandError } from "../../domain/errors/tools.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import {
   type BackgroundSession,
+  type ClaudeResume,
   type ClaudeRun,
   type ClaudeStart,
   claude,
@@ -34,7 +35,7 @@ interface SessionEnsureInput {
 }
 
 /** The task's background `claude` sessions, all started in its task worktree. */
-export const sessions = { ensure, run, attach, stop };
+export const sessions = { ensure, run, resume, attach, stop };
 
 /** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
@@ -53,6 +54,13 @@ async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
 async function run(target: SessionTarget, start: ClaudeStart): Promise<void> {
   const claudeRun = await requireRun(target);
   await claude.startBackground(claudeRun, start);
+}
+
+/** `tenbox answer`: stops the task's sessions, then wakes the one that ran the workflow. */
+async function resume(target: SessionTarget, resumed: ClaudeResume): Promise<void> {
+  const claudeRun = await requireRun(target);
+  await stop(target);
+  await claude.resumeBackground(claudeRun, resumed);
 }
 
 /** Opens the newest session in this terminal and returns its id; `no-session` without one. */

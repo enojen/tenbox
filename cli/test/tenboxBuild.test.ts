@@ -320,3 +320,62 @@ test("a round whose review has must_fix does not run the full tier", async () =>
   const { labels } = await runWithFullChecks([{ ok: true }], 1);
   expect(labels.filter((label) => label.endsWith("full checks"))).toEqual(["round 2: full checks"]);
 });
+
+const decisionCard = {
+  title: "Which store?",
+  options: ["files", "sqlite"],
+  recommended: 1,
+  reason: "r",
+  auto: true,
+};
+
+test("a blocked worker's decision card goes into the needs-you result with its part", async () => {
+  const agent: ScriptedAgent = async (_prompt, options) => {
+    if (options.agentType === "planner") {
+      return { parts: [{ id: "02", goal: "g", difficulty: "easy" }], lenses: [] };
+    }
+    if (options.agentType === "worker") {
+      return { status: "blocked", proofs: [], decision: decisionCard };
+    }
+    return { ok: true, file: "f" };
+  };
+  const result = await runWorkflow("TB-1", agent);
+  expect(result).toMatchObject({
+    status: "needs-you",
+    round: 1,
+    part: "02",
+    decision: decisionCard,
+  });
+  expect(result.questions).toBeUndefined();
+});
+
+/** The prompt of every agent, by label, of a two-part run whose round 1 review has a must_fix item. */
+async function promptsByLabel(args: unknown): Promise<Record<string, string>> {
+  const prompts: Record<string, string> = {};
+  let round = 0;
+  const agent: ScriptedAgent = async (prompt, options) => {
+    prompts[options.label] = prompt;
+    if (options.agentType === "planner") {
+      round += 1;
+      const parts = [
+        { id: "01", goal: "g", difficulty: "easy" },
+        { id: "02", goal: "g", difficulty: "easy" },
+      ];
+      return { parts, lenses: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType === "runner") return { ok: true, commit: "c", file: "f" };
+    return round === 1 ? { ...cleanReply, must_fix: ["fix"] } : cleanReply;
+  };
+  await runWorkflow(args, agent);
+  return prompts;
+}
+
+test("an answer changes only the worker prompt of its round and part", async () => {
+  const answer = { round: 1, part: "02", option: 2, text: "sqlite" };
+  const plain = await promptsByLabel("TB-1");
+  const answered = await promptsByLabel({ task: "TB-1", answer });
+  const changed = Object.keys(plain).filter((label) => plain[label] !== answered[label]);
+  expect(changed).toEqual(["round 1: 02"]);
+  expect(answered["round 1: 02"]).toContain("option 2: sqlite");
+});

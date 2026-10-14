@@ -63,7 +63,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It is recorded in `.tenbox/proofs.json` by `tenbox build done` or by hand (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`Unproven`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
-| decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide`; a question answer also ticks its line in `questions.md` (`Decision`). |
+| decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide` or `tenbox answer`; a question answer also ticks its line in `questions.md` (`Decision`). |
+| decision card | What a blocked worker returns: `{ title, options, recommended, reason, auto }`; `build.json` keeps it with `deadline` and, after `tenbox answer`, `answered` (`DecisionCard`). |
 | organization | A group of users on the server; found by name (`organizations`). |
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
@@ -129,7 +130,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans  checks  decisions  notifications
+    approvals  plans  checks  decisions  notifications  answers
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker

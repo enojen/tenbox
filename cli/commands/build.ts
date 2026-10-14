@@ -47,7 +47,11 @@ async function notifyEnd(id: TaskId, taskWorktree: string): Promise<void> {
   if (result === null) return;
   const state = notificationStateOf(result.status);
   if (state === null) return;
-  const detail = state === NOTIFICATION_STATE.needsYou ? result.attention[0] : undefined;
-  const notification: TaskNotification = { id, state, ...(detail && { detail }) };
+  const card = state === NOTIFICATION_STATE.needsYou ? result.decision : undefined;
+  const notification: TaskNotification = {
+    id,
+    state,
+    ...(card && { detail: card.title, recommended: card.recommended }),
+  };
   await notifications.send({ taskWorktree, notification });
 }

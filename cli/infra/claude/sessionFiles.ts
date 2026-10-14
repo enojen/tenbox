@@ -11,7 +11,17 @@ import { readUsage } from "./transcripts.ts";
  * agents. The tokens come from `<session>/subagents/workflows/<run>/agent-<agentId>.jsonl`.
  * Prompts and result text are never returned.
  */
-export const claudeSessions = { listRuns };
+export const claudeSessions = { listRuns, findLastRun };
+
+/** A workflow run that `resumeFromRunId` can continue in its session. */
+export interface ResumableRun {
+  runId: string;
+  scriptPath: string;
+  /** The run's `args`, as the workflow got them. */
+  args: unknown;
+  /** The full session id: the name of the session folder. */
+  session: string;
+}
 
 type Json = Record<string, unknown>;
 
@@ -35,6 +45,29 @@ async function listRuns(cwd: string): Promise<WorkflowRun[] | null> {
     if (run !== null) runs.push(run);
   }
   return runs;
+}
+
+/** The newest run of `workflow` started in `cwd`; null without one. */
+async function findLastRun(cwd: string, workflow: string): Promise<ResumableRun | null> {
+  const runFiles = await listRunFiles(projectDir(env().claudeDir, cwd));
+  let last: ResumableRun | null = null;
+  let lastStart = Number.NEGATIVE_INFINITY;
+  for (const runFile of runFiles) {
+    const json = await readJson(runFile);
+    if (json?.workflowName !== workflow || typeof json.startTime !== "number") continue;
+    const run = toResumable(json, runFile);
+    if (run === null || json.startTime <= lastStart) continue;
+    last = run;
+    lastStart = json.startTime;
+  }
+  return last;
+}
+
+/** Null when the run file has no `runId` or `scriptPath`. */
+function toResumable(json: Json, runFile: string): ResumableRun | null {
+  const { runId, scriptPath, args } = json;
+  if (typeof runId !== "string" || typeof scriptPath !== "string") return null;
+  return { runId, scriptPath, args, session: path.basename(path.dirname(path.dirname(runFile))) };
 }
 
 /** The `workflows/wf_*.json` files of every session in `dir`. */

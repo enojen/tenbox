@@ -167,6 +167,39 @@ describe("tenbox build done", () => {
     expect(recorded).toEqual([proof("first"), proof("second")]);
   });
 
+  const THIRTY_MINUTES_MS = 1_800_000;
+  const card = (auto: boolean, recommended = 1) => ({
+    title: "Which store?",
+    options: ["files", "sqlite"],
+    recommended,
+    reason: "r",
+    auto,
+  });
+
+  test("a needs-you card with auto is written with a deadline 30 minutes after the call", async () => {
+    const before = Date.now();
+    await buildDone(...withJson({ status: "needs-you", decision: card(true) }));
+    const after = Date.now();
+    const written = await readJson(buildJson);
+    const deadline = Date.parse(written.deadline);
+    expect(deadline).toBeGreaterThanOrEqual(before + THIRTY_MINUTES_MS);
+    expect(deadline).toBeLessThanOrEqual(after + THIRTY_MINUTES_MS);
+    expect(written.decision).toEqual(card(true));
+  });
+
+  test("a needs-you card without auto is written with a null deadline", async () => {
+    await buildDone(...withJson({ status: "needs-you", decision: card(false) }));
+    const written = await readJson(buildJson);
+    expect(written.deadline).toBeNull();
+  });
+
+  test("a card whose recommended option is not one of its options is bad-build and writes nothing", async () => {
+    const run = await buildDone(...withJson({ status: "needs-you", decision: card(true, 3) }));
+    expect([run.code, run.json.code]).toEqual([1, "bad-build"]);
+    const buildExists = await files.exists(buildJson);
+    expect(buildExists).toBe(false);
+  });
+
   test("a missing --json is a usage error", async () => {
     const run = await buildDone();
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
@@ -185,11 +218,16 @@ describe("tenbox build done", () => {
     test.each([
       ["ready-for-you", "demo · T-1 · ready-for-you → tenbox pr T-1"],
       ["failed", "demo · T-1 · failed → tenbox attach T-1"],
-      ["needs-you", "demo · T-1 · needs-you · a → tenbox attach T-1"],
+      ["needs-you", "demo · T-1 · needs-you → tenbox attach T-1"],
     ])("%s sends one line", async (status, line) => {
       const run = await buildDone(...withJson({ status }));
       expect([run.code, run.json.ok]).toEqual([0, true]);
       expect(ntfy.lines()).toEqual([line]);
+    });
+
+    test("needs-you with a card shows its title and the answer with the recommended option", async () => {
+      await buildDone(...withJson({ status: "needs-you", decision: card(true, 2) }));
+      expect(ntfy.lines()).toEqual(["demo · T-1 · needs-you · Which store? → tenbox answer T-1 2"]);
     });
 
     test("not-approved sends nothing", async () => {

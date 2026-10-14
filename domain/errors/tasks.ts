@@ -116,3 +116,18 @@ export function oldStatsError(id: string): TenboxError {
     "old-stats",
   );
 }
+
+export function noDecisionError(id: string): TenboxError {
+  return new TenboxError(`${id} has no needs-you decision card in build.json`, "no-decision");
+}
+
+export function answeredError(id: string, option: number): TenboxError {
+  return new TenboxError(`the decision card of ${id} is answered: option ${option}`, "answered");
+}
+
+export function noRunError(id: string): TenboxError {
+  return new TenboxError(
+    `${id} has no tenbox-build run in the Claude Code session files; run: tenbox build ${id}`,
+    "no-run",
+  );
+}

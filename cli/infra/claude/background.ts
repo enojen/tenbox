@@ -28,7 +28,14 @@ export interface ClaudeRun {
 }
 
 /** The background session commands of the `claude` CLI. */
-export const claude = { find, startBackground, listBackground, attach, stop };
+export const claude = { find, startBackground, resumeBackground, listBackground, attach, stop };
+
+/** A stopped background session to wake with one more prompt. */
+export interface ClaudeResume {
+  /** The full session id; the 8-char id of `claude agents` is not enough. */
+  session: string;
+  prompt: string;
+}
 
 /** The output of `claude agents --json`: interactive and background sessions. */
 const AgentListSchema = z.array(
@@ -49,6 +56,14 @@ function find(): string | null {
 async function startBackground(run: ClaudeRun, start: ClaudeStart): Promise<void> {
   const args = ["--bg", "--model", start.model, "--add-dir", start.addDir, "-n", start.name];
   await runChecked(run, [...args, "--allowedTools", "Workflow", "--", start.prompt]);
+}
+
+/**
+ * Wakes the same session with its saved options; any other flag makes claude start a copy
+ * under a new id instead, so none is passed.
+ */
+async function resumeBackground(run: ClaudeRun, resume: ClaudeResume): Promise<void> {
+  await runChecked(run, ["--bg", "--resume", resume.session, "--", resume.prompt]);
 }
 
 /** The background sessions started in exactly `run.cwd`; `--cwd` also lists its subdirs. */

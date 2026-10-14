@@ -53,7 +53,8 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox build <id>` | Checks the approval as `tenbox approved` does (`not-approved`, `plan-changed`, exit 1), then runs `claude --bg` in the task worktree as `tenbox start` does, with `/tenbox-build <id>`; an unapproved or changed plan starts nothing. It returns before the workflow ends. A failed `claude --bg` gives `claude` (exit 1) with Claude Code's message. Prints `{ ok, task, sent }` |
 | `tenbox attach <id>` | Lists the sessions with `claude agents --json --cwd <task worktree>` and runs `claude attach <id>` in this terminal for the newest background session whose `cwd` is the task worktree. Prints `{ ok, task, session }` after you leave the session. Without one it fails with `no-session` (exit 1), naming `tenbox build <id>`. Tenbox stores no session id |
 | `tenbox plan done <id> --json '<result>'` | Run by `/tenbox-plan` through the runner; by hand only when the plan was made without the workflow. Validates the planner result with zod and writes it to `.tenbox/plan.json`. A result that is not JSON, or has a wrong `estimated_lines` (a whole number), a part without `id` or a `difficulty` other than `easy` or `hard`, gives `bad-plan` (exit 1) and writes nothing; a missing `--json` or another sub-command gives `usage` (exit 2). Prints `{ ok, task, file }` |
-| `tenbox build done <id> --json '<result>'` | Run by `/tenbox-build` through the runner at every end status. Validates the build result with zod and writes it to `.tenbox/build.json`; its `proofs` are appended to `.tenbox/proofs.json`. A second run keeps the earlier `unproven` items first; `status`, `round`, `attention` and `nice_to_have` are the new ones. A result that is not JSON, or has an unknown `status`, a `round` that is not a whole number or a proof with a blank field, gives `bad-build` (exit 1) and writes nothing; a missing `--json` gives `usage` (exit 2). Prints `{ ok, task, file }` |
+| `tenbox build done <id> --json '<result>'` | Run by `/tenbox-build` through the runner at every end status. Validates the build result with zod and writes it to `.tenbox/build.json`; its `proofs` are appended to `.tenbox/proofs.json`. A second run keeps the earlier `unproven` items first; `status`, `round`, `attention` and `nice_to_have` are the new ones. A result that is not JSON, or has an unknown `status`, a `round` that is not a whole number, a proof with a blank field, or a decision card whose `recommended` is not the number of one of its options, gives `bad-build` (exit 1) and writes nothing; a missing `--json` gives `usage` (exit 2). A result with a decision card (`decision: { title, options, recommended, reason, auto }`, `recommended` counted from 1) gets `deadline`: the call time + 30 minutes when `auto` is true, else `null`. Prints `{ ok, task, file }` |
+| `tenbox answer <id> <n>` | Answers the decision card of a `needs-you` `build.json` with option `n` (counted from 1) and resumes the build run that asked it. Appends the note `- <card title> Answer: <n>. <option>` to `.tenbox/decisions.md`, writes `answered: { option, at, auto: false }` into `build.json`, finds the newest `tenbox-build` run of the task worktree in Claude Code's session files (`<run id>.json`: run id, script path, args; the session folder is the full session id), stops the task's background sessions and runs `claude --bg --resume <session id> -- "<prompt>"` in the task worktree, with no other flag (any other flag starts a copy of the session). The prompt asks for the Workflow tool with that script path, `resumeFromRunId` and the run's args plus `answer: { round, part, option, text }`. Fails, before it writes anything, with `no-decision` (exit 1) when `build.json` has no `needs-you` card, `answered` (exit 1) when the card is answered, `no-run` (exit 1) without a `tenbox-build` run, and `usage` (exit 2) when `n` is not the number of an option. When `claude` fails (`claude` or `no-command`, exit 1), `build.json` is written back without `answered`, so the same answer can be given again; `decisions.md` keeps one line for it. Prints `{ ok, task, option, run, session }` |
 | `tenbox wait <id> --for plan\|build\|round [--timeout 600]` | `plan` and `build`: checks once a second for `.tenbox/plan.json` or `.tenbox/build.json` and prints `{ ok, task, file }` as soon as it exists (an earlier `build.json` makes it return at once). `round`: notes the `rounds/N/checks.json` files and the text of `build.json` at the start and returns at the first change: `{ ok, task, round, status, file }` with `status: "running"` and the new round's `checks.json`, or the `status` and `round` of a `build.json` that is written or changed. Fails with `wait-timeout` (exit 1) after `--timeout` seconds; a missing or other `--for` gives `usage` (exit 2) |
 | `tenbox pr <id> [--ready]` | Refuses a dirty worktree or a branch with no commits ahead of the base. Pushes the branch to `origin`, then creates the PR (a draft unless `--ready`) or updates the open one. The title is `<id> · <title>` with the title from `task.json`. The body holds the latest round's checks summary, then the whole `plan.md` folded |
 | `tenbox merge-check [--base <branch>]` | Run in the project. Runs `git fetch origin`, lists the open PRs into the base whose head branch fits `names.branch` (others are left out), and merges `origin/<branch>` of each onto `origin/<base>` in a temporary detached worktree, lowest PR number first. Then it runs `setup` and every check of both tiers there and judges them as `tenbox check` does: only new failures against the baseline fail a check (it writes no log files). The worktree is removed on every way out. With no open task PR it prints `ok: true` with empty lists. A failed `setup` gives `setup` (exit 1). A conflict gives `merge-conflict` (exit 1) with `{ base, prs, order, conflict: { branch, files } }` in `details`; a new failure gives `new-failures` (exit 1) with the whole result in `details`. Prints `{ ok, base: { ref, sha }, prs: [{ number, branch }], order, checks, summary }`. It never pushes and never moves a local branch |
@@ -112,13 +113,16 @@ per part and `questions.md`. It returns the summary, the estimated lines, the pa
 `difficulty`), acceptance criteria, the extra review lenses and the questions. A runner then
 saves the result with `tenbox plan done`; the workflow adds its JSON as `recorded`.
 
-**`/tenbox-build <id>`**, or `{ task, feedback, maxRounds }` (default 3 rounds). First step:
+**`/tenbox-build <id>`**, or `{ task, feedback, maxRounds, answer }` (default 3 rounds). First step:
 a runner runs `tenbox approved <id>`. If it fails, the workflow returns
 `{ status: "not-approved", error }` and starts no other agent. Then each round:
 
 1. **Build**: the planner lists the parts still to build and the extra lenses; one worker
    per part, one after another, in the task worktree. A part marked `hard` in `plan.json` gets the strong
-   model. A blocked worker ends the run with `needs-you` and its questions.
+   model. A blocked worker ends the run with `needs-you`, its `part` and its decision card
+   (`decision`, see `tenbox answer`). With `answer: { round, part, option, text }` in the args
+   (`tenbox answer` resumes the run so), only the worker of that round and part gets the
+   chosen option in its prompt; every earlier agent returns from the resume cache.
 2. **Checks**: a runner runs `tenbox check <id>` (the `fast` tier). New failures become
    the next round's feedback.
 3. **Review**: the `base` lens always runs; `security` and `contract` run when the plan
@@ -166,10 +170,10 @@ symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a l
 ├ task.json        tenbox start: id, title, status, tracker, url (null without one)
 ├ plan.md          planner: summary, approach, parts, acceptance criteria, risks, size
 ├ plan.json        tenbox plan done: the validated planner result, read by close
-├ build.json       tenbox build done: the last build result, read by close
+├ build.json       tenbox build done: the last build result, read by close; tenbox answer adds answered
 ├ approved.json    tenbox approve: { at, plan_sha } of the approved plan
 ├ questions.md     planner: open questions by kind (product, technical, contract, risk)
-├ decisions.md     tenbox decide: answers and notes; every agent reads it first
+├ decisions.md     tenbox decide and tenbox answer: answers and notes; every agent reads it first
 ├ parts/01-x.md    one per part: status, files, acceptance, result
 ├ proofs.json      tenbox proof: the proofs recorded by hand, a JSON array
 └ rounds/N/
@@ -207,14 +211,14 @@ line as ntfy JSON (`POST <server>` with `{ topic, message }`) when a person must
 
 | State | When | Detail | Next command |
 |---|---|---|---|
-| `needs-you` | `tenbox build done` with status `needs-you` | the first `attention` item | `tenbox attach <id>` |
+| `needs-you` | `tenbox build done` with status `needs-you` | the decision card title | `tenbox answer <id> <recommended option>`; `tenbox attach <id>` without a card |
 | `ready-for-you` | `tenbox build done` with status `ready-for-you` | none | `tenbox pr <id>` |
 | `failed` | `tenbox build done` with status `failed` | none | `tenbox attach <id>` |
 | `check-failed` | `tenbox check` with a new failure | the checks, the count and the round; `the build goes on` while there is no `build.json` | `tenbox attach <id>` |
 | `pr-opened` | `tenbox pr` creates the PR (an update sends nothing) | the PR URL | `tenbox close <id>` |
 
 A failed send is one stderr line (`notification not sent: ...`); the command's JSON and exit
-code stay the same. The line holds the task id and the first `attention` item: use a private
+code stay the same. The line holds the task id and the decision card title: use a private
 topic. Desktop notifications do not exist; the manifest has no `desktop` key.
 
 Layers, later ones win: `tenbox.yaml` (task worktree, else main checkout), then
