@@ -3,9 +3,21 @@ import { elapsedMs } from "../../domain/utils.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";
 
-export type SetupResult =
-  | { state: "ran"; cmd: string; exit_code: number; duration_ms: number }
-  | { state: "skipped"; reason: string };
+/** The setup ran and passed. */
+interface SetupRan {
+  state: "ran";
+  cmd: string;
+  exit_code: number;
+  duration_ms: number;
+}
+
+/** The setup did not run: `--no-setup` or no `setup:` in the manifest. */
+interface SetupSkipped {
+  state: "skipped";
+  reason: string;
+}
+
+export type SetupResult = SetupRan | SetupSkipped;
 
 /** The manifest command that prepares a new task worktree. */
 export const setups = { run };

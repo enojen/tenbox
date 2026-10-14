@@ -45,8 +45,8 @@ const PrViewSchema = z.object({
   state: z.enum(["OPEN", "CLOSED", "MERGED"]),
   headRefOid: z.string(),
   mergeCommit: z.object({ oid: z.string() }).nullish(),
-  createdAt: z.string(),
-  mergedAt: z.string().nullish(),
+  createdAt: z.iso.datetime(),
+  mergedAt: z.iso.datetime().nullish(),
 });
 type PrState = z.infer<typeof PrViewSchema>;
 const MERGED = "MERGED";

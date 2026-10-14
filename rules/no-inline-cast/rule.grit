@@ -1,6 +1,16 @@
 language js
 
-`$value as $type` where {
-  not $type <: "const",
-  register_diagnostic(span=$value, message="No inline cast: use a type guard or the branded type's constructor.")
+or {
+  `$value as $type` where { not $type <: "const" },
+  `$value as const` as $cast where {
+    or {
+      not $cast <: within `const $_ = $cast`,
+      $cast <: within or {
+        JsFunctionBody(),
+        JsBlockStatement()
+      }
+    }
+  }
+} where {
+  register_diagnostic(span=$value, message="No inline cast: use a type guard, the branded type's constructor, or a declared type. `as const` only on a module-level const.")
 }

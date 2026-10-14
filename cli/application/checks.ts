@@ -39,7 +39,7 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
   log(
     `tenbox check: ${name}: ${current.length} failures, ${newFailures.length} new, ${fixed.length} fixed (${durationMs} ms)`,
   );
-  const outcome = {
+  const outcome: CheckOutcome = {
     name,
     cmd,
     exit_code: exitCode,
@@ -50,7 +50,7 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
     fixed,
     baseline: {
       sha: hit?.sha ?? baseSha,
-      source: hit?.source ?? ("none" as const),
+      source: hit?.source ?? "none",
       failures: hit?.lines.length ?? 0,
     },
   };

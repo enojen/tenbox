@@ -1,0 +1,10 @@
+language js
+
+TsUnionType(types=$types) where {
+  $types <: some or {
+    TsObjectType(),
+    TsIntersectionType(),
+    TsParenthesizedType(ty=TsIntersectionType())
+  } as $member,
+  register_diagnostic(span=$member, message="Name the union member: declare it as an interface or a type alias; a member is a named type or a literal.")
+}

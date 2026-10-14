@@ -4,7 +4,7 @@ import { parseObject } from "./utils.ts";
 /** What `tenbox approve` records in `approved.json`: when, and which `plan.md`. */
 const ApprovalSchema = z.object({
   /** ISO time of the approval. */
-  at: z.string(),
+  at: z.iso.datetime(),
   /** SHA-256 hex of the approved `plan.md`. */
   plan_sha: z.string(),
 });

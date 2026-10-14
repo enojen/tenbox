@@ -53,9 +53,9 @@ async function waitForFile(input: WaitInput & { kind: WaitFileKind }): Promise<T
   const { id, kind, timeoutSeconds } = input;
   const taskWorktree = await worktrees.get(id);
   const file = FILE_OF[kind](tenboxDir(taskWorktree));
-  const check = async () => {
+  const check = async (): Promise<TaskFileResult | null> => {
     const exists = await files.exists(file);
-    return exists ? { ok: true as const, task: id, file } : null;
+    return exists ? { ok: true, task: id, file } : null;
   };
   return pollOrTimeout({ what: file, timeoutSeconds, check });
 }

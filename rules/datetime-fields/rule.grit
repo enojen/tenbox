@@ -1,0 +1,7 @@
+language js
+
+JsPropertyObjectMember(name=$name, value=$value) where {
+  $name <: r"^(?:at|deadline|[A-Za-z0-9_]+At)$",
+  $value <: contains `z.string()`,
+  register_diagnostic(span=$value, message="A time field is an ISO date-time: use `z.iso.datetime()`, not `z.string()`.")
+}

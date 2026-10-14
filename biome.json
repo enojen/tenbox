@@ -24,7 +24,9 @@
     "./rules/await-at-statement-start/rule.grit",
     "./rules/named-parameter-types/rule.grit",
     "./rules/no-destructured-parameters/rule.grit",
-    "./rules/no-json-roundtrip/rule.grit"
+    "./rules/no-json-roundtrip/rule.grit",
+    "./rules/named-union-members/rule.grit",
+    "./rules/datetime-fields/rule.grit"
   ],
   "overrides": [
     {

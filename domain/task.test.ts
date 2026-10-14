@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
-import { nextRound, readTaskFile, renderTaskMd, type TaskFile, taskFileOf } from "./task.ts";
+import {
+  nextRound,
+  readTaskFile,
+  renderTaskMd,
+  type Task,
+  type TaskFile,
+  taskFileOf,
+} from "./task.ts";
 
 test("renderTaskMd", () => {
   const md = renderTaskMd({
@@ -20,13 +27,13 @@ test("nextRound", () => {
 });
 
 test("taskFileOf keeps the title and gives a task without url a null url", () => {
-  const task = {
+  const task: Task = {
     id: taskId("T-1"),
     title: "Cancel",
     description: "d",
     url: "",
     status: "todo",
-    tracker: "none" as const,
+    tracker: "none",
   };
   expect(taskFileOf(task)).toEqual({
     id: "T-1",

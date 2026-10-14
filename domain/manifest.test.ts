@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mergeManifest } from "./manifest.ts";
+import { mergeManifest, type TrackerConfig } from "./manifest.ts";
 import { deepMerge } from "./utils.ts";
 
 test("deepMerge: objects merge, arrays replace", () => {
@@ -30,7 +30,7 @@ describe("mergeManifest", () => {
     expect("services" in m).toBe(false);
   });
   test("clickup is a tracker kind with optional status names", () => {
-    const tracker = { kind: "clickup", statuses: { in_progress: "doing" } } as const;
+    const tracker: TrackerConfig = { kind: "clickup", statuses: { in_progress: "doing" } };
     const m = mergeManifest([{ file: "tenbox.yaml", value: { tracker } }]);
     expect(m.tracker).toEqual(tracker);
   });

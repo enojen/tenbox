@@ -180,6 +180,15 @@ describe("tenbox close", () => {
       expect(branches).toBe("");
     });
 
+    test("a gh pr view whose createdAt is not an ISO date-time fails and changes nothing", async () => {
+      await setup();
+      const head = await squashThenConflict();
+      const json = `{"state":"MERGED","headRefOid":"${head}","createdAt":"yesterday"}`;
+      const bin = await ghPath(`echo '${json}'`);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+    });
+
     test("a commit after the PR head is refused", async () => {
       await setup();
       const head = await squashThenConflict();

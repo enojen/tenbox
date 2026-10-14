@@ -49,3 +49,15 @@ test("a deadline that is not a date is bad-build, so no timer waits on it", () =
   const text = needsYou({ ...card, recommended: 1 }).replace(/}$/, ',"deadline":"not-a-date"}');
   expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-build" }));
 });
+
+test("an answered card whose time is not an ISO date-time is bad-build", () => {
+  const answered = (at: string) =>
+    needsYou({ ...card, recommended: 1 }).replace(
+      /}$/,
+      `,"answered":{"option":1,"at":"${at}","auto":false}}`,
+    );
+  expect(parseBuild(answered(IN_30_MINUTES)).answered?.at).toBe(IN_30_MINUTES);
+  expect(() => parseBuild(answered("yesterday"))).toThrow(
+    expect.objectContaining({ code: "bad-build" }),
+  );
+});

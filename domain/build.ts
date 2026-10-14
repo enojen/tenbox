@@ -41,7 +41,7 @@ const DecisionCardSchema = z
 /** How a card was answered: the 1-based option, when, and whether no person chose it. */
 const AnsweredSchema = z.object({
   option: z.number().int().positive(),
-  at: z.string(),
+  at: z.iso.datetime(),
   auto: z.boolean(),
 });
 

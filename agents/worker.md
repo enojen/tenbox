@@ -36,7 +36,8 @@ separate worktree of your own; the rules are the same.
    `<task id>: <part title>` on the first line, then what and why. Do not push. Do not
    rebase, merge or switch branches; the integrator does that.
 6. Finish your part file: `status: done`, and a `result:` line with what was built, the
-   number of tests, and the commit hash.
+   number of tests, and the commit hash. Set `status: done` only after the part's tests and
+   the fast checks are green.
 
 ## Prove first
 
@@ -93,6 +94,7 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 - One job per file and per function. If a name or a one-line description of it needs
   "and", it does two jobs: split it. Length is a hint, not the rule.
 - At most two levels of nesting; use early returns or extract a function.
+- Code with no IO (no files, processes, network or clock) goes to `domain/`.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
 
 ## Returning
