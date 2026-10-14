@@ -5,7 +5,7 @@ import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
 import type { PrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
-import type { UsageReport } from "../../domain/runs.ts";
+import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { FailedState } from "../../domain/utils.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
@@ -146,6 +146,8 @@ export interface StatsResult extends UsageReport {
   ok: true;
   task: string;
   source: StatsFrom;
+  /** Null for `stats.json`. */
+  runs: RunMark[] | null;
 }
 
 /** `tenbox answer`: the chosen option, the resumed run and its session. */

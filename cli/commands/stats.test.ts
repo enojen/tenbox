@@ -164,6 +164,58 @@ describe("tenbox stats", () => {
     ]);
   });
 
+  test("counts an unfinished run in the round after the finished run, and lists both runs", async () => {
+    await writeRun(buildRun("wf_1", 0));
+    const sessionDir = path.join(projectDir(env().claudeDir, taskWorktree), "session-1");
+    const runDir = path.join(sessionDir, "subagents", "workflows", "wf_2");
+    const iso = (minute: number) => new Date(START_MS + minute * MS_PER_MINUTE).toISOString();
+    const agents = [
+      { id: "u1", label: "round 1: 01", role: "worker", model: "opus", first: 20, last: 22 },
+      { id: "u2", label: "round 1: checks", role: "runner", model: "haiku", first: 23, last: 24 },
+    ];
+    const started = agents.map((a) => ({ type: "started", agentId: a.id, label: a.label }));
+    await files.write(
+      path.join(runDir, "journal.jsonl"),
+      started.map((line) => JSON.stringify(line)).join("\n"),
+    );
+    for (const agent of agents) {
+      const meta = { agentType: agent.role };
+      await files.write(path.join(runDir, `agent-${agent.id}.meta.json`), JSON.stringify(meta));
+      const lines = [
+        JSON.stringify({ type: "user", timestamp: iso(agent.first) }),
+        JSON.stringify({
+          type: "assistant",
+          timestamp: iso(agent.last),
+          message: {
+            id: agent.id,
+            model: agent.model,
+            usage: { input_tokens: 1, output_tokens: 5 },
+          },
+        }),
+      ];
+      await files.write(path.join(runDir, `agent-${agent.id}.jsonl`), lines.join("\n"));
+    }
+    const script = path.join(sessionDir, "workflows", "scripts", "tenbox-build-wf_2.js");
+    await files.write(script, "");
+    const run = await stats();
+    expect(run.json.source).toBe("sessions");
+    expect(run.json.rounds).toMatchObject([
+      { round: 1, minutes: 3, calls: 3 },
+      { round: 2, minutes: 4, calls: 2, output: 10 },
+      { round: null },
+    ]);
+    expect(run.json.roles).toMatchObject([{ role: "worker" }, { role: "runner" }]);
+    expect(run.json.models).toMatchObject([
+      { model: "sonnet" },
+      { model: "haiku" },
+      { model: "opus" },
+    ]);
+    expect(run.json.runs).toEqual([
+      { workflow: "tenbox-build", started: iso(0), finished: true },
+      { workflow: "tenbox-build", started: iso(20), finished: false },
+    ]);
+  });
+
   test("after tenbox close it reads stats.json and prints the same numbers", async () => {
     await writeRun(buildRun("wf_1", 0));
     const before = await stats();

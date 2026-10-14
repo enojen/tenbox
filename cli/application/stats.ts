@@ -1,7 +1,7 @@
 import { noStatsError, oldStatsError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { type StatsProof, trimProof } from "../../domain/proof.ts";
-import { type RunAgent, summarizeRuns } from "../../domain/runs.ts";
+import { type RunAgent, type RunMark, summarizeRuns } from "../../domain/runs.ts";
 import {
   checksPassed,
   countPlan,
@@ -10,7 +10,7 @@ import {
   distinctProofs,
   type PrMinutes,
   type PrTimes,
-  readStatsAgents,
+  readStatsRecord,
   STATS_SCHEMA,
   type StatsCode,
   type StatsRound,
@@ -91,6 +91,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     }),
     code,
     agents: summary.agents,
+    runs: summary.runs,
   };
 }
 
@@ -106,18 +107,21 @@ export type StatsFrom = "stats.json" | "sessions";
 interface FoundStats {
   from: StatsFrom;
   agents: RunAgent[];
+  /** Null for a schema 5 `stats.json`, which has no runs. */
+  runs: RunMark[] | null;
 }
 
-/** The agents of `stats.json` when the task is closed, else of the worktree's session files; a `stats.json` of another schema is skipped. */
+/** The agents and runs of `stats.json` when the task is closed, else of the worktree's session files; a `stats.json` of another schema is skipped. */
 async function get(source: StatsSource): Promise<FoundStats> {
   const { id, taskDir, taskWorktree } = source;
   const text = await readText(taskDir);
-  const recorded = text === null ? null : readStatsAgents(text);
-  if (recorded !== null) return { from: "stats.json", agents: recorded };
+  const recorded = text === null ? null : readStatsRecord(text);
+  if (recorded !== null) return { from: "stats.json", ...recorded };
   const runs = await claudeSessions.listRuns(taskWorktree);
-  const { agents } = summarizeRuns(runs, null);
+  const summary = summarizeRuns(runs, null);
+  const { agents } = summary;
   if (agents === null) throw text === null ? noStatsError(id) : oldStatsError(id);
-  return { from: "sessions", agents };
+  return { from: "sessions", agents, runs: summary.runs };
 }
 
 function readText(dir: string | null): Promise<string | null> {

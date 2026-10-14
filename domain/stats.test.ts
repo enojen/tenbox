@@ -5,7 +5,7 @@ import {
   countPlan,
   countPoints,
   distinctProofs,
-  readStatsAgents,
+  readStatsRecord,
   sumCode,
   type TaskStats,
 } from "./stats.ts";
@@ -29,7 +29,7 @@ const NO_USAGE = {
 
 function statsWith(output: (number | null)[], total: number | null): TaskStats {
   return {
-    schema: 5,
+    schema: 6,
     project: "p",
     task: "T-1",
     title: null,
@@ -62,6 +62,7 @@ function statsWith(output: (number | null)[], total: number | null): TaskStats {
     points: [],
     code: null,
     agents: output.map((out) => ({ ...NO_USAGE, output: out })),
+    runs: [],
   };
 }
 
@@ -196,10 +197,21 @@ const AGENT = {
   cache_read: 6,
 };
 
-test("readStatsAgents gives the agents of a schema 5 stats.json, or null agents", () => {
+test("readStatsRecord gives the agents of a schema 5 stats.json with no runs, or no agents", () => {
   const withAgents = JSON.stringify({ schema: 5, agents: [AGENT] });
-  expect(readStatsAgents(withAgents)).toEqual([AGENT]);
-  expect(readStatsAgents(JSON.stringify({ schema: 5, agents: null }))).toEqual([]);
+  expect(readStatsRecord(withAgents)).toEqual({ agents: [AGENT], runs: null });
+  expect(readStatsRecord(JSON.stringify({ schema: 5, agents: null }))).toEqual({
+    agents: [],
+    runs: null,
+  });
+});
+
+test("readStatsRecord gives the agents and runs of a schema 6 stats.json", () => {
+  const run = { workflow: "tenbox-build", started: "2026-10-14T10:00:00.000Z", finished: false };
+  expect(readStatsRecord(JSON.stringify({ schema: 6, agents: [AGENT], runs: [run] }))).toEqual({
+    agents: [AGENT],
+    runs: [run],
+  });
 });
 
 test.each([
@@ -210,6 +222,6 @@ test.each([
     "an agent without usage",
     JSON.stringify({ schema: 5, agents: [{ ...AGENT, calls: undefined }] }),
   ],
-])("readStatsAgents gives null for %s", (_name, text) => {
-  expect(readStatsAgents(text)).toBeNull();
+])("readStatsRecord gives null for %s", (_name, text) => {
+  expect(readStatsRecord(text)).toBeNull();
 });

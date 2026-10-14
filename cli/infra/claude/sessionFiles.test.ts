@@ -199,3 +199,105 @@ test("without a run of the workflow there is no last run", async () => {
   expect(run).toBeNull();
   expect(missing).toBeNull();
 });
+
+interface UnfinishedAgent {
+  id: string;
+  label: string;
+  role: string;
+  model: string;
+  first: string;
+  last: string;
+}
+
+async function writeUnfinishedRun(runId: string, agents: UnfinishedAgent[]): Promise<void> {
+  const transcripts = path.join(sessionDir, "subagents", "workflows", runId);
+  const started = agents.map((a) =>
+    JSON.stringify({ type: "started", agentId: a.id, label: a.label }),
+  );
+  // A second line of the same agent and a line of another type are not new agents.
+  const journal = [...started, started[0], JSON.stringify({ type: "result", agentId: "a1" })];
+  await files.write(path.join(transcripts, "journal.jsonl"), `${journal.join("\n")}\n`);
+  for (const agent of agents) {
+    const meta = { agentType: agent.role, description: MARKER };
+    await files.write(path.join(transcripts, `agent-${agent.id}.meta.json`), JSON.stringify(meta));
+    const lines = [
+      JSON.stringify({ type: "user", timestamp: agent.first, message: { content: MARKER } }),
+      JSON.stringify({
+        type: "assistant",
+        timestamp: agent.last,
+        message: { id: `m-${agent.id}`, model: agent.model, usage: usage(1, 2, 3, 4) },
+      }),
+    ];
+    await files.write(path.join(transcripts, `agent-${agent.id}.jsonl`), `${lines.join("\n")}\n`);
+  }
+  const script = path.join(sessionDir, "workflows", "scripts", `tenbox-build-${runId}.js`);
+  await files.write(script, MARKER);
+}
+
+const UNFINISHED: UnfinishedAgent[] = [
+  {
+    id: "a1",
+    label: "round 1: 01",
+    role: "worker",
+    model: "claude-sonnet-5-5",
+    first: "2026-02-01T00:00:00.000Z",
+    last: "2026-02-01T00:02:00.000Z",
+  },
+  {
+    id: "a2",
+    label: "round 1: checks",
+    role: "runner",
+    model: "claude-haiku-4-5",
+    first: "2026-02-01T00:03:00.000Z",
+    last: "2026-02-01T00:04:30.000Z",
+  },
+];
+
+test("a run dir with no run file is an unfinished run read from its journal and transcripts", async () => {
+  await writeUnfinishedRun("wf_2", UNFINISHED);
+  const runs = await claudeSessions.listRuns(CWD);
+  expect(runs).toHaveLength(1);
+  expect(runs?.[0]).toMatchObject({
+    workflow: "tenbox-build",
+    started: "2026-02-01T00:00:00.000Z",
+    ended: "2026-02-01T00:04:30.000Z",
+    durationMs: 270_000,
+    finished: false,
+  });
+  expect(runs?.[0]?.agents).toEqual([
+    {
+      workflow: "tenbox-build",
+      label: "round 1: 01",
+      phase: null,
+      role: "worker",
+      model: "claude-sonnet-5-5",
+      started: "2026-02-01T00:00:00.000Z",
+      seconds: 120,
+      tokens: null,
+      tool_calls: null,
+      round: 1,
+      calls: 1,
+      input: 1,
+      output: 2,
+      cache_write: 3,
+      cache_read: 4,
+    },
+    expect.objectContaining({ role: "runner", model: "claude-haiku-4-5", seconds: 90 }),
+  ]);
+  expect(JSON.stringify(runs)).not.toContain(MARKER);
+});
+
+test("a run dir whose run file exists is read once, as finished", async () => {
+  await writeRun();
+  const runs = await claudeSessions.listRuns(CWD);
+  expect(runs).toHaveLength(1);
+  expect(runs?.[0]?.finished).toBe(true);
+});
+
+test("an unfinished run without its script or without a timestamp is skipped", async () => {
+  await writeUnfinishedRun("wf_2", UNFINISHED);
+  await files.remove(path.join(sessionDir, "workflows", "scripts", "tenbox-build-wf_2.js"));
+  await writeUnfinishedRun("wf_3", []);
+  const runs = await claudeSessions.listRuns(CWD);
+  expect(runs).toEqual([]);
+});

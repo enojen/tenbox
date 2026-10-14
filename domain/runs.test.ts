@@ -24,6 +24,7 @@ const run = (workflow: string, started: string, minutes: number): WorkflowRun =>
   started,
   ended: new Date(Date.parse(started) + minutes * MS_PER_MINUTE).toISOString(),
   durationMs: minutes * MS_PER_MINUTE,
+  finished: true,
   agents: [],
 });
 
@@ -128,4 +129,15 @@ test("reportUsage counts an agent without a transcript as zero and has no minute
   expect(report.rounds).toEqual([
     { round: 2, minutes: null, calls: 0, input: 0, output: 0, cache_write: 0, cache_read: 0 },
   ]);
+});
+
+test("summarizeRuns marks the runs after opened, oldest first, finished or not", () => {
+  const late = { ...run("tenbox-build", "2026-01-01T01:00:00.000Z", 1), finished: false };
+  const early = run("tenbox-plan", "2026-01-01T00:00:00.000Z", 1);
+  const old = run("tenbox-build", "2025-12-31T00:00:00.000Z", 1);
+  expect(summarizeRuns([late, early, old], "2026-01-01T00:00:00.000Z").runs).toEqual([
+    { workflow: "tenbox-plan", started: "2026-01-01T00:00:00.000Z", finished: true },
+    { workflow: "tenbox-build", started: "2026-01-01T01:00:00.000Z", finished: false },
+  ]);
+  expect(summarizeRuns(null, null).runs).toBeNull();
 });

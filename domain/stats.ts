@@ -4,12 +4,18 @@ import { BUILD_STATUS, type BuildResult, type Unproven } from "./build.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
-import { type RunAgent, RunAgentSchema, type RunMinutes, type RunTimeline } from "./runs.ts";
+import {
+  type RunAgent,
+  RunAgentSchema,
+  type RunMark,
+  type RunMinutes,
+  type RunTimeline,
+} from "./runs.ts";
 import { parseObject } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
-export const STATS_SCHEMA = 5;
+export const STATS_SCHEMA = 6;
 
 /** `stats.json` in a task dir. */
 export const statsFile = (dir: string): string => path.join(dir, "stats.json");
@@ -102,6 +108,8 @@ export interface TaskStats {
   points: StatsPoints[];
   code: StatsCode | null;
   agents: RunAgent[] | null;
+  /** The runs since the task opened; finished is false for a run with no run file. */
+  runs: RunMark[] | null;
 }
 
 /** Null without a plan result. */
@@ -175,13 +183,31 @@ export function costComment(stats: TaskStats): string {
   return `${minutes} min, ${tokens}k tokens, ${stats.rounds.length} rounds`;
 }
 
-const StatsAgentsSchema = z.object({
-  schema: z.literal(STATS_SCHEMA),
-  agents: z.array(RunAgentSchema).nullable(),
+/** Schema 5 has the same agents, only no `runs`. */
+const READABLE_SCHEMA = 5;
+
+const RunMarkSchema = z.object({
+  workflow: z.string(),
+  started: z.iso.datetime(),
+  finished: z.boolean(),
 });
 
-/** The agents in `stats.json` text; none when it had no session files. Null when the text is not a stats record of this schema. */
-export function readStatsAgents(text: string): RunAgent[] | null {
-  const parsed = StatsAgentsSchema.safeParse(parseObject(text));
-  return parsed.success ? (parsed.data.agents ?? []) : null;
+const StatsRecordSchema = z.object({
+  schema: z.union([z.literal(READABLE_SCHEMA), z.literal(STATS_SCHEMA)]),
+  agents: z.array(RunAgentSchema).nullable(),
+  runs: z.array(RunMarkSchema).nullable().optional(),
+});
+
+/** What `tenbox stats` reads back from `stats.json`. */
+export interface StatsRecord {
+  agents: RunAgent[];
+  /** Null for schema 5, which has no `runs`. */
+  runs: RunMark[] | null;
+}
+
+/** The agents and runs in `stats.json` text; no agents when it had no session files. Null when the text is not a stats record of a readable schema. */
+export function readStatsRecord(text: string): StatsRecord | null {
+  const parsed = StatsRecordSchema.safeParse(parseObject(text));
+  if (!parsed.success) return null;
+  return { agents: parsed.data.agents ?? [], runs: parsed.data.runs ?? null };
 }

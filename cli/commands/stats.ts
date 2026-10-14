@@ -14,5 +14,5 @@ export async function showStats(id: TaskId): Promise<StatsResult> {
   const dir = manifest.id === undefined ? null : taskDir(tenboxHome, manifest.id, id);
   const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
   const found = await stats.get({ id, taskDir: dir, taskWorktree });
-  return { ok: true, task: id, source: found.from, ...reportUsage(found.agents) };
+  return { ok: true, task: id, source: found.from, runs: found.runs, ...reportUsage(found.agents) };
 }

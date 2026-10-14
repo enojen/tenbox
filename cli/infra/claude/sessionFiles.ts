@@ -1,14 +1,16 @@
 import path from "node:path";
-import { type RunAgent, roundOfLabel, type Usage, type WorkflowRun } from "../../../domain/runs.ts";
+import { type RunAgent, roundOfLabel, type WorkflowRun } from "../../../domain/runs.ts";
 import { isPlainObject, MS_PER_SECOND, parseObject } from "../../../domain/utils.ts";
 import { env } from "../env.ts";
 import { files } from "../files.ts";
-import { readUsage } from "./transcripts.ts";
+import { readTranscript, type Transcript } from "./transcripts.ts";
 
 /*
  * Claude Code's session files, the only place that knows their format (not a public API).
  * `<claudeDir>/projects/<cwd>/<session>/workflows/wf_*.json` holds one workflow run with its
  * agents. The tokens come from `<session>/subagents/workflows/<run>/agent-<agentId>.jsonl`.
+ * A run whose session ended has no run file: its agents come from `<run>/journal.jsonl`, the
+ * `agent-<agentId>.meta.json` and the transcripts, its workflow from the script name.
  * Prompts and result text are never returned.
  */
 export const claudeSessions = { listRuns, findLastRun };
@@ -33,7 +35,7 @@ const AGENT_TYPE = "workflow_agent";
 export const projectDir = (claudeDir: string, cwd: string): string =>
   path.join(claudeDir, "projects", cwd.replace(NON_ALPHANUMERIC, "-"));
 
-/** Every finished workflow run started in `cwd`; null when `cwd` has no session files. */
+/** Every workflow run started in `cwd`, finished or not; null when `cwd` has no session files. */
 async function listRuns(cwd: string): Promise<WorkflowRun[] | null> {
   const dir = projectDir(env().claudeDir, cwd);
   const exists = await files.isDir(dir);
@@ -42,6 +44,11 @@ async function listRuns(cwd: string): Promise<WorkflowRun[] | null> {
   const runs: WorkflowRun[] = [];
   for (const runFile of runFiles) {
     const run = await readRun(runFile);
+    if (run !== null) runs.push(run);
+  }
+  const unfinished = await listUnfinishedDirs(dir);
+  for (const runDir of unfinished) {
+    const run = await readUnfinishedRun(runDir);
     if (run !== null) runs.push(run);
   }
   return runs;
@@ -94,7 +101,7 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
   const transcripts = transcriptDir(file);
   const agents: RunAgent[] = [];
   for (const entry of progress.filter(isAgentEntry)) {
-    const agent = await toAgent({ workflow: workflowName, entry, transcripts });
+    const agent = await toFinishedAgent({ workflow: workflowName, entry, transcripts });
     agents.push(agent);
   }
   return {
@@ -102,6 +109,7 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
     started: isoTime(startTime),
     ended: isoTime(startTime + durationMs),
     durationMs,
+    finished: true,
     agents,
   };
 }
@@ -118,11 +126,12 @@ interface AgentSource {
   transcripts: string;
 }
 
-async function toAgent(source: AgentSource): Promise<RunAgent> {
+async function toFinishedAgent(source: AgentSource): Promise<RunAgent> {
   const { workflow, entry, transcripts } = source;
   const { startedAt, durationMs, agentId } = entry;
   const label = text(entry.label);
-  const usage = await readAgentUsage(transcripts, agentId);
+  const transcript = await readAgentTranscript(transcripts, agentId);
+  const usage = transcript?.usage ?? null;
   return {
     workflow,
     label,
@@ -142,9 +151,9 @@ async function toAgent(source: AgentSource): Promise<RunAgent> {
   };
 }
 
-function readAgentUsage(transcripts: string, agentId: unknown): Promise<Usage | null> {
+function readAgentTranscript(transcripts: string, agentId: unknown): Promise<Transcript | null> {
   if (typeof agentId !== "string") return Promise.resolve(null);
-  return readUsage(path.join(transcripts, `agent-${agentId}.jsonl`));
+  return readTranscript(path.join(transcripts, `agent-${agentId}.jsonl`));
 }
 
 const isAgentEntry = (entry: unknown): entry is Json =>
@@ -159,4 +168,120 @@ const isoTime = (ms: number): string => new Date(ms).toISOString();
 async function readJson(file: string): Promise<Json | null> {
   const content = await files.read(file);
   return content === null ? null : parseObject(content);
+}
+
+/** `<session>/subagents/workflows/<run>` dirs with no `<session>/workflows/<run>.json`. */
+async function listUnfinishedDirs(dir: string): Promise<string[]> {
+  const sessions = await files.list(dir);
+  const unfinished: string[] = [];
+  for (const session of sessions) {
+    const dirs = await listSessionUnfinishedDirs({ dir, session });
+    unfinished.push(...dirs);
+  }
+  return unfinished;
+}
+
+type SessionDir = { dir: string; session: string };
+
+async function listSessionUnfinishedDirs(input: SessionDir): Promise<string[]> {
+  const { dir, session } = input;
+  const parent = path.join(dir, session, "subagents", "workflows");
+  const unfinished: string[] = [];
+  const names = await files.list(parent);
+  for (const name of names) {
+    const hasRunFile = await files.exists(path.join(dir, session, "workflows", `${name}.json`));
+    if (!hasRunFile) unfinished.push(path.join(parent, name));
+  }
+  return unfinished;
+}
+
+/** Null without a script (the workflow name), a journal or any agent time. */
+async function readUnfinishedRun(runDir: string): Promise<WorkflowRun | null> {
+  const workflow = await findWorkflowName(runDir);
+  const journal = await files.read(path.join(runDir, "journal.jsonl"));
+  if (workflow === null || journal === null) return null;
+  const agents: RunAgent[] = [];
+  const ends: number[] = [];
+  for (const started of startedAgents(journal)) {
+    const agent = await toUnfinishedAgent({ workflow, runDir, started });
+    if (agent === null) continue;
+    agents.push(agent.agent);
+    ends.push(agent.endedAt);
+  }
+  const starts = agents.map((agent) => Date.parse(agent.started ?? ""));
+  if (starts.length === 0) return null;
+  const startMs = Math.min(...starts);
+  const endMs = Math.max(...ends);
+  return {
+    workflow,
+    started: isoTime(startMs),
+    ended: isoTime(endMs),
+    durationMs: endMs - startMs,
+    finished: false,
+    agents,
+  };
+}
+
+/** `<workflow>` of the script `<session>/workflows/scripts/<workflow>-<run>.js`. */
+async function findWorkflowName(runDir: string): Promise<string | null> {
+  const runId = path.basename(runDir);
+  const session = path.dirname(path.dirname(path.dirname(runDir)));
+  const scripts = path.join(session, "workflows", "scripts");
+  const suffix = `-${runId}.js`;
+  const names = await files.list(scripts);
+  const script = names.find((name) => name.endsWith(suffix));
+  return script === undefined ? null : script.slice(0, -suffix.length);
+}
+
+interface StartedAgent {
+  agentId: string;
+  label: string | null;
+}
+
+/** One entry per agent: the `started` lines of the journal, the first of each `agentId`. */
+function startedAgents(journal: string): StartedAgent[] {
+  const byId = new Map<string, StartedAgent>();
+  for (const line of journal.split("\n")) {
+    const entry = parseObject(line);
+    if (entry?.type !== "started" || typeof entry.agentId !== "string") continue;
+    if (!byId.has(entry.agentId))
+      byId.set(entry.agentId, { agentId: entry.agentId, label: text(entry.label) });
+  }
+  return [...byId.values()];
+}
+
+interface UnfinishedSource {
+  workflow: string;
+  runDir: string;
+  started: StartedAgent;
+}
+
+interface UnfinishedAgent {
+  agent: RunAgent;
+  endedAt: number;
+}
+
+/** Null when the agent has no transcript time. */
+async function toUnfinishedAgent(source: UnfinishedSource): Promise<UnfinishedAgent | null> {
+  const { workflow, runDir, started } = source;
+  const transcript = await readAgentTranscript(runDir, started.agentId);
+  if (transcript === null || transcript.firstAt === null || transcript.lastAt === null) return null;
+  const startMs = Date.parse(transcript.firstAt);
+  const endMs = Date.parse(transcript.lastAt);
+  const meta = await readJson(path.join(runDir, `agent-${started.agentId}.meta.json`));
+  const { usage } = transcript;
+  const agent: RunAgent = {
+    workflow,
+    label: started.label,
+    phase: null,
+    role: text(meta?.agentType),
+    model: transcript.model,
+    started: isoTime(startMs),
+    seconds: Math.round((endMs - startMs) / MS_PER_SECOND),
+    tokens: null,
+    tool_calls: null,
+    round: roundOfLabel(started.label),
+    ...usage,
+  };
+  return { agent, endedAt: endMs };
 }

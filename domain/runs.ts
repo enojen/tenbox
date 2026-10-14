@@ -78,7 +78,16 @@ export interface WorkflowRun {
   started: string;
   ended: string;
   durationMs: number;
+  /** False for a run with no run file: its session ended before the run did. */
+  finished: boolean;
   agents: RunAgent[];
+}
+
+/** What stats keeps of a run, besides its agents. */
+export interface RunMark {
+  workflow: string;
+  started: string;
+  finished: boolean;
 }
 
 /** First start and last end of the plan and build runs. */
@@ -100,6 +109,7 @@ export interface RunSummary {
   timeline: RunTimeline;
   minutes: RunMinutes;
   agents: RunAgent[] | null;
+  runs: RunMark[] | null;
 }
 
 /** The runs that started at or after `opened`: older ones belong to an older worktree. */
@@ -121,7 +131,12 @@ export function summarizeRuns(all: WorkflowRun[] | null, opened: string | null):
       build: sumMinutes(build),
     },
     agents: all === null ? null : numberRounds(runs),
+    runs: all === null ? null : runs.map(markOf),
   };
+}
+
+function markOf(run: WorkflowRun): RunMark {
+  return { workflow: run.workflow, started: run.started, finished: run.finished };
 }
 
 /** The agents of the runs, oldest first. A build run's rounds continue after the earlier ones. */
