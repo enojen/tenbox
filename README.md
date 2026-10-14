@@ -119,13 +119,18 @@ a runner runs `tenbox approved <id>`. If it fails, the workflow returns
 `{ status: "not-approved", error }` and starts no other agent. Then each round:
 
 1. **Build**: the planner lists the parts still to build and the extra lenses; one worker
-   per part, one after another, in the task worktree. A part marked `hard` in `plan.json` gets the strong
+   per part, one after another, in the task worktree, each followed by its check (step 2). A part marked `hard` in `plan.json` gets the strong
    model. A blocked worker ends the run with `needs-you`, its `part` and its decision card
    (`decision`, see `tenbox answer`). With `answer: { round, part, option, text }` in the args
    (`tenbox answer` resumes the run so), only the worker of that round and part gets the
    chosen option in its prompt; every earlier agent returns from the resume cache.
-2. **Checks**: a runner runs `tenbox check <id>` (the `fast` tier). New failures become
-   the next round's feedback.
+2. **Checks**: after each worker returns `done`, a runner runs `tenbox check <id>` (the `fast`
+   tier); later checks of the round add `--round <N>`, with `N` from the first check's JSON. On a
+   red check the same worker runs once more in the same round, with the check summary in its
+   prompt; the prompt tells it to set `status: todo` in its part file first. A second red check
+   ends the round with no review, and the next round's feedback is `part NN: <summary>`. When
+   every part passes, the last part check feeds the review. With no part listed, one
+   `tenbox check <id>` runs before the review.
 3. **Review**: the `base` lens always runs; `security` and `contract` run when the plan
    asks for them. Any `must_fix` item becomes the next round's feedback. A reviewer
    returns at most 3 `nice_to_have` items, each a concrete failure. In a feedback round

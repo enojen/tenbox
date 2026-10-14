@@ -379,3 +379,128 @@ test("an answer changes only the worker prompt of its round and part", async () 
   expect(changed).toEqual(["round 1: 02"]);
   expect(answered["round 1: 02"]).toContain("option 2: sqlite");
 });
+
+interface PartCheckRun {
+  result: Awaited<ReturnType<typeof runWorkflow>>;
+  order: string[];
+  prompts: string[];
+}
+
+/** Two parts, one round; `checkReplies` answer the part checks in order (a missing one is green). */
+async function runPartChecks(
+  checkReplies: object[],
+  parts: string[] = ["01", "02"],
+  blockedWorker = 0,
+): Promise<PartCheckRun> {
+  const order: string[] = [];
+  const prompts: string[] = [];
+  let checkRuns = 0;
+  let workers = 0;
+  const agent: ScriptedAgent = async (prompt, options) => {
+    prompts.push(prompt);
+    if (options.agentType === "planner") {
+      return { parts: parts.map((id) => ({ id, goal: "g", difficulty: "easy" })), lenses: [] };
+    }
+    if (options.agentType === "worker") {
+      workers += 1;
+      order.push(options.label);
+      return { status: workers === blockedWorker ? "blocked" : "done", proofs: [] };
+    }
+    if (options.label.endsWith("full checks")) return { ok: true };
+    if (prompt.includes("tenbox check")) {
+      order.push(prompt.match(/`(tenbox check[^`]*)`/)?.[1] ?? "");
+      checkRuns += 1;
+      return checkReplies[checkRuns - 1] ?? { ok: true, commit: "c", file: "f", round: 1 };
+    }
+    if (options.agentType === "runner") return { ok: true, file: "f" };
+    return cleanReply;
+  };
+  const result = await runWorkflow({ task: "TB-1", maxRounds: 1 }, agent);
+  return { result, order, prompts };
+}
+
+const redChecks = { ok: false, summary: "lint: 1 new failure", commit: "c", file: "f", round: 1 };
+
+test("each part is checked at once; later checks of the round reuse the round number", async () => {
+  const { order, result } = await runPartChecks([{ ok: true, commit: "c", file: "f", round: 4 }]);
+  expect(order).toEqual([
+    "round 1: 01",
+    "tenbox check TB-1",
+    "round 1: 02",
+    "tenbox check TB-1 --round 4",
+  ]);
+  expect(result.status).toBe("ready-for-you");
+});
+
+test("a red part check runs the same worker again before the next part, then goes on", async () => {
+  const { order, result, prompts } = await runPartChecks([redChecks]);
+  expect(order).toEqual([
+    "round 1: 01",
+    "tenbox check TB-1",
+    "round 1: 01 fix",
+    "tenbox check TB-1 --round 1",
+    "round 1: 02",
+    "tenbox check TB-1 --round 1",
+  ]);
+  expect(prompts.find((prompt) => prompt.includes("lint: 1 new failure"))).toContain(
+    "status: todo",
+  );
+  expect(result).toMatchObject({ status: "ready-for-you", round: 1 });
+});
+
+test("when the first check gives no round, later checks reuse the round of the fix check", async () => {
+  const { order } = await runPartChecks([
+    { ok: false, error: "tenbox check did not run" },
+    { ok: true, commit: "c", file: "f", round: 5 },
+  ]);
+  expect(order).toEqual([
+    "round 1: 01",
+    "tenbox check TB-1",
+    "round 1: 01 fix",
+    "tenbox check TB-1",
+    "round 1: 02",
+    "tenbox check TB-1 --round 5",
+  ]);
+});
+
+test("a second red check ends the round with no review and feeds the next round", async () => {
+  const labels: string[] = [];
+  const prompts: Record<string, string> = {};
+  let checkRuns = 0;
+  const agent: ScriptedAgent = async (prompt, options) => {
+    labels.push(options.label);
+    prompts[options.label] = prompt;
+    if (options.agentType === "planner") {
+      const ids = ["01", "02"];
+      return { parts: ids.map((id) => ({ id, goal: "g", difficulty: "easy" })), lenses: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType === "runner") {
+      if (prompt.includes("tenbox approved")) return { ok: true, file: "f" };
+      checkRuns += 1;
+      return checkRuns <= 2 ? redChecks : { ok: true, commit: "c", file: "f", round: 2 };
+    }
+    return cleanReply;
+  };
+  await runWorkflow({ task: "TB-1", maxRounds: 2 }, agent);
+  expect(labels.filter((label) => label.startsWith("round 1:"))).toEqual([
+    "round 1: parts",
+    "round 1: 01",
+    "round 1: 01 check",
+    "round 1: 01 fix",
+    "round 1: 01 check fix",
+  ]);
+  expect(prompts["round 2: parts"]).toContain("part 01: lint: 1 new failure");
+});
+
+test("a worker blocked after a fixed part ends needs-you with its part", async () => {
+  const { result, order } = await runPartChecks([redChecks], ["01", "02"], 3);
+  expect(result).toMatchObject({ status: "needs-you", part: "02" });
+  expect(order.filter((entry) => entry.startsWith("tenbox check"))).toHaveLength(2);
+});
+
+test("a planner with no part still gets one check before the review", async () => {
+  const { order, result } = await runPartChecks([], []);
+  expect(order).toEqual(["tenbox check TB-1"]);
+  expect(result.status).toBe("ready-for-you");
+});

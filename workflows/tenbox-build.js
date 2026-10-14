@@ -87,6 +87,7 @@ const CHECKS = {
   properties: {
     ok: { type: 'boolean' },
     commit: { type: 'string' },
+    round: { type: 'integer' },
     file: { type: 'string' },
     summary: { type: 'string' },
     error: { type: 'string' },
@@ -150,23 +151,54 @@ const scopeLine = () => reviewedCommit
 // Every round's worker proofs, each with its part id; `tenbox close` counts them.
 const proofs = []
 const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
+// A worker builds one part; a fix attempt carries the red check summary and reopens the part file.
+const buildPart = async (round, part, { attempt, summary }) => {
+  const fix = attempt === 'fix'
+  const prompt = fix
+    ? `Task ${task}, part ${part.id}: ${part.goal}. The check of this part failed: ${summary}\nSet \`status: todo\` in your part file first, then fix it.`
+    : `Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}${answerLine(round, part.id)}`
+  const built = await agent(prompt,
+    { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}${fix ? ' fix' : ''}`, ...strongModelIf(part.difficulty === 'hard') })
+  proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
+  if (built && built.status !== WORKER_STATUS.blocked) return {}
+  return { end: await finish({ status: BUILD_STATUS.needsYou, round, part: part.id, ...(built?.decision && { decision: built.decision }), attention, nice_to_have: niceToHave, unproven, proofs }) }
+}
+// `checkRound` is the round number of the first check; later checks of the round reuse it.
+const runChecks = (round, label, checkRound) => agent(
+  `Run \`tenbox check ${task}${checkRound ? ` --round ${checkRound}` : ''}\` and return its JSON.`,
+  { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: ${label}` })
+const checksGreen = (checks) => Boolean(checks?.ok && checks.commit && checks.file)
+const checksSummary = (checks) => checks?.summary ?? checks?.error ?? 'tenbox check did not run'
 for (let round = 1; round <= maxRounds; round++) {
   phase('Build')
   const { parts, lenses } = await agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses. Round feedback: ${feedback}`,
     { agentType: 'planner', schema: PARTS, phase: 'Build', label: `round ${round}: parts` })
   // One after another: without separate worktrees, parallel workers would edit the same tree.
+  // A part's check runs at once; a red check gives its worker one fix in the same round.
+  let checkRound = null
+  let checks = null
+  let redFeedback = null
   for (const part of parts) {
-    const built = await agent(`Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}${answerLine(round, part.id)}`,
-      { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${part.id}`, ...strongModelIf(part.difficulty === 'hard') })
-    proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (!built || built.status === WORKER_STATUS.blocked) return finish({ status: BUILD_STATUS.needsYou, round, part: part.id, ...(built?.decision && { decision: built.decision }), attention, nice_to_have: niceToHave, unproven, proofs })
+    const first = await buildPart(round, part, { attempt: 'build', summary: null })
+    if (first.end) return first.end
+    checks = await runChecks(round, `${part.id} check`, checkRound)
+    checkRound = checks?.round ?? checkRound
+    if (checksGreen(checks)) continue
+    const fixed = await buildPart(round, part, { attempt: 'fix', summary: checksSummary(checks) })
+    if (fixed.end) return fixed.end
+    checks = await runChecks(round, `${part.id} check fix`, checkRound)
+    checkRound = checks?.round ?? checkRound
+    if (checksGreen(checks)) continue
+    redFeedback = `part ${part.id}: ${checksSummary(checks)}`
+    break
   }
-
-  phase('Checks')
-  const checks = await agent(`Run \`tenbox check ${task}\` and return its JSON.`,
-    { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: checks` })
-  if (!checks?.ok || !checks.commit || !checks.file) {
-    feedback = checks?.summary ?? checks?.error ?? 'tenbox check did not run'
+  if (redFeedback) {
+    feedback = redFeedback
+    continue
+  }
+  if (!parts.length) checks = await runChecks(round, 'checks', null)
+  if (!checksGreen(checks)) {
+    feedback = checksSummary(checks)
     continue
   }
 
