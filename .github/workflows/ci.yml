@@ -1,7 +1,5 @@
 name: ci
 on:
-  push:
-    branches: [main]
   pull_request:
 # A new push to the same branch cancels the run still going for the old one.
 concurrency:
@@ -9,12 +7,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS only on main: its minutes cost ten times the Linux ones.
-        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest", "macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
-    runs-on: ${{ matrix.os }}
+    # Our own machine; GitHub hosted minutes are used up.
+    runs-on: [self-hosted, tenbox-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
