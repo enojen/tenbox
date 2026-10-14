@@ -131,3 +131,16 @@ describe("id", () => {
     }
   });
 });
+
+test("notify takes a ntfy URL; no notify means none", () => {
+  const url = "https://ntfy.example.com/tenbox";
+  const set = mergeManifest([{ file: "tenbox.yaml", value: { notify: { ntfy: url } } }]);
+  expect(set.notify).toEqual({ ntfy: url });
+  expect(mergeManifest([]).notify).toEqual({});
+  expect(() => mergeManifest([{ file: "tenbox.yaml", value: { notify: { ntfy: "x" } } }])).toThrow(
+    /notify\.ntfy/,
+  );
+  expect(() =>
+    mergeManifest([{ file: "tenbox.yaml", value: { notify: { desktop: true } } }]),
+  ).toThrow(/notify/);
+});

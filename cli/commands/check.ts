@@ -1,9 +1,11 @@
 import path from "node:path";
+import { buildFile } from "../../domain/build.ts";
 import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { CheckTier } from "../../domain/manifest.ts";
+import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import type { Project } from "../../domain/project.ts";
 import {
   checksFile,
@@ -16,6 +18,7 @@ import {
 } from "../../domain/task.ts";
 import { checks } from "../application/checks.ts";
 import { manifests } from "../application/manifests.ts";
+import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { projects } from "../application/projects.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { env } from "../infra/env.ts";
@@ -34,6 +37,7 @@ export interface CheckInput {
 
 /** Everything one round shares across its checks. */
 interface Round {
+  id: TaskId;
   number: number;
   dir: string;
   tier: CheckTier;
@@ -86,7 +90,22 @@ export async function runChecks(input: CheckInput): Promise<CheckResult> {
   }
   const result = buildResult(input, round, results);
   await files.writeJson(RESULT_FILES[round.tier](round.dir), result);
+  if (!result.ok) await notifyFailed(round, results);
   return result;
+}
+
+/** The build goes on while there is no `build.json`: the workflow feeds the failures to the next round. */
+async function notifyFailed(round: Round, results: CheckRun[]): Promise<void> {
+  const failing = results.filter((run) => run.new_failures.length > 0);
+  const count = failing.reduce((sum, run) => sum + run.new_failures.length, 0);
+  const finished = await files.exists(buildFile(tenboxDir(round.taskWorktree)));
+  const what = `${failing.map((run) => run.name).join(", ")}: ${count} new failure(s), round ${round.number}`;
+  const notification: TaskNotification = {
+    id: round.id,
+    state: NOTIFICATION_STATE.checkFailed,
+    detail: finished ? what : `${what}, the build goes on`,
+  };
+  await notifications.send({ taskWorktree: round.taskWorktree, notification });
 }
 
 async function prepareRound(input: CheckInput): Promise<Round> {
@@ -98,6 +117,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
   const { head, baseSha } = await getCommits(taskWorktree, base);
   const timeoutMs = input.timeoutMs;
   return {
+    id: input.id,
     number,
     dir,
     tier: input.tier,

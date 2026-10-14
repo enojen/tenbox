@@ -9,9 +9,17 @@ export const buildFile = (dir: string): string => path.join(dir, "build.json");
 
 const UnprovenSchema = z.object({ part: z.string(), reason: z.string() });
 
+/** The end statuses of `/tenbox-build`. */
+export const BUILD_STATUS = {
+  readyForYou: "ready-for-you",
+  needsYou: "needs-you",
+  failed: "failed",
+  notApproved: "not-approved",
+} as const;
+
 /** What `/tenbox-build` returns and `tenbox build done` saves; other keys are kept. */
 const BuildResultSchema = z.looseObject({
-  status: z.enum(["ready-for-you", "needs-you", "failed", "not-approved"]),
+  status: z.enum(BUILD_STATUS),
   round: z.number().int().nonnegative(),
   proofs: z.array(ProofSchema),
   attention: z.array(z.string()),
@@ -20,6 +28,14 @@ const BuildResultSchema = z.looseObject({
 });
 
 export type BuildResult = z.infer<typeof BuildResultSchema>;
+
+export type BuildStatus = BuildResult["status"];
+
+/** `tenbox wait --for round` while a round runs: a new `checks.json`, no `build.json` yet. */
+export const ROUND_RUNNING = "running";
+
+/** `tenbox wait --for round`: the status of `build.json`, or `running`. */
+export type RoundStatus = BuildStatus | typeof ROUND_RUNNING;
 
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
 export type Unproven = BuildResult["unproven"][number];

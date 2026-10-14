@@ -1,7 +1,9 @@
 import { sessionName, type TaskId } from "../../domain/ids.ts";
+import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { approvals } from "../application/approvals.ts";
 import { builds } from "../application/builds.ts";
+import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
 import { worktrees } from "../application/worktrees/index.ts";
@@ -35,5 +37,17 @@ export interface BuildDoneInput {
 export async function buildDone(input: BuildDoneInput): Promise<TaskFileResult> {
   const taskWorktree = await worktrees.get(input.id);
   const file = await builds.save(taskWorktree, input.json);
+  await notifyEnd(input.id, taskWorktree);
   return { ok: true, task: input.id, file };
+}
+
+/** One line for an end status a person must act on; `not-approved` sends none. */
+async function notifyEnd(id: TaskId, taskWorktree: string): Promise<void> {
+  const result = await builds.find(tenboxDir(taskWorktree));
+  if (result === null) return;
+  const state = notificationStateOf(result.status);
+  if (state === null) return;
+  const detail = state === NOTIFICATION_STATE.needsYou ? result.attention[0] : undefined;
+  const notification: TaskNotification = { id, state, ...(detail && { detail }) };
+  await notifications.send({ taskWorktree, notification });
 }

@@ -1,4 +1,5 @@
 import type { Approval } from "../../domain/approval.ts";
+import type { RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
@@ -143,6 +144,15 @@ export interface StatsResult extends UsageReport {
 export interface TaskFileResult {
   ok: true;
   task: string;
+  file: string;
+}
+
+/** `tenbox wait --for round`: the status of the round that changed. */
+export interface WaitRoundResult {
+  ok: true;
+  task: string;
+  round: number;
+  status: RoundStatus;
   file: string;
 }
 

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
-import type { BuildResult, Unproven } from "./build.ts";
+import { BUILD_STATUS, type BuildResult, type Unproven } from "./build.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
@@ -115,7 +115,7 @@ export function countPlan(plan: PlanResult | null): StatsPlan | null {
 export function countReview(build: BuildResult | null): StatsReview | null {
   if (build === null) return null;
   return {
-    must_fix: build.status === "ready-for-you" ? 0 : null,
+    must_fix: build.status === BUILD_STATUS.readyForYou ? 0 : null,
     nice_to_have: build.nice_to_have.length,
     attention: build.attention.length,
   };

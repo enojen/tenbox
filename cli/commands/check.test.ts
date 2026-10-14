@@ -9,6 +9,7 @@ import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
+import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { runChecks } from "./check.ts";
 
@@ -244,5 +245,36 @@ describe("runChecks tiers", () => {
     await setup({ "tenbox.yaml": manifest({ checks: tiers }) });
     const r = await tenbox(["check", "T-1", "--tier", "other"], taskWorktree);
     expect(r.code).toBe(2);
+  });
+});
+
+describe("notifications", () => {
+  let ntfy: FakeNtfy;
+  beforeEach(async () => {
+    ntfy = startFakeNtfy();
+    await setup({ "tenbox.yaml": manifest({ notify: { ntfy: ntfy.url } }) });
+  });
+  afterEach(() => ntfy.stop());
+
+  test("a new failure sends one line with the check, the count and the round", async () => {
+    await writeOut(" FAIL  old\n FAIL  new\n");
+    await runChecks(input());
+    expect(ntfy.lines()).toEqual([
+      "demo · T-1 · check-failed · unit: 1 new failure(s), round 1, the build goes on → tenbox attach T-1",
+    ]);
+  });
+
+  test("a build.json means the build is over: the line does not say it goes on", async () => {
+    await files.write(path.join(taskWorktree, ".tenbox", "build.json"), "{}");
+    await writeOut(" FAIL  old\n FAIL  new\n");
+    await runChecks(input());
+    expect(ntfy.lines()).toEqual([
+      "demo · T-1 · check-failed · unit: 1 new failure(s), round 1 → tenbox attach T-1",
+    ]);
+  });
+
+  test("a check with no new failure sends nothing", async () => {
+    await runChecks(input());
+    expect(ntfy.lines()).toEqual([]);
   });
 });

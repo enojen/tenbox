@@ -1,6 +1,7 @@
 import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts";
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
+import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import { checksSummary, prBody, prTitle } from "../../domain/pr.ts";
 import {
   checksFile,
@@ -10,6 +11,7 @@ import {
   roundsDir,
   tenboxDir,
 } from "../../domain/task.ts";
+import { notifications } from "../application/notifications.ts";
 import { projects } from "../application/projects.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
@@ -35,6 +37,10 @@ export async function openPr(input: PrInput): Promise<PrResult> {
   const commit = await git.findHead(taskWorktree);
   const text = await readPrText(id, taskWorktree);
   const pr = await createOrUpdate({ dir: taskWorktree, branch, base: manifest.base, text, ready });
+  if (pr.state === "created") {
+    const notification = { id, state: NOTIFICATION_STATE.prOpened, detail: pr.url };
+    await notifications.send({ taskWorktree, notification });
+  }
   return { ok: true, task: id, branch, commit: commit ?? "", pr };
 }
 

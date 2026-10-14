@@ -68,6 +68,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
 | token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
+| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened (`Notification`). |
+| check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
+| pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules
@@ -126,8 +129,8 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans  checks  decisions
-  infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http,
+    approvals  plans  checks  decisions  notifications
+  infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the

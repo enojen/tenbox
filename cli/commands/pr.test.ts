@@ -5,6 +5,7 @@ import path from "node:path";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
+import { startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
@@ -67,4 +68,34 @@ if [ "$1 $2" = "pr create" ]; then touch "${log}.created"; fi
   const logged = await files.read(log);
   expect([run.code, run.json.ok]).toEqual([0, true]);
   expect((logged ?? "").split("\n")).toContain("T-1 · y");
+});
+
+test("a created PR sends its URL; an update sends nothing", async () => {
+  const ntfy = startFakeNtfy();
+  const dir = path.join(taskWorktree, ".tenbox");
+  await files.write(path.join(dir, "override.yaml"), `notify: { ntfy: "${ntfy.url}" }\n`);
+  await files.write(path.join(taskWorktree, "b.txt"), "b\n");
+  await git.run(["add", "b.txt"], taskWorktree);
+  await git.run(["commit", "-q", "-m", "b"], taskWorktree);
+  const bin = path.join(project.root, "bin");
+  const created = path.join(project.root, "gh.created");
+  const script = `#!/bin/sh
+if [ "$1 $2" = "pr list" ]; then
+  if [ -f "${created}" ]; then echo '[{"number":1,"url":"https://example.com/pull/1","isDraft":true}]'; else echo '[]'; fi
+fi
+if [ "$1 $2" = "pr create" ]; then touch "${created}"; fi
+`;
+  await files.write(path.join(bin, "gh"), script);
+  await chmod(path.join(bin, "gh"), 0o755);
+  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  const first = await tenbox(["pr", "T-1"], project.mainDir, env);
+  const afterCreate = [...ntfy.lines()];
+  const second = await tenbox(["pr", "T-1"], project.mainDir, env);
+  const afterUpdate = [...ntfy.lines()];
+  ntfy.stop();
+  expect([first.code, second.code]).toEqual([0, 0]);
+  expect(afterCreate).toEqual([
+    "demo · T-1 · pr-opened · https://example.com/pull/1 → tenbox close T-1",
+  ]);
+  expect(afterUpdate).toEqual(afterCreate);
 });

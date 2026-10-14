@@ -27,7 +27,7 @@ import { recordProof } from "./commands/proof.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
 import { showStats } from "./commands/stats.ts";
-import { isWaitKind, waitForFile } from "./commands/wait.ts";
+import { isWaitKind, waitFor } from "./commands/wait.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 
@@ -46,7 +46,7 @@ const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]'";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
-const WAIT_USAGE = "tenbox wait <id> --for plan|build [--timeout 600]";
+const WAIT_USAGE = "tenbox wait <id> --for plan|build|round [--timeout 600]";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
@@ -180,7 +180,7 @@ const COMMANDS: Record<string, Command> = {
     run: (positionals, values) => {
       const kind = stringValue(values, "for");
       if (!isWaitKind(kind)) throw usageError(`usage: ${WAIT_USAGE}`);
-      return waitForFile({
+      return waitFor({
         id: idArg(positionals, WAIT_USAGE),
         kind,
         timeoutSeconds: intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS,

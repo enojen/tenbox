@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { type CliRun, type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
+import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
@@ -83,6 +84,7 @@ const USAGE_EXIT = 2;
 describe("tenbox build done", () => {
   let buildJson: string;
   let proofsJson: string;
+  let overrideFile: string;
 
   const proof = (test: string) => ({ part: "01", file: "a.test.ts", test, failure: "got 1" });
 
@@ -105,6 +107,7 @@ describe("tenbox build done", () => {
     const tenboxDir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
     buildJson = path.join(tenboxDir, "build.json");
     proofsJson = path.join(tenboxDir, "proofs.json");
+    overrideFile = path.join(tenboxDir, "override.yaml");
     await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   });
 
@@ -168,5 +171,42 @@ describe("tenbox build done", () => {
     const run = await buildDone();
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
     expect(run.json.error).toContain("tenbox build done <id> --json");
+  });
+
+  describe("notifications", () => {
+    let ntfy: FakeNtfy;
+    const useNtfy = (url: string) => files.write(overrideFile, `notify: { ntfy: "${url}" }\n`);
+    beforeEach(async () => {
+      ntfy = startFakeNtfy();
+      await useNtfy(ntfy.url);
+    });
+    afterEach(() => ntfy.stop());
+
+    test.each([
+      ["ready-for-you", "demo · T-1 · ready-for-you → tenbox pr T-1"],
+      ["failed", "demo · T-1 · failed → tenbox attach T-1"],
+      ["needs-you", "demo · T-1 · needs-you · a → tenbox attach T-1"],
+    ])("%s sends one line", async (status, line) => {
+      const run = await buildDone(...withJson({ status }));
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(ntfy.lines()).toEqual([line]);
+    });
+
+    test("not-approved sends nothing", async () => {
+      await buildDone(...withJson({ status: "not-approved" }));
+      expect(ntfy.lines()).toEqual([]);
+    });
+
+    test("a bad result sends nothing", async () => {
+      await buildDone("--json", "not json");
+      expect(ntfy.lines()).toEqual([]);
+    });
+
+    test("a refused connection leaves the JSON and exit code and writes one stderr line", async () => {
+      await useNtfy("http://localhost:1/topic");
+      const run = await buildDone(...withJson({}));
+      const stderrLines = run.err.split("\n").filter((line) => line.includes("notification"));
+      expect([run.code, run.json.ok, stderrLines.length]).toEqual([0, true, 1]);
+    });
   });
 });

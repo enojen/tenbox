@@ -88,6 +88,9 @@ const ChecksSchema = z.preprocess(
     }),
 );
 
+/** Where Tenbox sends the one-line notifications; without `ntfy` it sends none. */
+const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
+
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 const ManifestSchema = z.object({
   id: z
@@ -110,6 +113,7 @@ const ManifestSchema = z.object({
   checks: ChecksSchema.default({ fast: {}, full: {} }),
   tracker: TrackerConfigSchema.prefault({}),
   names: NamesSchema.prefault({}),
+  notify: NotifySchema.prefault({}),
 });
 
 export type CheckTier = (typeof CHECK_TIERS)[number];
