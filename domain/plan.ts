@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { badPlanError } from "./errors/tasks.ts";
+import { GroupSchema, groupIssues, LensSchema } from "./group.ts";
 import { issueLines, parseObject } from "./utils.ts";
 
 const text = z.string().min(1);
@@ -25,14 +26,23 @@ const QuestionSchema = z.object({
 });
 
 /** What the planner returns and `tenbox plan done` saves. */
-const PlanResultSchema = z.object({
-  summary: z.string(),
-  estimated_lines: z.number().int().nonnegative(),
-  parts: z.array(PlanPartSchema),
-  criteria: z.array(criterion),
-  lenses: z.array(z.enum(["security", "contract"])),
-  questions: z.array(QuestionSchema),
-});
+const PlanResultSchema = z
+  .object({
+    summary: z.string(),
+    estimated_lines: z.number().int().nonnegative(),
+    parts: z.array(PlanPartSchema),
+    criteria: z.array(criterion),
+    lenses: z.array(LensSchema),
+    questions: z.array(QuestionSchema),
+    groups: z.array(GroupSchema).optional(),
+  })
+  .superRefine((plan, ctx) => {
+    if (!plan.groups) return;
+    const partIds = plan.parts.map((part) => part.id);
+    for (const message of groupIssues(plan.groups, partIds)) {
+      ctx.addIssue({ code: "custom", path: ["groups"], message });
+    }
+  });
 
 export type PlanResult = z.infer<typeof PlanResultSchema>;
 

@@ -47,3 +47,65 @@ test("a word that only contains grep is allowed", () => {
     "fingrepair works",
   ]);
 });
+
+const recipe: NonNullable<PlanResult["groups"]>[number]["recipe"] = {
+  model: "sonnet",
+  effort: "medium",
+  lenses: [],
+  tier: "fast",
+};
+const group = (id: number, parts: string[], needs: number[]) => ({
+  id,
+  name: `feat: group ${id}`,
+  parts,
+  needs,
+  recipe,
+});
+const twoGroups = [group(1, ["01"], []), group(2, ["02"], [1])];
+
+test("parsePlan keeps the groups", () => {
+  expect(parsePlan(json({ groups: twoGroups })).groups).toEqual(twoGroups);
+});
+
+test("a recipe may name the fable model", () => {
+  const groups = [group(1, ["01", "02"], [])].map((g) => ({
+    ...g,
+    recipe: { ...recipe, model: "fable" },
+  }));
+  expect(parsePlan(json({ groups })).groups?.[0]?.recipe.model).toBe("fable");
+});
+
+test.each([
+  ["a part in no group", [group(1, ["01"], [])]],
+  ["a part in two groups", [group(1, ["01", "02"], []), group(2, ["02"], [1])]],
+  ["an unknown part id", [group(1, ["01", "09"], []), group(2, ["02"], [1])]],
+  ["group ids out of order", [group(2, ["01"], []), group(1, ["02"], [])]],
+  ["group ids that start at 2", [group(2, ["01", "02"], [])]],
+  ["a need that is the group itself", [group(1, ["01"], []), group(2, ["02"], [2])]],
+  ["a need with a larger id", [group(1, ["01"], [2]), group(2, ["02"], [])]],
+  ["a group without a name", [group(1, ["01"], []), { ...group(2, ["02"], [1]), name: "" }]],
+  [
+    "an unknown model",
+    [group(1, ["01"], []), { ...group(2, ["02"], [1]), recipe: { ...recipe, model: "gpt" } }],
+  ],
+  [
+    "an unknown effort",
+    [group(1, ["01"], []), { ...group(2, ["02"], [1]), recipe: { ...recipe, effort: "max" } }],
+  ],
+  [
+    "an unknown lens",
+    [group(1, ["01"], []), { ...group(2, ["02"], [1]), recipe: { ...recipe, lenses: ["perf"] } }],
+  ],
+  [
+    "an unknown tier",
+    [group(1, ["01"], []), { ...group(2, ["02"], [1]), recipe: { ...recipe, tier: "slow" } }],
+  ],
+])("parsePlan refuses groups with %s with bad-plan", (_name, groups) => {
+  const text = json({ groups });
+  expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-plan" }));
+  expect(readPlan(text)).toBeNull();
+});
+
+test("the bad-plan message names the part that is in no group", () => {
+  expect(() => parsePlan(json({ groups: [group(1, ["01"], [])] }))).toThrow("02");
+});

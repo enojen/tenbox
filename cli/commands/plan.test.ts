@@ -59,6 +59,27 @@ describe("tenbox plan done", () => {
     expect(written).toBe(false);
   });
 
+  test("a result with groups is written to plan.json", async () => {
+    const recipe = { model: "opus", effort: "low", lenses: ["security"], tier: "full" };
+    const groups = [
+      { id: 1, name: "feat: a", parts: ["01"], needs: [], recipe },
+      { id: 2, name: "feat: b", parts: ["02"], needs: [1], recipe },
+    ];
+    const run = await planDone(...withJson({ groups }));
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    const text = await files.read(planJson);
+    expect(JSON.parse(text ?? "null").groups).toEqual(groups);
+  });
+
+  test("a part in no group is bad-plan and writes nothing", async () => {
+    const recipe = { model: "sonnet", effort: "low", lenses: [], tier: "fast" };
+    const groups = [{ id: 1, name: "feat: a", parts: ["01"], needs: [], recipe }];
+    const run = await planDone(...withJson({ groups }));
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    const written = await files.exists(planJson);
+    expect(written).toBe(false);
+  });
+
   test("a missing --json is a usage error", async () => {
     const run = await planDone();
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);

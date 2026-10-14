@@ -17,7 +17,9 @@ Your prompt names one of two jobs. Do that job only.
    `.tenbox/questions.md`.
 2. **Answer a build-round question**: list the parts still to build after reading the
    part files and the round feedback, each with its `difficulty` from `.tenbox/plan.json`,
-   and the extra review lenses from `plan.md`; or list the acceptance criteria from `plan.md`.
+   and the extra review lenses from `plan.md`; or list the acceptance criteria from `plan.md`;
+   or list the groups of `.tenbox/plan.json` (`id`, `name`, `needs`, `recipe`); or list the
+   parts still to build in one group, named in the prompt.
 
 ## Read first, in this order
 
@@ -55,9 +57,11 @@ Your prompt names one of two jobs. Do that job only.
   Two parts that need the same file become one part. Make one part when the task is
   small; split only when the parts touch different files.
 - Estimate the diff size in lines, tests included, lockfiles and generated clients
-  excluded. If it exceeds `max_pr_lines`, propose a split into stacked PRs
-  `feat/<id>-1`, `feat/<id>-2`, one subtask each, merged in order. You propose; the
-  user approves at the plan gate.
+  excluded. Split the parts into groups: one group is one PR, and its diff stays within
+  `max_pr_lines`. A small task is one group. You propose; the user approves at the plan gate.
+- Two groups whose `files:` overlap must be linked by `needs`: the later group lists the
+  earlier one. A group needs only groups with a smaller id. A group with no `needs`
+  branches off the base.
 
 ## File formats
 
@@ -92,8 +96,13 @@ Extra lenses: security | contract | none, each with a one-line reason. Correctne
 to the plan, the glossary and repeated code are always reviewed; add a lens only when
 the task touches it.
 
+## Groups
+One line per group: `<N> · <name> · parts <NN>, <NN> · needs <N>, ... | none · <model>/<effort> ·
+lenses <security, contract | none> · tier <fast | full>`. The name is a Conventional Commits
+title, for example `feat: cancel an order`. Every part is in exactly one group.
+
 ## Size
-PR split: none | feat/<id>-1 ..., feat/<id>-2 ...
+Lines per part and per group.
 
 ## Overlap with other active tasks
 Task and files, or "none".
@@ -132,7 +141,12 @@ exists. A non-blocking question states the default you will follow.
 The plan result has, besides the summary, criteria, lenses and questions, `estimated_lines`
 (your estimate of the whole diff, a whole number) and `parts`, one `{ id, difficulty }` per
 part. `id` is the two-digit part number of the part file, `01`. `difficulty` is `easy` or
-`hard`: `hard` only for concurrency, tricky logic or wide refactors. The workflow validates
+`hard`: `hard` only for concurrency, tricky logic or wide refactors. It also has `groups`,
+one `{ id, name, parts, needs, recipe }` per group. `id` counts 1, 2, 3 in list order. `parts`
+are part ids; every part is in exactly one group. `needs` are smaller group ids. `recipe` is
+`{ model, effort, lenses, tier }`: `model` is `haiku`, `sonnet`, `opus` or `fable`; `effort` is `low`,
+`medium` or `high`; `lenses` are the extra review lenses of that group; `tier` is `fast` or
+`full`, the checks at the end of a round. The workflow validates
 the result with `tenbox plan done` and saves it as `.tenbox/plan.json`.
 
 Your final message is data for a workflow script, not a message for a human. When a

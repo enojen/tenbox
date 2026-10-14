@@ -56,7 +56,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
-| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions (`PlanResult`). |
+| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions, groups (`PlanResult`). |
+| group | One or more parts that become one PR; has a name, `needs` (smaller group ids) and a recipe (`Group`). |
+| recipe | How a group is built: worker model and effort, review lenses, check tier (`Recipe`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
 | build result | What `/tenbox-build` returns and `tenbox build done` saves as `build.json`: status, round, proofs, attention, nice-to-have, unproven (`BuildResult`). |

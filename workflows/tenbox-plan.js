@@ -10,6 +10,30 @@ if (!task) throw new Error('args: the task id, for example "TEN-301"')
 // The planner runs on its frontmatter model; `deep` asks for the strongest one.
 const DEEP_MODEL = 'fable'
 
+const LENSES = ['security', 'contract']
+
+// One PR of the task; `needs` holds smaller group ids, an empty list branches off the base.
+const GROUP = {
+  type: 'object',
+  properties: {
+    id: { type: 'integer', minimum: 1 },
+    name: { type: 'string' },
+    parts: { type: 'array', items: { type: 'string' } },
+    needs: { type: 'array', items: { type: 'integer', minimum: 1 } },
+    recipe: {
+      type: 'object',
+      properties: {
+        model: { enum: ['haiku', 'sonnet', 'opus', 'fable'] },
+        effort: { enum: ['low', 'medium', 'high'] },
+        lenses: { type: 'array', items: { enum: LENSES } },
+        tier: { enum: ['fast', 'full'] },
+      },
+      required: ['model', 'effort', 'lenses', 'tier'],
+    },
+  },
+  required: ['id', 'name', 'parts', 'needs', 'recipe'],
+}
+
 const PLAN = {
   type: 'object',
   properties: {
@@ -25,7 +49,8 @@ const PLAN = {
       },
     },
     criteria: { type: 'array', items: { type: 'string' } },
-    lenses: { type: 'array', items: { enum: ['security', 'contract'] } },
+    lenses: { type: 'array', items: { enum: LENSES } },
+    groups: { type: 'array', items: GROUP },
     questions: {
       type: 'array',
       items: {
