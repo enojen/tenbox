@@ -25,7 +25,7 @@ describe("mergeManifest", () => {
       { file: "override.yaml", value: { checks: { unit: "bun test --bail" } } },
     ]);
     expect(m.project).toBe("demo");
-    expect(m.checks).toEqual({ unit: "bun test --bail" });
+    expect(m.checks).toEqual({ fast: { unit: "bun test --bail" }, full: {} });
     expect(m.tracker).toEqual({ kind: "linear", api_key: "k" });
     expect("services" in m).toBe(false);
   });
@@ -42,13 +42,33 @@ describe("mergeManifest", () => {
   });
   test("empty gives defaults", () => {
     const m = mergeManifest([]);
-    expect(m.checks).toEqual({});
+    expect(m.checks).toEqual({ fast: {}, full: {} });
     expect(m.tracker.kind).toBe("none");
     expect(m.base).toBe("main");
   });
+  test("checks take the two tiers; the flat form is the fast tier", () => {
+    const tiers = { fast: { a: "x" }, full: { b: "y" } };
+    const tiered = mergeManifest([{ file: "tenbox.yaml", value: { checks: tiers } }]);
+    expect(tiered.checks).toEqual(tiers);
+    const onlyFull = mergeManifest([
+      { file: "tenbox.yaml", value: { checks: { full: { b: "y" } } } },
+    ]);
+    expect(onlyFull.checks).toEqual({ fast: {}, full: { b: "y" } });
+  });
+  test("a flat layer and a tiered layer merge into the tiers", () => {
+    const flat = { file: "tenbox.yaml", value: { checks: { lint: "x" } } };
+    const tiered = { file: "tenbox.local.yaml", value: { checks: { full: { e2e: "y" } } } };
+    const expected = { fast: { lint: "x" }, full: { e2e: "y" } };
+    expect(mergeManifest([flat, tiered]).checks).toEqual(expected);
+    expect(mergeManifest([tiered, flat]).checks).toEqual(expected);
+  });
+  test("a check name in both tiers is a manifest error naming it", () => {
+    const checks = { fast: { lint: "x" }, full: { lint: "y" } };
+    expect(() => mergeManifest([{ file: "tenbox.yaml", value: { checks } }])).toThrow(/lint/);
+  });
   test("bad values are reported with their path", () => {
     expect(() => mergeManifest([{ file: "tenbox.yaml", value: { checks: { unit: 42 } } }])).toThrow(
-      /checks\.unit/,
+      /checks\.fast\.unit/,
     );
     expect(() => mergeManifest([{ file: "tenbox.yaml", value: [1] }])).toThrow(/mapping/);
   });

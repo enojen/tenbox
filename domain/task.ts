@@ -28,6 +28,8 @@ export const partsDir = (dir: string): string => path.join(dir, "parts");
 export const roundsDir = (dir: string): string => path.join(dir, "rounds");
 /** `checks.json` in a round directory. */
 export const checksFile = (round: string): string => path.join(round, "checks.json");
+/** `checks-full.json` in a round directory: the result of the `full` tier. */
+export const checksFullFile = (round: string): string => path.join(round, "checks-full.json");
 /** `rounds/<N>` in a `.tenbox/` folder. */
 export const roundDir = (dir: string, round: number): string =>
   path.join(roundsDir(dir), String(round));
@@ -72,4 +74,9 @@ export function roundNumbers(roundDirNames: string[]): number[] {
 export function nextRound(roundDirNames: string[]): number {
   const nums = roundNumbers(roundDirNames);
   return nums.length ? Math.max(...nums) + 1 : 1;
+}
+
+/** Highest round directory name; 1 when there is none. */
+export function currentRound(roundDirNames: string[]): number {
+  return roundNumbers(roundDirNames).at(-1) ?? 1;
 }

@@ -9,6 +9,7 @@ import {
   intValue,
   parseCommandArgs,
   stringValue,
+  tierValue,
   type Values,
 } from "./args.ts";
 import { approveTask } from "./commands/approve.ts";
@@ -36,7 +37,8 @@ interface Command extends ArgSpec {
 
 const START_USAGE =
   'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-claude]';
-const CHECK_USAGE = "tenbox check <id> [--round N] [--base <branch>] [--timeout 600]";
+const CHECK_USAGE =
+  "tenbox check <id> [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
 const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
@@ -82,6 +84,7 @@ const COMMANDS: Record<string, Command> = {
   check: {
     usage: CHECK_USAGE,
     options: {
+      tier: { type: "string" },
       round: { type: "string" },
       base: { type: "string" },
       timeout: { type: "string", default: String(DEFAULT_TIMEOUT_SECONDS) },
@@ -90,6 +93,7 @@ const COMMANDS: Record<string, Command> = {
       runChecks({
         id: idArg(positionals, CHECK_USAGE),
         round: intValue(values, "round"),
+        tier: tierValue(values),
         base: stringValue(values, "base"),
         timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
       }),

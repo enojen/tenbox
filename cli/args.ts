@@ -1,6 +1,7 @@
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { usageError } from "../domain/errors/usage.ts";
 import { type TaskId, taskId } from "../domain/ids.ts";
+import { CHECK_TIERS, type CheckTier } from "../domain/manifest.ts";
 import { errorMessage, isDigits } from "../domain/utils.ts";
 
 type OptionValue = string | boolean | Array<string | boolean> | undefined;
@@ -53,4 +54,12 @@ export function stringValue(values: Values, name: string): string | undefined {
 
 export function flagValue(values: Values, name: string): boolean {
   return values[name] === true;
+}
+
+/** `--tier`: `fast` when missing. */
+export function tierValue(values: Values): CheckTier {
+  const value = stringValue(values, "tier") ?? "fast";
+  const tier = CHECK_TIERS.find((candidate) => candidate === value);
+  if (tier === undefined) throw usageError(`--tier must be ${CHECK_TIERS.join(" or ")}`);
+  return tier;
 }

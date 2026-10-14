@@ -54,6 +54,40 @@ function compiles(pattern: string): boolean {
   }
 }
 
+const CheckCommandsSchema = z.record(z.string(), z.string().min(1));
+
+export const CHECK_TIERS = ["fast", "full"] as const;
+
+function isTiered(value: Record<string, unknown>): boolean {
+  return CHECK_TIERS.some((tier) => isPlainObject(value[tier]));
+}
+
+/** The flat form `{ name: cmd }` is the `fast` tier. */
+function toTiers(value: unknown): unknown {
+  if (!isPlainObject(value) || isTiered(value)) return value;
+  return { fast: value };
+}
+
+function namesInBothTiers(checks: { fast: Record<string, string>; full: Record<string, string> }) {
+  return Object.keys(checks.fast).filter((name) => name in checks.full);
+}
+
+/** `fast` runs every round, `full` once at the close of a round; a name is in one tier only. */
+const ChecksSchema = z.preprocess(
+  toTiers,
+  z
+    .object({
+      fast: CheckCommandsSchema.default({}),
+      full: CheckCommandsSchema.default({}),
+    })
+    .strict()
+    .superRefine((checks, ctx) => {
+      for (const name of namesInBothTiers(checks)) {
+        ctx.addIssue({ code: "custom", message: `check "${name}" is in both tiers`, path: [name] });
+      }
+    }),
+);
+
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 const ManifestSchema = z.object({
   id: z
@@ -73,11 +107,12 @@ const ManifestSchema = z.object({
     .optional(),
   /** The `--model` of the task's `claude` session. */
   model: z.string().min(1).default("sonnet"),
-  checks: z.record(z.string(), z.string().min(1)).default({}),
+  checks: ChecksSchema.default({ fast: {}, full: {} }),
   tracker: TrackerConfigSchema.prefault({}),
   names: NamesSchema.prefault({}),
 });
 
+export type CheckTier = (typeof CHECK_TIERS)[number];
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type TrackerKind = z.infer<typeof TrackerKindSchema>;
 export type StatusNames = z.infer<typeof StatusNamesSchema>;
@@ -89,6 +124,12 @@ export interface ManifestLayer {
   value: unknown;
 }
 
+/** A layer whose flat `checks:` is turned into tiers, so a flat and a tiered layer merge. */
+function withTiers(value: Record<string, unknown>): Record<string, unknown> {
+  if (!("checks" in value)) return value;
+  return { ...value, checks: toTiers(value.checks) };
+}
+
 /** Layers in order, later ones win, then one validation pass. */
 export function mergeManifest(layers: ManifestLayer[]): Manifest {
   let merged: Record<string, unknown> = {};
@@ -96,7 +137,7 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
     if (layer.value === null || layer.value === undefined) continue;
     if (!isPlainObject(layer.value))
       throw manifestError(`${layer.file}: expected a YAML mapping at the top`);
-    merged = deepMerge(merged, layer.value);
+    merged = deepMerge(merged, withTiers(layer.value));
   }
   const parsed = ManifestSchema.safeParse(merged);
   if (!parsed.success) {

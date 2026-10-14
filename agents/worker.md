@@ -27,9 +27,10 @@ separate worktree of your own; the rules are the same.
    Prove every change of behaviour, see "Prove first" below.
 3. Stay inside your part's `files:`. Never edit a path in `locked`. If your part needs a
    change outside its files, do not make it: set `status: blocked` and return a question.
-4. Run the checks for what you touched: the `checks` commands from `tenbox.yaml`, or the
-   project's own type check, lint and unit test commands. Fix what you broke. Do not
-   silence a failing test or lower a lint rule.
+4. Run the checks for what you touched: the `fast` checks from `tenbox.yaml` (a flat
+   `checks:` list is all `fast`), or the project's own type check, lint and unit test
+   commands. Never run the `full` checks: the workflow runs them once at the end of the
+   round. Fix what you broke. Do not silence a failing test or lower a lint rule.
 5. Commit when the checks pass. One commit per part is normal; more is fine. Message:
    `<task id>: <part title>` on the first line, then what and why. Do not push. Do not
    rebase, merge or switch branches; the integrator does that.

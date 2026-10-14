@@ -176,3 +176,28 @@ test("with no open task PR it prints ok and adds no worktree", async () => {
   ]);
   await expectNoExtraWorktree();
 });
+
+const TIERED_MANIFEST = `project: demo
+setup: echo ready > setup.txt
+checks:
+  fast:
+    first: "true"
+  full:
+    slow: cat out.txt; ! grep -q FAIL out.txt
+`;
+
+test("merge-check runs the checks of both tiers", async () => {
+  await pushBranch("feat/T-1", { "tenbox.yaml": TIERED_MANIFEST });
+  await fakeGh([{ number: 1, branch: "feat/T-1", base: "main" }]);
+  const result = await run();
+  expect([result.code, result.json.ok]).toEqual([0, true]);
+  expect(result.json.checks).toMatchObject([{ name: "first" }, { name: "slow" }]);
+});
+
+test("a new failure in a full check fails merge-check", async () => {
+  await pushBranch("feat/T-1", { "tenbox.yaml": TIERED_MANIFEST, "out.txt": " FAIL  broken\n" });
+  await fakeGh([{ number: 1, branch: "feat/T-1", base: "main" }]);
+  const result = await run();
+  expect([result.code, result.json.code]).toEqual([1, "new-failures"]);
+  expect(JSON.stringify(result.json.details)).toContain("FAIL  broken");
+});

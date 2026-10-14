@@ -39,7 +39,7 @@ const byNumber = (a: PrBranch, b: PrBranch): number => a.number - b.number;
 
 /**
  * Merges the open task PR branches onto the base in a temporary worktree and runs setup and
- * every check there, so a break that git does not see (a type error) shows before the merge.
+ * every check of both tiers there, so a break that git does not see (a type error) shows before the merge.
  */
 export async function mergeCheck(input: MergeCheckInput): Promise<MergeCheckResult> {
   const { project, manifest } = await projects.get(process.cwd());
@@ -90,11 +90,12 @@ async function mergeAll(merge: Merge, dir: string): Promise<void> {
 async function setupAndCheck(merge: Merge, dir: string): Promise<CheckOutcome[]> {
   const { project, base, timeoutMs } = merge;
   const manifest = await manifests.get(project.mainDir, dir);
-  if (Object.keys(manifest.checks).length === 0) throw noChecksError();
+  const everyCheck = { ...manifest.checks.fast, ...manifest.checks.full };
+  if (Object.keys(everyCheck).length === 0) throw noChecksError();
   await setups.run(dir, manifest.setup, true);
   const pattern = manifest.failure_pattern ?? env().failurePattern;
   const outcomes: CheckOutcome[] = [];
-  for (const [name, cmd] of Object.entries(manifest.checks)) {
+  for (const [name, cmd] of Object.entries(everyCheck)) {
     const request = { project, cwd: dir, name, cmd, pattern, baseSha: base.sha, timeoutMs };
     const { outcome } = await checks.run(request);
     outcomes.push(outcome);

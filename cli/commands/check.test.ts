@@ -3,10 +3,12 @@ import { realpath, utimes } from "node:fs/promises";
 import path from "node:path";
 import { failureLine } from "../../domain/failures.ts";
 import { taskId } from "../../domain/ids.ts";
+import type { CheckTier } from "../../domain/manifest.ts";
 import { baselineStore } from "../infra/baselineStore.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { runChecks } from "./check.ts";
 
@@ -17,6 +19,7 @@ const SLOW_CHECK_SECONDS = 5;
 /** What a timed-out check reports, as in coreutils `timeout`. */
 const TIMEOUT_EXIT_CODE = 124;
 const META = { date: "2026-01-01T00:00:00.000Z", cmd: "check", exit_code: 1 };
+const FAST: CheckTier = "fast";
 const KEY = { project: "demo", check: "unit" };
 
 const lines = (...xs: string[]) => xs.map(failureLine);
@@ -25,6 +28,7 @@ const input = (round?: number) => ({
   id: taskId("T-1"),
   timeoutMs: TIMEOUT_MS,
   round,
+  tier: FAST,
 });
 
 let project: TempProject;
@@ -186,5 +190,59 @@ describe("runChecks timeout", () => {
       path.join(env().baselinesRoot, "demo", "slow", `${baseSha}.meta`),
     );
     expect(meta).toContain(`exit_code=${TIMEOUT_EXIT_CODE}\n`);
+  });
+});
+
+describe("runChecks tiers", () => {
+  const tiers = {
+    fast: { a: `echo fast >> '../../../calls.txt'` },
+    full: { b: `cat out.txt; echo full >> '../../../calls.txt'; exit 1` },
+  };
+
+  test("fast runs only the fast checks and says so", async () => {
+    await setup({ "tenbox.yaml": manifest({ checks: tiers }) });
+    const r = await runChecks(input());
+    expect([r.tier, r.checks.map((c) => c.name)]).toEqual(["fast", ["a"]]);
+    const ran = await calls();
+    expect(ran).not.toContain("full");
+    expect(r.file).toBe(path.join(".tenbox", "rounds", "1", "checks.json"));
+  });
+
+  test("full runs only the full checks into checks-full.json; a new failure is not ok", async () => {
+    await setup({ "tenbox.yaml": manifest({ checks: tiers }) });
+    await writeOut(" FAIL  old\n FAIL  new\n");
+    const r = await runChecks({ ...input(1), tier: "full" });
+    expect([r.ok, r.tier, r.checks.map((c) => c.name)]).toEqual([false, "full", ["b"]]);
+    const ran = await calls();
+    expect(ran).not.toContain("fast");
+    expect(r.file).toBe(path.join(".tenbox", "rounds", "1", "checks-full.json"));
+    const written = await files.read(path.join(taskWorktree, r.file));
+    expect(written).toContain('"tier": "full"');
+  });
+
+  test("a flat manifest has no full checks: ok with none run", async () => {
+    await setup({ "tenbox.yaml": manifest() });
+    const r = await runChecks({ ...input(1), tier: "full" });
+    const ran = await calls();
+    expect([r.ok, r.checks, ran]).toEqual([true, [], []]);
+  });
+
+  test("full without --round runs in the current round and opens no new one", async () => {
+    await setup({ "tenbox.yaml": manifest({ checks: tiers }) });
+    await runChecks(input());
+    const r = await runChecks({ ...input(), tier: "full" });
+    expect(r.file).toBe(path.join(".tenbox", "rounds", "1", "checks-full.json"));
+  });
+
+  test("a check in both tiers fails with a manifest error naming it", async () => {
+    const both = { fast: { lint: "true" }, full: { lint: "true" } };
+    await setup({ "tenbox.yaml": manifest({ checks: both }) });
+    await expect(runChecks(input())).rejects.toThrow(/lint/);
+  });
+
+  test("an unknown --tier is a usage error", async () => {
+    await setup({ "tenbox.yaml": manifest({ checks: tiers }) });
+    const r = await tenbox(["check", "T-1", "--tier", "other"], taskWorktree);
+    expect(r.code).toBe(2);
   });
 });

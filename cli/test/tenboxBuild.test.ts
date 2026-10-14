@@ -273,3 +273,50 @@ test("the approval check runs `tenbox approved <task>` before any other agent", 
   expect(prompts[0]).toContain("runner: ");
   expect(prompts[0]).toContain("tenbox approved TB-1");
 });
+
+/** Runs the workflow with clean reviews after `mustFixRounds` rounds with a must_fix item; `fullReplies` are the answers of the full-checks runner, round by round. */
+async function runWithFullChecks(fullReplies: object[], mustFixRounds = 0) {
+  const labels: string[] = [];
+  const prompts: Record<string, string> = {};
+  let fullRuns = 0;
+  let round = 0;
+  const agent: ScriptedAgent = async (prompt, options) => {
+    labels.push(options.label);
+    prompts[options.label] = prompt;
+    if (options.agentType === "planner") {
+      round += 1;
+      return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.label.endsWith("full checks")) {
+      fullRuns += 1;
+      return fullReplies[fullRuns - 1];
+    }
+    if (options.agentType === "runner") return { ok: true, commit: "c", file: "f" };
+    return round <= mustFixRounds ? { ...cleanReply, must_fix: ["fix"] } : cleanReply;
+  };
+  const result = await runWorkflow("TB-1", agent);
+  return { result, labels, prompts };
+}
+
+test("a clean review is followed by one full-checks runner before ready-for-you", async () => {
+  const { result, labels, prompts } = await runWithFullChecks([{ ok: true }]);
+  expect(result.status).toBe("ready-for-you");
+  expect(labels.filter((label) => label.endsWith("full checks"))).toEqual(["round 1: full checks"]);
+  expect(prompts["round 1: full checks"]).toContain("tenbox check TB-1 --tier full --round 1");
+});
+
+test("a red full tier starts the next round with its summary as feedback", async () => {
+  const { result, prompts } = await runWithFullChecks([
+    { ok: false, summary: "full: 1 new failure" },
+    { ok: true },
+  ]);
+  expect(result.status).toBe("ready-for-you");
+  expect(result.round).toBe(2);
+  expect(prompts["round 2: 01"]).toContain("full: 1 new failure");
+});
+
+test("a round whose review has must_fix does not run the full tier", async () => {
+  const { labels } = await runWithFullChecks([{ ok: true }], 1);
+  expect(labels.filter((label) => label.endsWith("full checks"))).toEqual(["round 2: full checks"]);
+});

@@ -3,8 +3,17 @@ import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
 import type { TaskId } from "../../domain/ids.ts";
+import type { CheckTier } from "../../domain/manifest.ts";
 import type { Project } from "../../domain/project.ts";
-import { checksFile, nextRound, roundDir, roundsDir, tenboxDir } from "../../domain/task.ts";
+import {
+  checksFile,
+  checksFullFile,
+  currentRound,
+  nextRound,
+  roundDir,
+  roundsDir,
+  tenboxDir,
+} from "../../domain/task.ts";
 import { checks } from "../application/checks.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
@@ -17,6 +26,7 @@ import type { CheckResult, CheckRun } from "./results.ts";
 export interface CheckInput {
   id: TaskId;
   round: number | undefined;
+  tier: CheckTier;
   /** Default: the manifest's `base`. */
   base: string | undefined;
   timeoutMs: number;
@@ -26,6 +36,7 @@ export interface CheckInput {
 interface Round {
   number: number;
   dir: string;
+  tier: CheckTier;
   taskWorktree: string;
   project: Project;
   checks: Record<string, string>;
@@ -56,9 +67,15 @@ interface NamedCheck {
   cmd: string;
 }
 
+const RESULT_FILES: Record<CheckTier, (roundDir: string) => string> = {
+  fast: checksFile,
+  full: checksFullFile,
+};
+
 /**
- * Runs every check in the task worktree and keeps only failures the base commit did
- * not already have: the devbox `wtbase` algorithm. Writes `.tenbox/rounds/N/checks.json`.
+ * Runs every check of the tier in the task worktree and keeps only failures the base commit did
+ * not already have: the devbox `wtbase` algorithm. Writes `.tenbox/rounds/N/checks.json`, or
+ * `checks-full.json` for the `full` tier.
  */
 export async function runChecks(input: CheckInput): Promise<CheckResult> {
   const round = await prepareRound(input);
@@ -68,7 +85,7 @@ export async function runChecks(input: CheckInput): Promise<CheckResult> {
     results.push(run);
   }
   const result = buildResult(input, round, results);
-  await files.writeJson(checksFile(round.dir), result);
+  await files.writeJson(RESULT_FILES[round.tier](round.dir), result);
   return result;
 }
 
@@ -76,26 +93,49 @@ async function prepareRound(input: CheckInput): Promise<Round> {
   const taskWorktree = await worktrees.get(input.id);
   const { project, manifest } = await projects.get(taskWorktree);
   const base = input.base ?? manifest.base;
-  const setup = await getChecks(project.mainDir, taskWorktree);
-  const { number, dir } = await ensureRound(taskWorktree, input.round);
+  const setup = await getChecks(project.mainDir, taskWorktree, input.tier);
+  const { number, dir } = await ensureRound(taskWorktree, input);
   const { head, baseSha } = await getCommits(taskWorktree, base);
   const timeoutMs = input.timeoutMs;
-  return { number, dir, taskWorktree, project, ...setup, head, base, baseSha, timeoutMs };
+  return {
+    number,
+    dir,
+    tier: input.tier,
+    taskWorktree,
+    project,
+    ...setup,
+    head,
+    base,
+    baseSha,
+    timeoutMs,
+  };
 }
 
 /** Tenbox runs only what the manifest says; it does not guess from the project. */
-async function getChecks(mainDir: string, taskWorktree: string): Promise<CheckSetup> {
+async function getChecks(
+  mainDir: string,
+  taskWorktree: string,
+  tier: CheckTier,
+): Promise<CheckSetup> {
   const manifest = await manifests.get(mainDir, taskWorktree);
-  if (Object.keys(manifest.checks).length === 0) {
+  const { fast, full } = manifest.checks;
+  if (Object.keys(fast).length + Object.keys(full).length === 0) {
     throw noChecksError();
   }
-  return { checks: manifest.checks, pattern: manifest.failure_pattern ?? env().failurePattern };
+  return {
+    checks: manifest.checks[tier],
+    pattern: manifest.failure_pattern ?? env().failurePattern,
+  };
 }
 
-/** The wanted round, else the next free one; creates its `checks/` directory. */
-async function ensureRound(taskWorktree: string, wanted?: number): Promise<RoundDir> {
+/**
+ * The wanted round, else a new one for `fast` and the current one for `full`, which closes a
+ * round; creates its `checks/` directory.
+ */
+async function ensureRound(taskWorktree: string, input: CheckInput): Promise<RoundDir> {
   const existing = await files.list(roundsDir(tenboxDir(taskWorktree)));
-  const number = wanted ?? nextRound(existing);
+  const fallback = input.tier === "full" ? currentRound(existing) : nextRound(existing);
+  const number = input.round ?? fallback;
   const dir = roundDir(tenboxDir(taskWorktree), number);
   await files.mkdir(path.join(dir, "checks"));
   return { number, dir };
@@ -132,6 +172,7 @@ function buildResult(input: CheckInput, round: Round, results: CheckRun[]): Chec
     base: { ref: round.base, sha: round.baseSha },
     checks: results,
     summary: checks.summarize(results),
-    file: path.relative(round.taskWorktree, checksFile(round.dir)),
+    file: path.relative(round.taskWorktree, RESULT_FILES[round.tier](round.dir)),
+    tier: round.tier,
   };
 }

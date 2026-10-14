@@ -1,6 +1,6 @@
 import type { Approval } from "../../domain/approval.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
-import type { TrackerKind } from "../../domain/manifest.ts";
+import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { UsageReport } from "../../domain/runs.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
@@ -189,6 +189,7 @@ export interface CheckResult {
   checks: CheckRun[];
   summary: string;
   file: string;
+  tier: CheckTier;
 }
 
 export interface MergeCheckResult {

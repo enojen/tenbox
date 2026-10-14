@@ -162,6 +162,13 @@ for (let round = 1; round <= maxRounds; round++) {
     feedback = mustFix.join('\n')
     continue
   }
+  phase('Checks')
+  const full = await agent(`Run \`tenbox check ${task} --tier full --round ${round}\` and return its JSON.`,
+    { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: full checks` })
+  if (!full?.ok) {
+    feedback = full?.summary ?? full?.error ?? 'tenbox check --tier full did not run'
+    continue
+  }
   return finish({
     status: 'ready-for-you',
     round,
