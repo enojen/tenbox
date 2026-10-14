@@ -61,8 +61,9 @@ const AgentListSchema = z.array(
 
 const BACKGROUND = "background";
 
-/** The `state` values of a session that a second build must not disturb. */
-const BUSY_STATES = ["working", "blocked"];
+/** The `state` values of a session that a second build must not disturb. A `blocked` session waits
+ * for a person, as a planner does after its plan, so it is not busy. */
+const BUSY_STATES = ["working"];
 
 /** The `claude` binary in `PATH`, or null. */
 function find(): string | null {

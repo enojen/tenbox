@@ -83,23 +83,21 @@ describe("tenbox build", () => {
     state,
   });
 
-  test.each(["working", "blocked"])(
-    "a %s session of the task worktree is session-busy",
-    async (state) => {
-      await setup();
-      await approve();
-      const real = await files.realPath(taskWorktree());
-      await fake.setSessions([session(real, state)]);
-      const built = await run("build", "T-1");
-      const prompts = await bgPrompts();
-      expect([built.code, built.json.code]).toEqual([1, "session-busy"]);
-      expect(built.json.error).toContain("tenbox attach T-1");
-      expect(prompts).toEqual([]);
-    },
-  );
+  test("a working session of the task worktree is session-busy", async () => {
+    await setup();
+    await approve();
+    const real = await files.realPath(taskWorktree());
+    await fake.setSessions([session(real, "working")]);
+    const built = await run("build", "T-1");
+    const prompts = await bgPrompts();
+    expect([built.code, built.json.code]).toEqual([1, "session-busy"]);
+    expect(built.json.error).toContain("tenbox attach T-1");
+    expect(prompts).toEqual([]);
+  });
 
   test.each([
     ["a done session", "done", true],
+    ["a blocked session (a planner waiting for its plan to be read)", "blocked", true],
     ["a busy session in another directory", "working", false],
   ])("%s does not block the build", async (_name, state, here) => {
     await setup();
