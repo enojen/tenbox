@@ -48,6 +48,8 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   counts each one as -1 point for that part. Return an empty list when there is none.
 - `nice_to_have`: at most 3 items; it does not block. Each item names a concrete failure:
   "this input gives this wrong result". No taste, style or naming items, no open questions.
+  It needs the same proof as a `must_fix` (input and wrong result, or the failing test);
+  an item without proof goes to `attention`, not here.
 - `attention`: hunks a human must read. This is a rule, not a judgement. Mark a hunk when
   it is, or touches: a migration or schema change, auth or permissions, a deletion of
   data or of a feature, an OpenAPI or other contract change, a file in `locked` or next
@@ -63,6 +65,7 @@ Code shape rules, for added or changed code only, test files included; the proje
   "and", it does two jobs: split it. Length is a hint, not the rule.
 - At most two levels of nesting; use early returns or extract a function.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
+- Error function parameters are plain strings, never `string | undefined`.
 
 Do not report what the diff does not contain. Do not re-run the project's checks; a
 separate step does that. Do not propose fixes longer than a sentence.

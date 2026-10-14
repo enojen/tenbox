@@ -46,7 +46,12 @@ Your prompt names one of two jobs. Do that job only.
 - Acceptance criteria are black-box and testable from the outside: a request and its
   expected response, a visible UI result, a database row. A QA agent that has not read
   the code must be able to test each one.
+- An acceptance criterion names a behaviour, never a grep or a word to find in the code.
+  `tenbox plan done` refuses a criterion with the word `grep`.
+- Never write `decisions.md`. A choice the task does not make is a question in `questions.md`.
 - Parts are the unit of parallel work. Every part lists the files it owns with `files:`.
+  `files:` lists every file the change touches, also its tests and the files that import a
+  changed name.
   Two parts that need the same file become one part. Make one part when the task is
   small; split only when the parts touch different files.
 - Estimate the diff size in lines, tests included, lockfiles and generated clients
@@ -118,8 +123,8 @@ result:
 ## risk
 ```
 
-Kinds: `technical` you decide yourself and record in `decisions.md`; `product`,
-`contract` and `risk` go to the user. A question is blocking when no reasonable default
+Kinds: `technical`, `product`, `contract` and `risk` all go to the user as questions; you
+never decide one yourself and never write `decisions.md`. A question is blocking when no reasonable default
 exists. A non-blocking question states the default you will follow.
 
 ## Returning

@@ -5,6 +5,13 @@ import { issueLines, parseObject } from "./utils.ts";
 
 const text = z.string().min(1);
 
+const GREP_WORD = /\bgrep\b/i;
+
+const criterion = z.string().superRefine((c, ctx) => {
+  if (GREP_WORD.test(c))
+    ctx.addIssue({ code: "custom", message: `a criterion names a behaviour, not a grep: "${c}"` });
+});
+
 /** `plan.json` in a `.tenbox/` folder: the validated planner result. */
 export const planFile = (dir: string): string => path.join(dir, "plan.json");
 
@@ -22,7 +29,7 @@ const PlanResultSchema = z.object({
   summary: z.string(),
   estimated_lines: z.number().int().nonnegative(),
   parts: z.array(PlanPartSchema),
-  criteria: z.array(z.string()),
+  criteria: z.array(criterion),
   lenses: z.array(z.enum(["security", "contract"])),
   questions: z.array(QuestionSchema),
 });

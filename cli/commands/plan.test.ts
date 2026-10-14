@@ -50,6 +50,8 @@ describe("tenbox plan done", () => {
     ["a difficulty of medium", withJson({ parts: [{ id: "01", difficulty: "medium" }] })],
     ["a part without an id", withJson({ parts: [{ difficulty: "easy" }] })],
     ["text that is not JSON", ["--json", "not json"]],
+    ["a criterion with grep", withJson({ criteria: ["run grep -r foo src"] })],
+    ["a criterion with GREP in upper case", withJson({ criteria: ["GREP finds nothing"] })],
   ])("%s is bad-plan and writes nothing", async (_name, args) => {
     const run = await planDone(...args);
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);

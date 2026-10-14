@@ -29,7 +29,21 @@ test.each([
   ["a part without an id", json({ parts: [{ difficulty: "easy" }] })],
   ["text that is not JSON", "not json"],
   ["JSON that is not an object", "[1]"],
+  ["a criterion with grep", json({ criteria: ["ok", "run grep -r foo src"] })],
+  ["a criterion with GREP in upper case", json({ criteria: ["GREP finds nothing"] })],
 ])("parsePlan refuses %s with bad-plan", (_name, text) => {
   expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-plan" }));
   expect(readPlan(text)).toBeNull();
+});
+
+test("the bad-plan message names the grep criterion", () => {
+  expect(() => parsePlan(json({ criteria: ["run grep -r foo src"] }))).toThrow(
+    "run grep -r foo src",
+  );
+});
+
+test("a word that only contains grep is allowed", () => {
+  expect(parsePlan(json({ criteria: ["fingrepair works"] })).criteria).toEqual([
+    "fingrepair works",
+  ]);
 });
