@@ -2,6 +2,7 @@ import { sessionName, type TaskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { approvals } from "../application/approvals.ts";
+import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { projects } from "../application/projects.ts";
@@ -38,6 +39,7 @@ export async function buildDone(input: BuildDoneInput): Promise<TaskFileResult> 
   const taskWorktree = await worktrees.get(input.id);
   const file = await builds.save(taskWorktree, input.json);
   await notifyEnd(input.id, taskWorktree);
+  await autoAnswers.run({ id: input.id, taskWorktree });
   return { ok: true, task: input.id, file };
 }
 

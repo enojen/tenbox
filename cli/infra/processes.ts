@@ -1,3 +1,4 @@
+import { closeSync, openSync } from "node:fs";
 import type { TenboxError } from "../../domain/errors/index.ts";
 import { noCommandError, noDirError } from "../../domain/errors/tools.ts";
 import { elapsedMs, hasErrorCode } from "../../domain/utils.ts";
@@ -9,6 +10,13 @@ interface ProcessOptions {
   timeoutMs?: number;
   /** Variables set on top of the current environment. */
   env?: Record<string, string>;
+}
+
+/** A tenbox run that outlives this one; its stdout and stderr are appended to `logFile`. */
+interface SelfRun {
+  args: string[];
+  cwd: string;
+  logFile: string;
 }
 
 export interface ProcessResult {
@@ -23,8 +31,8 @@ const ENOENT = "ENOENT";
 /** Process groups still running, so `stopAll` can end them when tenbox itself is stopped. */
 const running = new Set<number>();
 
-/** Runs a program without a shell: Tenbox starts only git, gh, docker and claude. */
-export const processes = { run, runInTerminal, stopAll, which };
+/** Runs a program without a shell: Tenbox starts only git, gh, docker, claude and itself. */
+export const processes = { run, runInTerminal, runSelf, stopAll, which };
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
@@ -67,6 +75,22 @@ async function runInTerminal(cmd: string[], options: ProcessOptions = {}): Promi
   });
   const code = await proc.exited;
   return code;
+}
+
+/** Starts `tenbox <args>` in its own process group and does not wait: it outlives this run. */
+function runSelf(self: SelfRun): void {
+  const log = openSync(self.logFile, "a");
+  try {
+    const proc = Bun.spawn([process.execPath, Bun.main, ...self.args], {
+      cwd: self.cwd,
+      env: process.env,
+      stdio: ["ignore", log, log],
+      detached: true,
+    });
+    proc.unref();
+  } finally {
+    closeSync(log);
+  }
 }
 
 async function start(

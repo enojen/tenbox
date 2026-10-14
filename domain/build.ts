@@ -57,7 +57,7 @@ const BuildResultSchema = z.looseObject({
   part: z.string().optional(),
   decision: DecisionCardSchema.optional(),
   /** When the recommended option is taken; null when the card has no `auto`. */
-  deadline: z.string().nullable().optional(),
+  deadline: z.iso.datetime().nullable().optional(),
   answered: AnsweredSchema.optional(),
 });
 

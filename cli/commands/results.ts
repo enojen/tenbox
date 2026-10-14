@@ -1,3 +1,4 @@
+import type { AUTO_ANSWER_STATE } from "../../domain/answers.ts";
 import type { Approval } from "../../domain/approval.ts";
 import type { RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
@@ -147,6 +148,20 @@ export interface AnswerResult extends AnswerSaved {
   ok: true;
   task: string;
 }
+
+/** `tenbox answer --auto` when the card was answered or replaced before the deadline. */
+interface AutoAnswerSkipped {
+  ok: true;
+  task: string;
+  state: typeof AUTO_ANSWER_STATE.skipped;
+}
+
+/** `tenbox answer --auto` that answered with the recommended option. */
+interface AutoAnswerDone extends AnswerResult {
+  state: typeof AUTO_ANSWER_STATE.answered;
+}
+
+export type AutoAnswerResult = AutoAnswerSkipped | AutoAnswerDone;
 
 export interface TaskFileResult {
   ok: true;

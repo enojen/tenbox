@@ -2,6 +2,7 @@ import { z } from "zod";
 import { claudeError } from "../../../domain/errors/tools.ts";
 import { parseJson } from "../../../domain/utils.ts";
 import { processes } from "../processes.ts";
+import type { ResumableRun } from "./sessionFiles.ts";
 
 /** What a task's background `claude` session starts with. */
 export interface ClaudeStart {
@@ -35,6 +36,14 @@ export interface ClaudeResume {
   /** The full session id; the 8-char id of `claude agents` is not enough. */
   session: string;
   prompt: string;
+}
+
+/** The prompt that resumes a workflow run: same script and args up to the answer, so every earlier agent returns from the cache. */
+export function resumePrompt(run: ResumableRun, args: object): string {
+  return [
+    `Run the Workflow tool with scriptPath ${JSON.stringify(run.scriptPath)},`,
+    `resumeFromRunId ${JSON.stringify(run.runId)} and these args: ${JSON.stringify(args)}`,
+  ].join(" ");
 }
 
 /** The output of `claude agents --json`: interactive and background sessions. */

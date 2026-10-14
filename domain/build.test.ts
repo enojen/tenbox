@@ -44,3 +44,8 @@ test("a result without a card gets no deadline key", () => {
   const result = addDeadline({ ...parsedCard(true), decision: undefined }, NOW);
   expect(Object.hasOwn(result, "deadline")).toBe(false);
 });
+
+test("a deadline that is not a date is bad-build, so no timer waits on it", () => {
+  const text = needsYou({ ...card, recommended: 1 }).replace(/}$/, ',"deadline":"not-a-date"}');
+  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-build" }));
+});

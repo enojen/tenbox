@@ -25,7 +25,7 @@ No sandbox yet.
 - TypeScript on Bun, few dependencies, no Python. Code, docs and agent prompts in English.
 - Must run on macOS and Linux from the first commit: `os.homedir()` and `path.join`, no
   GNU-only or BSD-only shell flags, hooks as `bun run hooks/<name>.ts`. Spawn only `git`,
-  `gh`, `docker`, `claude`.
+  `gh`, `docker`, `claude` and tenbox itself (`process.execPath`).
 - Every CLI command prints JSON on stdout; human text goes to stderr.
 - Agent roles are Markdown with frontmatter in `agents/`; workflows are plain JavaScript
   in `workflows/`; check both against the current Claude Code docs, not memory.
@@ -65,6 +65,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
 | decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide` or `tenbox answer`; a question answer also ticks its line in `questions.md` (`Decision`). |
 | decision card | What a blocked worker returns: `{ title, options, recommended, reason, auto }`; `build.json` keeps it with `deadline` and, after `tenbox answer`, `answered` (`DecisionCard`). |
+| auto answer | The recommended option of an `auto` card, taken by `tenbox answer --auto` when its deadline passes with no answer (`autoAnswers`). |
 | organization | A group of users on the server; found by name (`organizations`). |
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
@@ -130,7 +131,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans  checks  decisions  notifications  answers
+    approvals  plans  checks  decisions  notifications  answers  autoAnswers
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker

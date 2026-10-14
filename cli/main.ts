@@ -12,7 +12,7 @@ import {
   tierValue,
   type Values,
 } from "./args.ts";
-import { answerCard } from "./commands/answer.ts";
+import { answerCard, answerWhenDue } from "./commands/answer.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
 import { attachTask } from "./commands/attach.ts";
@@ -48,7 +48,7 @@ const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]'";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
 const WAIT_USAGE = "tenbox wait <id> --for plan|build|round [--timeout 600]";
-const ANSWER_USAGE = "tenbox answer <id> <n>";
+const ANSWER_USAGE = "tenbox answer <id> <n> | --auto";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
@@ -191,11 +191,14 @@ const COMMANDS: Record<string, Command> = {
   },
   answer: {
     usage: ANSWER_USAGE,
-    options: {},
-    run: (positionals) => {
+    options: { auto: { type: "boolean", default: false } },
+    run: (positionals, values) => {
+      const id = idArg(positionals, ANSWER_USAGE);
       const [, option = ""] = positionals;
-      if (!isDigits(option)) throw usageError(`usage: ${ANSWER_USAGE}`);
-      return answerCard({ id: idArg(positionals, ANSWER_USAGE), option: Number(option) });
+      const auto = flagValue(values, "auto");
+      if (auto && option === "") return answerWhenDue(id);
+      if (auto || !isDigits(option)) throw usageError(`usage: ${ANSWER_USAGE}`);
+      return answerCard({ id, option: Number(option) });
     },
   },
   approve: {

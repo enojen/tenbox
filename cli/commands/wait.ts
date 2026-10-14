@@ -6,6 +6,7 @@ import { checksFile, roundDir, roundNumbers, roundsDir, tenboxDir } from "../../
 import { MS_PER_SECOND } from "../../domain/utils.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
+import { pollUntil } from "../infra/poll.ts";
 import type { TaskFileResult, WaitRoundResult } from "./results.ts";
 
 type WaitFileKind = "plan" | "build";
@@ -26,22 +27,19 @@ const FILE_OF: Record<WaitFileKind, (dir: string) => string> = {
   build: buildFile,
 };
 
-/** What `pollUntil` waits for: a name for the timeout message and a check that is null until done. */
-interface Poll<T> {
+/** What `tenbox wait` waits for: a name for the timeout message and a check that is null until done. */
+interface TimedPoll<T> {
   what: string;
   timeoutSeconds: number;
   check: () => Promise<T | null>;
 }
 
 /** Checks once a second until `check` returns a value; `wait-timeout` after the timeout. */
-async function pollUntil<T>(poll: Poll<T>): Promise<T> {
-  const deadline = Date.now() + poll.timeoutSeconds * MS_PER_SECOND;
-  let found = await poll.check();
-  while (found === null) {
-    if (Date.now() >= deadline) throw waitTimeoutError(poll.what, poll.timeoutSeconds);
-    await Bun.sleep(MS_PER_SECOND);
-    found = await poll.check();
-  }
+async function pollOrTimeout<T>(poll: TimedPoll<T>): Promise<T> {
+  const { what, timeoutSeconds, check } = poll;
+  const deadlineMs = Date.now() + timeoutSeconds * MS_PER_SECOND;
+  const found = await pollUntil({ check, deadlineMs });
+  if (found === null) throw waitTimeoutError(what, timeoutSeconds);
   return found;
 }
 
@@ -59,7 +57,7 @@ async function waitForFile(input: WaitInput & { kind: WaitFileKind }): Promise<T
     const exists = await files.exists(file);
     return exists ? { ok: true as const, task: id, file } : null;
   };
-  return pollUntil({ what: file, timeoutSeconds, check });
+  return pollOrTimeout({ what: file, timeoutSeconds, check });
 }
 
 /** The moment this process started: a file written after it counts as a change of the wait. */
@@ -76,7 +74,7 @@ async function waitForRound(input: WaitInput): Promise<WaitRoundResult> {
   const taskWorktree = await worktrees.get(id);
   const dir = tenboxDir(taskWorktree);
   const check = () => findChange({ id, dir, since });
-  return pollUntil({ what: roundsDir(dir), timeoutSeconds, check });
+  return pollOrTimeout({ what: roundsDir(dir), timeoutSeconds, check });
 }
 
 /** The file exists and was modified at or after `since`. */

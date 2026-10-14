@@ -68,6 +68,26 @@ async function readBuild(): Promise<Json | null> {
   return parseObject(text);
 }
 
+/** Rewrites the deadline of the card in `build.json` to `ms` from now. */
+async function setDeadline(ms: number): Promise<string> {
+  const build = await readBuild();
+  const deadline = new Date(Date.now() + ms).toISOString();
+  await files.writeJson(path.join(tenboxDir(), "build.json"), { ...build, deadline });
+  return deadline;
+}
+
+/** The text of `name` once it contains `part`; checks every 100 ms for up to 10 s. */
+async function waitForText(name: string, part: string): Promise<string> {
+  const POLLS = 100;
+  const POLL_MS = 100;
+  for (let i = 0; i < POLLS; i++) {
+    const text = await readText(name);
+    if (text.includes(part)) return text;
+    await Bun.sleep(POLL_MS);
+  }
+  return readText(name);
+}
+
 describe("tenbox answer", () => {
   afterEach(async () => {
     await project.remove();
@@ -157,5 +177,87 @@ describe("tenbox answer", () => {
     await writeBuildRun();
     const answered = await run("answer", "T-1", option);
     expect([answered.code, answered.json.code]).toEqual([USAGE_EXIT, "usage"]);
+  });
+});
+
+describe("tenbox answer --auto", () => {
+  const SOON_MS = 1500;
+  const LATER_MS = 3000;
+  const CHANGE_AFTER_MS = 1000;
+  const NEW_DEADLINE_MS = 60_000;
+
+  afterEach(async () => {
+    await project.remove();
+  });
+
+  test("after the deadline it answers with the recommended option and notes auto", async () => {
+    await setup();
+    await writeBuildRun();
+    const deadline = await setDeadline(SOON_MS);
+    const answered = await run("answer", "T-1", "--auto");
+    expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(deadline));
+    expect([answered.code, answered.json]).toEqual([
+      0,
+      { ok: true, task: "T-1", state: "answered", option: 1, run: RUN_ID, session: SESSION },
+    ]);
+    const decisions = await readText("decisions.md");
+    expect(decisions).toContain("Which store? Answer: 1. files (auto: no answer in 30 min)");
+    const build = await readBuild();
+    expect(build?.answered).toMatchObject({ option: 1, auto: true });
+    const calls = await fake.calls();
+    expect(calls.at(-1)?.args.slice(0, 3)).toEqual(["--bg", "--resume", SESSION]);
+  });
+
+  test("a card with auto false is skipped and nothing changes", async () => {
+    await setup({ ...needsYou, decision: { ...card, auto: false } });
+    await writeBuildRun();
+    const answered = await run("answer", "T-1", "--auto");
+    expect([answered.code, answered.json]).toEqual([
+      0,
+      { ok: true, task: "T-1", state: "skipped" },
+    ]);
+    const decisions = await readText("decisions.md");
+    const build = await readBuild();
+    expect(decisions).toBe("");
+    expect(build?.answered).toBeUndefined();
+  });
+
+  test("an answered card is skipped and keeps its answer", async () => {
+    await setup();
+    await writeBuildRun();
+    await run("answer", "T-1", "2");
+    const answered = await run("answer", "T-1", "--auto");
+    expect([answered.code, answered.json.state]).toEqual([0, "skipped"]);
+    const build = await readBuild();
+    expect(build?.answered).toMatchObject({ option: 2, auto: false });
+  });
+
+  test("a card whose deadline changes while it waits is skipped", async () => {
+    await setup();
+    await writeBuildRun();
+    await setDeadline(LATER_MS);
+    const waiting = run("answer", "T-1", "--auto");
+    await Bun.sleep(CHANGE_AFTER_MS);
+    await setDeadline(NEW_DEADLINE_MS);
+    const answered = await waiting;
+    expect([answered.code, answered.json.state]).toEqual([0, "skipped"]);
+    const build = await readBuild();
+    expect(build?.answered).toBeUndefined();
+  });
+
+  test("build done with an auto card starts the timer in the background", async () => {
+    await setup();
+    await writeBuildRun();
+    const started = await waitForText("auto-answer.log", "tenbox answer T-1 --auto");
+    expect(started).toContain("tenbox answer T-1 --auto");
+    await run("answer", "T-1", "2");
+    const log = await waitForText("auto-answer.log", '"state": "skipped"');
+    expect(log).toContain('"state": "skipped"');
+  });
+
+  test("build done without auto starts no timer", async () => {
+    await setup({ ...needsYou, decision: { ...card, auto: false } });
+    const log = await readText("auto-answer.log");
+    expect(log).toBe("");
   });
 });
