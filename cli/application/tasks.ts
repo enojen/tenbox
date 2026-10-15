@@ -13,7 +13,7 @@ import {
   tenboxDir,
 } from "../../domain/task.ts";
 import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
-import { type FailedState, failedState } from "../../domain/utils.ts";
+import { failedState } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 interface TaskSource {
@@ -28,8 +28,8 @@ const UNTRACKED_STATUS = "todo";
 /** The tracker step when Tenbox does not change the status. */
 const STATUS_SKIPPED = "skipped";
 
-/** What the tracker step did: the status set, skipped, or why it failed. */
-export type StatusUpdate = TaskStatus | typeof STATUS_SKIPPED | FailedState;
+/** The real status name the tracker set, `skipped` or `failed: <reason>`. */
+export type StatusUpdate = string;
 
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
 export const tasks = { get, find, ensureFiles, updateStatus };
@@ -78,8 +78,7 @@ async function updateStatus(
 ): Promise<StatusUpdate> {
   if (source.title || tracker.kind === TRACKER_KIND.none) return STATUS_SKIPPED;
   try {
-    await tracker.updateStatus(source.id, status);
-    return status;
+    return await tracker.updateStatus(source.id, status);
   } catch (e) {
     return failedState(e);
   }

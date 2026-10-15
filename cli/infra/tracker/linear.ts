@@ -106,7 +106,7 @@ function toTrackerTask(issue: Issue): TrackerTask {
   };
 }
 
-async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Promise<void> {
+async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Promise<string> {
   const issue = await fetchIssue(endpoint, change.id);
   const state = pickState(issue.team.states.nodes, change.status);
   if (!state) {
@@ -119,6 +119,7 @@ async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Prom
     variables: { id: issue.id, stateId: state.id },
     data: z.unknown(),
   });
+  return state.name;
 }
 
 async function commentOnIssue(endpoint: Endpoint, comment: CommentRequest): Promise<void> {

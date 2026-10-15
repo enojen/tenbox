@@ -29,6 +29,7 @@ export interface CommentRequest {
 export interface Tracker {
   readonly kind: TrackerKind;
   getTask(id: string): Promise<TrackerTask>;
-  updateStatus(id: string, status: TaskStatus): Promise<void>;
+  /** Sets the status and returns the name of the status the tracker now shows. */
+  updateStatus(id: string, status: TaskStatus): Promise<string>;
   comment(request: CommentRequest): Promise<void>;
 }

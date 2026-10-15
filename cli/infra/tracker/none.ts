@@ -9,7 +9,7 @@ export const noneTracker: Tracker = {
     return Promise.reject(noTrackerError(id));
   },
   updateStatus() {
-    return Promise.resolve();
+    return Promise.resolve("");
   },
   comment() {
     return Promise.resolve();

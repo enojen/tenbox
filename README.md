@@ -259,10 +259,11 @@ Layers, later ones win: `tenbox.yaml` (task worktree, else main checkout), then
 `linear`: `tenbox start` reads the issue over Linear's GraphQL API and sets it to in
 progress; `tenbox close` sets it to done.
 `clickup`: the same over ClickUp's REST API v2, with the native task id (custom task ids such
-as `WAG-12` are not supported). The statuses differ per list. In progress is the first
-`custom` status of the task's list, done is its `closed` status. A project can name them with
-`tracker.statuses` (`in_progress`, `done`; matched ignoring case); a name the list lacks is an
-error that lists the list's statuses.
+as `WAG-12` are not supported). The statuses differ per list. In progress is the status named "in progress" and done is the
+one named "done" (ignoring case). A project can name them with `tracker.statuses`
+(`in_progress`, `done`). A name the list lacks is an error that lists the list's statuses and
+shows the setting. `tenbox start` and `tenbox close` print the real status name in `status`
+(or `skipped`, or `failed: <reason>`).
 
 ## Repository layout
 

@@ -10,21 +10,31 @@ const statuses: ClickupStatus[] = [
 ];
 
 describe("pickStatus", () => {
-  test("in progress is the custom status with the lowest orderindex", () => {
-    expect(pickStatus({ statuses, status: "in_progress", names: {}, listId: LIST_ID })).toBe(
-      "In Progress",
+  test("in progress is the status named in progress, not the first custom one", () => {
+    const todoFirst: ClickupStatus[] = [
+      { status: "to do", type: "custom", orderindex: 1 },
+      ...statuses,
+    ];
+    expect(
+      pickStatus({ statuses: todoFirst, status: "in_progress", names: {}, listId: LIST_ID }),
+    ).toBe("In Progress");
+  });
+  test("done is the status named done, ignoring case", () => {
+    const withDone: ClickupStatus[] = [
+      ...statuses,
+      { status: "DONE", type: "closed", orderindex: 5 },
+    ];
+    expect(pickStatus({ statuses: withDone, status: "done", names: {}, listId: LIST_ID })).toBe(
+      "DONE",
     );
   });
-  test("done is the closed status", () => {
-    expect(pickStatus({ statuses, status: "done", names: {}, listId: LIST_ID })).toBe("Complete");
+  test("without a matching name it lists the statuses and shows the setting", () => {
+    const pick = () => pickStatus({ statuses, status: "done", names: {}, listId: LIST_ID });
+    expect(pick).toThrow(
+      'ClickUp: no status "done" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { done: "<status name>" }',
+    );
   });
-  test("a list without a custom status gives no in progress status", () => {
-    const plain = statuses.filter((s) => s.type !== "custom");
-    const pick = () =>
-      pickStatus({ statuses: plain, status: "in_progress", names: {}, listId: LIST_ID });
-    expect(pick).toThrow(/no in_progress status in list 901/);
-  });
-  test("a configured name wins over the type rule, ignoring case", () => {
+  test("a configured name wins over the default name, ignoring case", () => {
     const names = { in_progress: "In Review" };
     expect(pickStatus({ statuses, status: "in_progress", names, listId: LIST_ID })).toBe(
       "In Review",
@@ -34,7 +44,7 @@ describe("pickStatus", () => {
     const names = { done: "doing" };
     const pick = () => pickStatus({ statuses, status: "done", names, listId: LIST_ID });
     expect(pick).toThrow(
-      'ClickUp: no status "doing" in list 901; it has: Open, In Progress, In Review, Complete',
+      'ClickUp: no status "doing" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { done: "<status name>" }',
     );
   });
 });
@@ -75,5 +85,32 @@ describe("clickup comment", () => {
         body: '{"comment_text":"5 min, 1k tokens, 2 rounds"}',
       },
     ]);
+  });
+});
+
+describe("clickup updateStatus", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+  test("returns the real status name it set", async () => {
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request) => {
+        const path = String(url);
+        if (path.includes("/list/")) return Response.json({ statuses });
+        return Response.json({
+          id: "abc",
+          name: "t",
+          markdown_description: null,
+          url: "u",
+          status: { status: "Open" },
+          list: { id: LIST_ID },
+        });
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
+    const name = await tracker.updateStatus("abc", "in_progress");
+    expect(name).toBe("In Progress");
   });
 });

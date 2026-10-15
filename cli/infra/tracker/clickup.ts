@@ -4,12 +4,13 @@ import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../dom
 import {
   type CommentRequest,
   type StatusChange,
-  TASK_STATUS,
   type TaskStatus,
   type Tracker,
   type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
+
+const DEFAULT_NAMES = { in_progress: "in progress", done: "done" } as const;
 
 const API = "https://api.clickup.com/api/v2";
 
@@ -90,7 +91,7 @@ function toTrackerTask(task: Task): TrackerTask {
   };
 }
 
-async function setStatus(connection: Connection, change: StatusChange): Promise<void> {
+async function setStatus(connection: Connection, change: StatusChange): Promise<string> {
   const task = await fetchTask(connection, change.id);
   const listId = task.list.id;
   const list = await http.get({
@@ -108,6 +109,7 @@ async function setStatus(connection: Connection, change: StatusChange): Promise<
     body: { status },
     schema: z.unknown(),
   });
+  return status;
 }
 
 async function addComment(connection: Connection, request: CommentRequest): Promise<void> {
@@ -118,22 +120,14 @@ async function addComment(connection: Connection, request: CommentRequest): Prom
   });
 }
 
-/** The list status to set: the configured name, else the first custom or the closed one. */
+/** The list status to set: the configured name, else the one named "in progress" or "done". */
 export function pickStatus(choice: StatusChoice): string {
   const sorted = [...choice.statuses].sort((a, b) => a.orderindex - b.orderindex);
-  const name = choice.names[choice.status];
-  if (name) return pickNamed(sorted, name, choice.listId);
-  const wantedType = choice.status === TASK_STATUS.done ? "closed" : "custom";
-  const found = sorted.find((s) => s.type === wantedType);
-  if (!found) {
-    throw trackerError(`ClickUp: no ${choice.status} status in list ${choice.listId}`);
-  }
-  return found.status;
-}
-
-function pickNamed(sorted: ClickupStatus[], name: string, listId: string): string {
+  const name = choice.names[choice.status] ?? DEFAULT_NAMES[choice.status];
   const found = sorted.find((s) => s.status.toLowerCase() === name.toLowerCase());
   if (found) return found.status;
   const has = sorted.map((s) => s.status).join(", ");
-  throw trackerError(`ClickUp: no status "${name}" in list ${listId}; it has: ${has}`);
+  const setting = `{ ${choice.status}: "<status name>" }`;
+  const message = `ClickUp: no status "${name}" in list ${choice.listId}; it has: ${has}`;
+  throw trackerError(`${message}; set tracker.statuses, for example ${setting}`);
 }
