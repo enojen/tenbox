@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
 import { CARD_KIND } from "../../domain/build.ts";
+import type { Group } from "../../domain/group.ts";
 
 const WORKFLOW = path.join(import.meta.dir, "..", "..", "workflows", "tenbox-build.js");
 const WORKER_ROLE = path.join(import.meta.dir, "..", "..", "agents", "worker.md");
@@ -19,6 +20,8 @@ interface AgentOptions {
   agentType: string;
   label: string;
   schema?: ReviewerSchema;
+  model?: string;
+  effort?: string;
 }
 
 type ScriptedAgent = (prompt: string, options: AgentOptions) => Promise<unknown>;
@@ -518,4 +521,190 @@ test("a planner with no part still gets one check before the review", async () =
   const { order, result } = await runPartChecks([], []);
   expect(order).toEqual(["tenbox check TB-1"]);
   expect(result.status).toBe("ready-for-you");
+});
+
+interface GroupCall extends AgentOptions {
+  prompt: string;
+}
+
+interface GroupRunOptions {
+  groups: Group[];
+  blockedPart?: string;
+  redGroup?: number;
+}
+
+interface GroupRun {
+  result: Awaited<ReturnType<typeof runWorkflow>>;
+  calls: GroupCall[];
+  events: string[];
+}
+
+const GROUP_PREFIX = /: g(\d+) /;
+const groupOf = (label: string): number => Number(label.match(GROUP_PREFIX)?.[1] ?? 0);
+const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
+
+const groupFor = (id: number, parts: string[], needs: number[] = []): Group => ({
+  id,
+  name: `feat: group ${id}`,
+  parts,
+  needs,
+  recipe: { model: "sonnet", effort: "medium", lenses: [], tier: "full" },
+});
+
+const plannerReply = (options: GroupRunOptions, group: Group | undefined): unknown => {
+  if (!group) return { parts: [], lenses: [], groups: options.groups };
+  return { parts: group.parts.map((id) => ({ id, goal: "g", difficulty: "easy" })), lenses: [] };
+};
+
+const workerReply = (options: GroupRunOptions, label: string): unknown => {
+  const blocked = label.endsWith(` ${options.blockedPart}`);
+  if (blocked) return { status: "blocked", proofs: [], decision: decisionCard };
+  return { status: "done", proofs: [] };
+};
+
+const runnerReply = (
+  options: GroupRunOptions,
+  group: Group | undefined,
+  prompt: string,
+): unknown => {
+  if (prompt.includes("tenbox worktree")) {
+    return { ok: true, worktree: `/wt/TB-1-${group?.id}`, branch: `feat/TB-1-${group?.id}` };
+  }
+  if (!prompt.includes("tenbox check")) return { ok: true, file: "f" };
+  if (group?.id === options.redGroup) return { ok: false, summary: "lint: 1 new failure" };
+  return { ok: true, commit: "c", file: "f", round: 1 };
+};
+
+/** A grouped run: reviewers answer after a delay; `events` are `start <label>` and `end <label>` in time order. */
+async function runGroups(options: GroupRunOptions): Promise<GroupRun> {
+  const calls: GroupCall[] = [];
+  const events: string[] = [];
+  const reply = async (prompt: string, agentOptions: AgentOptions): Promise<unknown> => {
+    const group = options.groups.find((g) => g.id === groupOf(agentOptions.label));
+    if (agentOptions.agentType === "planner") return plannerReply(options, group);
+    if (agentOptions.agentType === "worker") return workerReply(options, agentOptions.label);
+    if (agentOptions.agentType === "runner") return runnerReply(options, group, prompt);
+    await tick();
+    return cleanReply;
+  };
+  const agent: ScriptedAgent = async (prompt, agentOptions) => {
+    calls.push({ ...agentOptions, prompt });
+    events.push(`start ${agentOptions.label}`);
+    const answer = await reply(prompt, agentOptions);
+    events.push(`end ${agentOptions.label}`);
+    return answer;
+  };
+  const result = await runWorkflow({ task: "TB-1", maxRounds: 1 }, agent);
+  return { result, calls, events };
+}
+
+const labelsOf = (calls: GroupCall[]): string[] => calls.map((call) => call.label);
+
+test("two independent groups build in parallel: group 2's worker starts before group 1's review returns", async () => {
+  const { events, result } = await runGroups({
+    groups: [groupFor(1, ["01"]), groupFor(2, ["02"])],
+  });
+  expect(events).toContain("start round 1: g2 02");
+  expect(events.indexOf("start round 1: g2 02")).toBeLessThan(
+    events.indexOf("end round 1: g1 base"),
+  );
+  expect(result.status).toBe("ready-for-you");
+});
+
+test("a group that needs two groups gets its first worker only after both are ready-for-you", async () => {
+  const { events } = await runGroups({
+    groups: [groupFor(1, ["01"]), groupFor(2, ["02"]), groupFor(3, ["03"], [1, 2])],
+  });
+  const firstWorkerOf3 = events.indexOf("start round 1: g3 03");
+  expect(firstWorkerOf3).toBeGreaterThan(events.indexOf("end round 1: g1 full checks"));
+  expect(firstWorkerOf3).toBeGreaterThan(events.indexOf("end round 1: g2 full checks"));
+  expect(events.indexOf("end round 1: g2 full checks")).toBeGreaterThan(-1);
+});
+
+test("each group opens its worktree, and its workers, checks and reviewers work there", async () => {
+  const { calls } = await runGroups({ groups: [groupFor(1, ["01"]), groupFor(2, ["02"])] });
+  for (const id of [1, 2]) {
+    const own = calls.filter((call) => groupOf(call.label) === id);
+    expect(own.some((call) => call.prompt.includes(`tenbox worktree TB-1 --group ${id}`))).toBe(
+      true,
+    );
+    const checks = own.filter((call) => call.prompt.includes("tenbox check"));
+    for (const check of checks) expect(check.prompt).toContain(`tenbox check TB-1 --group ${id}`);
+    const working = own.filter((call) => ["worker", "reviewer"].includes(call.agentType));
+    expect(working.length).toBe(2);
+    for (const call of working) expect(call.prompt).toContain(`/wt/TB-1-${id}`);
+  }
+});
+
+test("the recipe sets the workers' model and effort, the group's lenses and its check tier", async () => {
+  const group1 = groupFor(1, ["01"]);
+  group1.recipe = { model: "opus", effort: "low", lenses: ["security"], tier: "full" };
+  const group2 = groupFor(2, ["02"]);
+  group2.recipe = { model: "haiku", effort: "high", lenses: [], tier: "fast" };
+  const { calls } = await runGroups({ groups: [group1, group2] });
+  const worker1 = calls.find((call) => call.label === "round 1: g1 01");
+  expect(worker1).toMatchObject({ model: "opus", effort: "low" });
+  const worker2 = calls.find((call) => call.label === "round 1: g2 02");
+  expect(worker2).toMatchObject({ model: "haiku", effort: "high" });
+  const labels = labelsOf(calls);
+  expect(labels).toContain("round 1: g1 security");
+  expect(labels).not.toContain("round 1: g2 security");
+  expect(labels).toContain("round 1: g1 full checks");
+  expect(labels).not.toContain("round 1: g2 full checks");
+});
+
+test("a group that ends needs-you gives needs-you with its part and card, and its dependants start nothing", async () => {
+  const { result, calls } = await runGroups({
+    groups: [groupFor(1, ["01"]), groupFor(2, ["02"], [1])],
+    blockedPart: "01",
+  });
+  expect(result).toMatchObject({
+    status: "needs-you",
+    round: 1,
+    part: "01",
+    decision: decisionCard,
+  });
+  expect(calls.filter((call) => groupOf(call.label) === 2)).toEqual([]);
+});
+
+test("needs-you takes the card of the lowest group that needs you", async () => {
+  const { result } = await runGroups({
+    groups: [groupFor(1, ["01"]), groupFor(2, ["02"])],
+    blockedPart: "02",
+  });
+  expect(result).toMatchObject({ status: "needs-you", part: "02" });
+});
+
+test("a group that fails gives failed with its feedback", async () => {
+  const { result } = await runGroups({
+    groups: [groupFor(1, ["01"]), groupFor(2, ["02"])],
+    redGroup: 2,
+  });
+  expect(result).toMatchObject({ status: "failed", round: 1 });
+  expect(result.feedback).toContain("group 2");
+  expect(result.feedback).toContain("lint: 1 new failure");
+});
+
+test("a plan without groups gives the same agent calls as today", async () => {
+  const labels: string[] = [];
+  const agent: ScriptedAgent = async (_prompt, options) => {
+    labels.push(options.label);
+    if (options.agentType === "planner") {
+      return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [], groups: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType === "runner") return { ok: true, commit: "c", file: "f", round: 1 };
+    return cleanReply;
+  };
+  const result = await runWorkflow("TB-1", agent);
+  expect(result.status).toBe("ready-for-you");
+  expect(labels).toEqual([
+    "approval",
+    "round 1: parts",
+    "round 1: 01",
+    "round 1: 01 check",
+    "round 1: base",
+    "round 1: full checks",
+    "record build",
+  ]);
 });

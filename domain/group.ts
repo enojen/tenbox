@@ -24,7 +24,7 @@ export const GroupSchema = z.object({
   recipe: RecipeSchema,
 });
 
-type Group = z.infer<typeof GroupSchema>;
+export type Group = z.infer<typeof GroupSchema>;
 
 /** One part as one group holds it. */
 interface GroupedPart {

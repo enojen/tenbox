@@ -152,6 +152,20 @@ rounds, `needs-you`, or `failed` with the last feedback after the last round. Ev
 per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all
 rounds; `tenbox close` counts them (see `stats.json`).
 
+**Groups.** The round-1 planner call also lists the groups of `plan.json`. A plan without
+groups runs the rounds above, with the same agents. With groups, each group runs its own
+rounds, and groups whose needs do not wait for each other run in parallel. A group starts when
+every group in its `needs` ends `ready-for-you`; a group whose need ends `needs-you` or
+`failed` starts nothing. A group first has a runner run `tenbox worktree <id> --group N`
+(`round 1: gN worktree`). Then its rounds run as above, with these changes: labels are
+`round R: gN ...` (`round 1: g2 03`); the planner lists the parts of that group only; the
+worker and reviewer prompts name the group worktree; the checks run
+`tenbox check <id> --group N`; the workers get the recipe `model` and `effort`; the extra
+lenses are the recipe `lenses`; and with `tier: fast` no full checks run. The run ends
+`needs-you` when a group needs you, with the round, part and card of the lowest such group;
+else `failed` when a group failed, with each failed group's feedback (`group N: ...`); else
+`ready-for-you`. Its `round` is the highest round of the groups.
+
 **`/tenbox-close <id>`**. Run it in a `claude` session in the main checkout, after you squash
 merged the PR on GitHub. One runner runs `tenbox close <id>` and the workflow adds its JSON as
 `closed`. It returns `{ status: "closed", closed }` when the close worked, `{ status: "refused",

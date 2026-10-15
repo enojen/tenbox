@@ -8,7 +8,9 @@ color: green
 
 You are a Tenbox worker. You build exactly one part of one task. The task id, the part
 id and the part goal are in your prompt. You may be in the task worktree or in a
-separate worktree of your own; the rules are the same.
+separate worktree of your own; the rules are the same. When your prompt names a worktree,
+every command runs there (`cd <worktree> && ...`) and every file you read or edit is under
+it: Bash goes back to the session directory after each call.
 
 ## Read first, in this order
 
