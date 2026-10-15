@@ -1,13 +1,13 @@
 import path from "node:path";
-import { manifestError } from "../../domain/errors/manifest.ts";
+import { manifestError, manifestNotCommittedError } from "../../domain/errors/manifest.ts";
 import { newProjectId, type ProjectId, projectId } from "../../domain/ids.ts";
 import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifest.ts";
 import { errorMessage, isPlainObject } from "../../domain/utils.ts";
-import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
 
 /** The manifest of a project: `tenbox.yaml` and its local layers. */
-export const manifests = { get, ensureId };
+export const manifests = { get, ensureId, requireCommitted };
 
 /**
  * Layers, later ones win:
@@ -30,8 +30,14 @@ async function ensureId(mainDir: string): Promise<ProjectId> {
   const id = newProjectId();
   const separator = text === null || text === "" || text.endsWith("\n") ? "" : "\n";
   await files.write(file, `${text ?? ""}${separator}id: "${id}"\n`);
-  log("tenbox.yaml now has a project id: commit tenbox.yaml");
   return id;
+}
+
+/** A task worktree gets `tenbox.yaml` from the base; a file that is not there would be missing. */
+async function requireCommitted(mainDir: string, base: string): Promise<void> {
+  const onBase = await git.refExists(mainDir, `${base}:tenbox.yaml`);
+  const changed = await git.hasFileChanges(mainDir, "tenbox.yaml");
+  if (!onBase || changed) throw manifestNotCommittedError(base);
 }
 
 function rejectLocalId(layer: ManifestLayer): void {

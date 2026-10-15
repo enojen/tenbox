@@ -28,6 +28,7 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const { project, manifest } = await projects.get(env().cwd);
   const projectId = await manifests.ensureId(project.mainDir);
   const base = input.base ?? manifest.base;
+  await manifests.requireCommitted(project.mainDir, base);
   const tracker = makeTracker(manifest.tracker);
   const task = await tasks.get(input, tracker);
   const taskWorktree = taskWorktreeDir(env().wtRoot, project.name, id);

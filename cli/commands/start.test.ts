@@ -30,8 +30,13 @@ async function readSettings(): Promise<Record<string, unknown>> {
   return JSON.parse(text ?? "null");
 }
 
-async function setup(manifest: string): Promise<void> {
+/** A committed manifest; `id: false` commits one without a project id, so start has to write it. */
+async function setup(manifest: string, id = true): Promise<void> {
   project = await makeTempProject({ "tenbox.yaml": manifest });
+  if (!id) {
+    await files.write(path.join(project.mainDir, "tenbox.yaml"), manifest);
+    await git.run(["commit", "-q", "-am", "no id"], project.mainDir);
+  }
   taskWorktree = path.join(project.wtRoot, "demo", "T-1");
   startCwd = process.cwd();
   process.chdir(project.mainDir);
@@ -185,8 +190,6 @@ test("invalid settings.local.json fails with code settings naming the file", asy
   });
 });
 
-const COMMIT_MESSAGE = "commit tenbox.yaml";
-
 async function startCapturingStderr(extra: Partial<StartInput> = {}): Promise<string> {
   let captured = "";
   const spy = spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
@@ -201,18 +204,51 @@ async function startCapturingStderr(extra: Partial<StartInput> = {}): Promise<st
   return captured;
 }
 
-test("the first start writes the project id and says to commit; the second changes nothing", async () => {
+const NOT_COMMITTED = "commit tenbox.yaml on main";
+
+test("a tenbox.yaml without an id gets one, start stops, and works after the commit", async () => {
   const before = "# keep me\nproject: demo\n";
-  await setup(before);
+  await setup(before, false);
   const yamlPath = path.join(project.mainDir, "tenbox.yaml");
-  const first = await startCapturingStderr();
+  await expect(startTask(input({ setup: false }))).rejects.toMatchObject({
+    code: "manifest-not-committed",
+    message: expect.stringContaining(NOT_COMMITTED),
+  });
   const written = await files.read(yamlPath);
+  const created = await files.isDir(taskWorktree);
   expect(written).toMatch(/^# keep me\nproject: demo\nid: "[a-z0-9]{6}"\n$/);
-  expect(first).toContain(COMMIT_MESSAGE);
+  expect(created).toBe(false);
+  await git.run(["commit", "-q", "-am", "id"], project.mainDir);
   const second = await startCapturingStderr({ id: taskId("T-2") });
   const after = await files.read(yamlPath);
   expect(after).toBe(written);
-  expect(second).not.toContain(COMMIT_MESSAGE);
+  expect(second).not.toContain("commit tenbox.yaml");
+});
+
+test("an untracked tenbox.yaml stops start before the worktree", async () => {
+  await setup("project: demo\nid: k7f3qa\n");
+  await git.run(["rm", "-q", "--cached", "tenbox.yaml"], project.mainDir);
+  await git.run(["commit", "-q", "-m", "untrack"], project.mainDir);
+  await expect(startTask(input({ setup: false }))).rejects.toMatchObject({
+    code: "manifest-not-committed",
+    message: expect.stringContaining(NOT_COMMITTED),
+  });
+  const created = await files.isDir(taskWorktree);
+  expect(created).toBe(false);
+});
+
+test("a modified tenbox.yaml stops start before the worktree", async () => {
+  await setup("project: demo\nid: k7f3qa\n");
+  await files.write(
+    path.join(project.mainDir, "tenbox.yaml"),
+    "project: demo\nid: k7f3qa\nbase: main\n",
+  );
+  await expect(startTask(input({ setup: false }))).rejects.toMatchObject({
+    code: "manifest-not-committed",
+    message: expect.stringContaining(NOT_COMMITTED),
+  });
+  const created = await files.isDir(taskWorktree);
+  expect(created).toBe(false);
 });
 
 test("start keeps a tenbox.yaml that already has an id", async () => {
@@ -221,7 +257,7 @@ test("start keeps a tenbox.yaml that already has an id", async () => {
   const stderr = await startCapturingStderr();
   const text = await files.read(path.join(project.mainDir, "tenbox.yaml"));
   expect(text).toBe(before);
-  expect(stderr).not.toContain(COMMIT_MESSAGE);
+  expect(stderr).not.toContain("commit tenbox.yaml");
 });
 
 const TASK_DIR_SUBS = ["parts", "rounds"];

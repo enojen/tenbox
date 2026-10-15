@@ -21,6 +21,8 @@ export interface TempProject {
 }
 
 const PROJECT = "demo";
+const MANIFEST = "tenbox.yaml";
+const PROJECT_ID = "k7f3qa";
 const MAIN_BRANCH = "main";
 const GIT_AUTHOR = "tenbox-test";
 const GIT_EMAIL = "tenbox-test@example.com";
@@ -82,10 +84,17 @@ function applyEnv(values: EnvValues): void {
   }
 }
 
+/** `tenbox start` needs a committed `id:`; a manifest without one gets it here. */
+function withProjectId(text: string): string {
+  if (/^id:/m.test(text) || text.trimStart().startsWith("{")) return text;
+  const separator = text === "" || text.endsWith("\n") ? "" : "\n";
+  return `${text}${separator}id: ${PROJECT_ID}\n`;
+}
+
 async function initRepo(mainDir: string, projectFiles: ProjectFiles): Promise<void> {
   await files.mkdir(mainDir);
   for (const [name, text] of Object.entries(projectFiles)) {
-    await files.write(path.join(mainDir, name), text);
+    await files.write(path.join(mainDir, name), name === MANIFEST ? withProjectId(text) : text);
   }
   await git.run(["init", "-q", "-b", MAIN_BRANCH], mainDir);
   await git.run(["add", "-A"], mainDir);

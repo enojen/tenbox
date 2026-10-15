@@ -26,7 +26,8 @@ test("a local layer with an id fails: the id belongs in tenbox.yaml", async () =
 
 test("ensureId appends the id line and keeps every other byte", async () => {
   const before = "# my project\nproject: demo\nchecks:\n  unit: 'bun test'\n";
-  project = await makeTempProject({ "tenbox.yaml": before });
+  project = await makeTempProject({});
+  await files.write(yamlPath(), before);
   const id = await manifests.ensureId(project.mainDir);
   expect(id).toMatch(/^[a-z0-9]{6}$/);
   const text = await files.read(yamlPath());
@@ -34,7 +35,8 @@ test("ensureId appends the id line and keeps every other byte", async () => {
 });
 
 test("ensureId adds a newline when the file does not end with one", async () => {
-  project = await makeTempProject({ "tenbox.yaml": "project: demo" });
+  project = await makeTempProject({});
+  await files.write(yamlPath(), "project: demo");
   const id = await manifests.ensureId(project.mainDir);
   const text = await files.read(yamlPath());
   expect(text).toBe(`project: demo\nid: "${id}"\n`);

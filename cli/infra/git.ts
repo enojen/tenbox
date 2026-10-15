@@ -44,6 +44,7 @@ export const git = {
   addDetachedWorktree,
   merge,
   ensureExcludes,
+  hasFileChanges,
 };
 
 const GIT_LOCALE = "C";
@@ -261,4 +262,10 @@ async function ensureExcludes(commonDir: string, patterns: readonly string[]): P
   const separator = current === "" || current.endsWith("\n") ? "" : "\n";
   await files.write(file, `${current}${separator}${added.join("\n")}\n`);
   return added;
+}
+
+/** Modified, staged or untracked: any change to `file` in the working tree. */
+async function hasFileChanges(dir: string, file: string): Promise<boolean> {
+  const status = await run(["status", "--porcelain", "--", file], dir);
+  return status !== "";
 }
