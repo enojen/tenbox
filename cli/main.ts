@@ -29,6 +29,7 @@ import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
 import { showStats } from "./commands/stats.ts";
 import { isWaitKind, waitFor } from "./commands/wait.ts";
+import { ensureGroupWorktree } from "./commands/worktree.ts";
 import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 
@@ -39,7 +40,8 @@ interface Command extends ArgSpec {
 const START_USAGE =
   'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-claude]';
 const CHECK_USAGE =
-  "tenbox check <id> [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
+  "tenbox check <id> [--group N] [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
+const WORKTREE_USAGE = "tenbox worktree <id> --group N";
 const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
@@ -86,6 +88,7 @@ const COMMANDS: Record<string, Command> = {
   check: {
     usage: CHECK_USAGE,
     options: {
+      group: { type: "string" },
       tier: { type: "string" },
       round: { type: "string" },
       base: { type: "string" },
@@ -94,11 +97,21 @@ const COMMANDS: Record<string, Command> = {
     run: (positionals, values) =>
       runChecks({
         id: idArg(positionals, CHECK_USAGE),
+        group: intValue(values, "group"),
         round: intValue(values, "round"),
         tier: tierValue(values),
         base: stringValue(values, "base"),
         timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
       }),
+  },
+  worktree: {
+    usage: WORKTREE_USAGE,
+    options: { group: { type: "string" } },
+    run: (positionals, values) => {
+      const group = intValue(values, "group");
+      if (group === undefined) throw usageError(`usage: ${WORKTREE_USAGE}`);
+      return ensureGroupWorktree({ id: idArg(positionals, WORKTREE_USAGE), group });
+    },
   },
   "merge-check": {
     usage: MERGE_CHECK_USAGE,

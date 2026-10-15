@@ -138,3 +138,19 @@ export function noRunError(id: string): TenboxError {
     "no-run",
   );
 }
+
+export function unknownGroupError(id: string, group: number): TenboxError {
+  return new TenboxError(`the plan of ${id} has no group ${group}`, "unknown-group");
+}
+
+export function groupMergeConflictError(
+  branch: string,
+  needs: string[],
+  files: string[],
+): TenboxError {
+  return new TenboxError(
+    `merging ${needs.join(", ")} into ${branch} conflicts: ${files.join(", ")}`,
+    "merge-conflict",
+    { branch, needs, files },
+  );
+}

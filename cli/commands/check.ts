@@ -11,12 +11,14 @@ import {
   checksFile,
   checksFullFile,
   currentRound,
+  groupDir,
   nextRound,
   roundDir,
   roundsDir,
   tenboxDir,
 } from "../../domain/task.ts";
 import { checks } from "../application/checks.ts";
+import { groups } from "../application/groups.ts";
 import { manifests } from "../application/manifests.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { projects } from "../application/projects.ts";
@@ -28,6 +30,7 @@ import type { CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {
   id: TaskId;
+  group: number | undefined;
   round: number | undefined;
   tier: CheckTier;
   /** Default: the manifest's `base`. */
@@ -42,6 +45,7 @@ interface Round {
   dir: string;
   tier: CheckTier;
   taskWorktree: string;
+  cwd: string;
   project: Project;
   checks: Record<string, string>;
   pattern: string;
@@ -112,9 +116,19 @@ async function prepareRound(input: CheckInput): Promise<Round> {
   const taskWorktree = await worktrees.get(input.id);
   const { project, manifest } = await projects.get(taskWorktree);
   const base = input.base ?? manifest.base;
+  const group = input.group ?? 1;
+  const { worktree: cwd } = await groups.ensure({
+    id: input.id,
+    group,
+    project,
+    manifest,
+    taskWorktree,
+  });
   const setup = await getChecks(project.mainDir, taskWorktree, input.tier);
-  const { number, dir } = await ensureRound(taskWorktree, input);
-  const { head, baseSha } = await getCommits(taskWorktree, base);
+  const roundsRoot =
+    group === 1 ? tenboxDir(taskWorktree) : groupDir(tenboxDir(taskWorktree), group);
+  const { number, dir } = await ensureRound(roundsRoot, input);
+  const { head, baseSha } = await getCommits(cwd, base);
   const timeoutMs = input.timeoutMs;
   return {
     id: input.id,
@@ -122,6 +136,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
     dir,
     tier: input.tier,
     taskWorktree,
+    cwd,
     project,
     ...setup,
     head,
@@ -152,11 +167,11 @@ async function getChecks(
  * The wanted round, else a new one for `fast` and the current one for `full`, which closes a
  * round; creates its `checks/` directory.
  */
-async function ensureRound(taskWorktree: string, input: CheckInput): Promise<RoundDir> {
-  const existing = await files.list(roundsDir(tenboxDir(taskWorktree)));
+async function ensureRound(roundsRoot: string, input: CheckInput): Promise<RoundDir> {
+  const existing = await files.list(roundsDir(roundsRoot));
   const fallback = input.tier === CHECK_TIER.full ? currentRound(existing) : nextRound(existing);
   const number = input.round ?? fallback;
-  const dir = roundDir(tenboxDir(taskWorktree), number);
+  const dir = roundDir(roundsRoot, number);
   await files.mkdir(path.join(dir, "checks"));
   return { number, dir };
 }
@@ -174,12 +189,12 @@ async function getCommits(taskWorktree: string, base: string): Promise<Commits> 
 }
 
 async function runCheck(round: Round, check: NamedCheck): Promise<CheckRun> {
-  const { project, taskWorktree, pattern, baseSha, timeoutMs } = round;
-  const request = { ...check, project, cwd: taskWorktree, pattern, baseSha, timeoutMs };
+  const { project, cwd, pattern, baseSha, timeoutMs } = round;
+  const request = { ...check, project, cwd, pattern, baseSha, timeoutMs };
   const { outcome, output } = await checks.run(request);
   const logFile = path.join(round.dir, "checks", `${check.name}.log`);
   await files.write(logFile, output);
-  return { ...outcome, log: path.relative(taskWorktree, logFile) };
+  return { ...outcome, log: path.relative(round.taskWorktree, logFile) };
 }
 
 function buildResult(input: CheckInput, round: Round, results: CheckRun[]): CheckResult {
@@ -187,7 +202,7 @@ function buildResult(input: CheckInput, round: Round, results: CheckRun[]): Chec
     ok: results.every((r) => r.new_failures.length === 0),
     task: input.id,
     round: round.number,
-    worktree: round.taskWorktree,
+    worktree: round.cwd,
     commit: round.head,
     base: { ref: round.base, sha: round.baseSha },
     checks: results,

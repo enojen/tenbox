@@ -26,6 +26,16 @@ export const planMdFile = (dir: string): string => path.join(dir, "plan.md");
 export const partsDir = (dir: string): string => path.join(dir, "parts");
 /** `rounds/` in a `.tenbox/` folder. */
 export const roundsDir = (dir: string): string => path.join(dir, "rounds");
+/** `groups/<N>` in a `.tenbox/` folder. */
+export const groupDir = (dir: string, group: number): string =>
+  path.join(dir, "groups", String(group));
+/** `group.json` in a group folder. */
+export const groupFile = (dir: string): string => path.join(dir, "group.json");
+export const groupWorktreeDir = (taskWorktree: string, group: number): string =>
+  `${taskWorktree}-${group}`;
+export const groupBranch = (taskBranchName: string, group: number): string =>
+  `${taskBranchName}-${group}`;
+
 /** `checks.json` in a round directory. */
 export const checksFile = (round: string): string => path.join(round, "checks.json");
 /** `checks-full.json` in a round directory: the result of the `full` tier. */

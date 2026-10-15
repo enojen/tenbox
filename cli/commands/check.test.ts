@@ -12,6 +12,7 @@ import { tenbox } from "../test/cli.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { runChecks } from "./check.ts";
+import { ensureGroupWorktree } from "./worktree.ts";
 
 const TIMEOUT_MS = 20_000;
 const MINUTE_MS = 60_000;
@@ -27,6 +28,7 @@ const lines = (...xs: string[]) => xs.map(failureLine);
 const input = (round?: number) => ({
   base: undefined,
   id: taskId("T-1"),
+  group: undefined,
   timeoutMs: TIMEOUT_MS,
   round,
   tier: FAST,
@@ -276,5 +278,67 @@ describe("notifications", () => {
   test("a check with no new failure sends nothing", async () => {
     await runChecks(input());
     expect(ntfy.lines()).toEqual([]);
+  });
+});
+
+describe("runChecks group", () => {
+  const GROUP = 2;
+  const groupRound = (round: number) =>
+    path.join(taskWorktree, ".tenbox", "groups", String(GROUP), "rounds", String(round));
+
+  beforeEach(async () => {
+    await setup({ "tenbox.yaml": manifest() });
+    const group = (id: number) => ({
+      id,
+      name: `feat: group ${id}`,
+      parts: [`0${id}`],
+      needs: [],
+      recipe: { model: "sonnet", effort: "medium", lenses: [], tier: "fast" },
+    });
+    const parts = [1, 2].map((id) => ({ id: `0${id}`, difficulty: "easy" }));
+    const plan = {
+      summary: "s",
+      estimated_lines: 1,
+      parts,
+      criteria: [],
+      lenses: [],
+      questions: [],
+      groups: [group(1), group(GROUP)],
+    };
+    await files.writeJson(path.join(taskWorktree, ".tenbox", "plan.json"), plan);
+  });
+
+  test("runs in the group worktree and writes to the group's own rounds", async () => {
+    const { worktree } = await ensureGroupWorktree({ id: taskId("T-1"), group: GROUP });
+    await files.write(path.join(worktree, "out.txt"), " FAIL  old\n FAIL  only here\n");
+    await git.run(["commit", "-q", "-am", "break"], worktree);
+    const first = await runChecks({ ...input(), group: GROUP });
+    expect(first.ok).toBe(false);
+    expect(first.checks[0]?.new_failures).toEqual(["FAIL  only here"]);
+    expect(first.worktree).toBe(worktree);
+    expect(first.round).toBe(1);
+    expect(first.file).toBe(path.join(".tenbox", "groups", "2", "rounds", "1", "checks.json"));
+    const second = await runChecks({ ...input(), group: GROUP });
+    expect(second.round).toBe(2);
+    const got1 = await files.exists(path.join(groupRound(1), "checks.json"));
+    expect(got1).toBe(true);
+    const got2 = await files.exists(path.join(groupRound(2), "checks.json"));
+    expect(got2).toBe(true);
+    const got3 = await files.exists(path.join(groupRound(1), "checks", "unit.log"));
+    expect(got3).toBe(true);
+    const got4 = await files.list(path.join(taskWorktree, ".tenbox", "rounds"));
+    expect(got4).toEqual([]);
+  });
+
+  test("group 1 is the task: rounds/ as without --group", async () => {
+    const r = await runChecks({ ...input(), group: 1 });
+    expect(r.file).toBe(path.join(".tenbox", "rounds", "1", "checks.json"));
+    expect(r.worktree).toBe(taskWorktree);
+  });
+
+  test("a group the plan does not list is unknown-group", async () => {
+    await expect(runChecks({ ...input(), group: 9 })).rejects.toMatchObject({
+      code: "unknown-group",
+    });
   });
 });

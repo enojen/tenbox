@@ -40,6 +40,15 @@ export interface StartResult {
   claude: SessionStartInfo;
 }
 
+export interface WorktreeResult {
+  ok: true;
+  task: string;
+  group: number;
+  worktree: string;
+  branch: string;
+  created: boolean;
+}
+
 export type SessionState = SessionStopState | FailedState;
 
 interface SessionStopInfo {
