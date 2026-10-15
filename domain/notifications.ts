@@ -1,13 +1,14 @@
 import { BUILD_STATUS, type BuildStatus } from "./build.ts";
 import type { TaskId } from "./ids.ts";
 
-/** What a person must act on: three build statuses and two events. */
+/** What a person must act on: three build statuses and three events. */
 export const NOTIFICATION_STATE = {
   needsYou: BUILD_STATUS.needsYou,
   readyForYou: BUILD_STATUS.readyForYou,
   failed: BUILD_STATUS.failed,
   checkFailed: "check-failed",
   prOpened: "pr-opened",
+  planReady: "plan-ready",
 } as const;
 
 export type NotificationState = (typeof NOTIFICATION_STATE)[keyof typeof NOTIFICATION_STATE];
@@ -33,6 +34,7 @@ const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => st
   [NOTIFICATION_STATE.failed]: (n) => `tenbox attach ${n.id}`,
   [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox attach ${n.id}`,
   [NOTIFICATION_STATE.prOpened]: (n) => `tenbox close ${n.id}`,
+  [NOTIFICATION_STATE.planReady]: (n) => `tenbox approve ${n.id}`,
 };
 
 /** The state of a build end status a person must act on; null for `not-approved`. */

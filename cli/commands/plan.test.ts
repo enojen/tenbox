@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
+import { startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -57,6 +58,29 @@ describe("tenbox plan done", () => {
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
     const written = await files.exists(planJson);
     expect(written).toBe(false);
+  });
+
+  test("a plan sends one plan-ready line with the notify.ntfy URL; a bad plan sends none", async () => {
+    const ntfy = startFakeNtfy();
+    const override = path.join(project.wtRoot, "demo", "T-1", ".tenbox", "override.yaml");
+    await files.write(override, `notify: { ntfy: "${ntfy.url}" }\n`);
+    const open = { kind: "product", text: "q", blocking: false };
+    const blocking = { ...open, blocking: true };
+    const questions = [open, blocking, open];
+    await planDone("--json", "not json");
+    const afterBad = [...ntfy.lines()];
+    const run = await planDone(...withJson({ questions }));
+    const afterGood = [...ntfy.lines()];
+    ntfy.stop();
+    expect([run.code, afterBad]).toEqual([0, []]);
+    expect(afterGood).toEqual([
+      "demo · T-1 · plan-ready · parts 2, open questions 3 (1 blocking) → tenbox approve T-1",
+    ]);
+  });
+
+  test("a plan without notify.ntfy sends nothing and still succeeds", async () => {
+    const run = await planDone(...withJson({}));
+    expect([run.code, run.json.ok]).toEqual([0, true]);
   });
 
   test("a result with groups is written to plan.json", async () => {

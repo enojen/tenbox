@@ -73,9 +73,10 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
 | token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
-| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened (`Notification`). |
+| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready (`Notification`). |
 | check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
+| plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules
