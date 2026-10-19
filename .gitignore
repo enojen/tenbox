@@ -7,6 +7,5 @@ tenbox.local.yaml
 .tenbox/
 .DS_Store
 machines/packer/.build/
-machines/tofu/.build/
 machines/tofu/**/.terraform/
 machines/tofu/**/.terraform.lock.hcl

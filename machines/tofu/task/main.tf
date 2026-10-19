@@ -3,6 +3,15 @@
 
 terraform {
   required_version = ">= 1.8"
+  # The state of one task, tasks/<task>.tfstate in the bucket: machine.sh passes the bucket
+  # and the key at init; the endpoint and the keys come from the AWS_* variables.
+  backend "s3" {
+    skip_credentials_validation = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    skip_metadata_api_check     = true
+    skip_s3_checksum            = true
+  }
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
@@ -28,8 +37,9 @@ data "hcloud_image" "tenbox" {
   most_recent       = true
 }
 
-data "hcloud_ssh_key" "me" {
-  name = var.ssh_key
+data "hcloud_ssh_key" "keys" {
+  for_each = toset(var.ssh_keys)
+  name     = each.value
 }
 
 resource "hcloud_volume" "task" {
@@ -46,22 +56,25 @@ resource "hcloud_server" "task" {
   image       = data.hcloud_image.tenbox.id
   server_type = var.server_type
   location    = var.location
-  ssh_keys    = [data.hcloud_ssh_key.me.id]
+  ssh_keys    = [for key in data.hcloud_ssh_key.keys : key.id]
   labels      = local.labels
+  # A plain delete is a power cut: what the volume got in the last half minute is lost.
+  shutdown_before_deletion = true
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     machine = jsonencode({
-      task      = var.task
-      project   = var.project
-      repo      = var.repo
-      volume    = hcloud_volume.task.id
-      cmd       = var.cmd
-      ntfy      = var.ntfy
-      git_name  = var.git_name
-      git_email = var.git_email
+      task    = var.task
+      project = var.project
+      repo    = var.repo
+      volume  = hcloud_volume.task.id
+      cmd     = var.cmd
+      ntfy    = var.ntfy
+      control = var.control
     })
     github_token       = var.github_token
     claude_credentials = var.claude_credentials
+    tracker_api_key    = var.tracker_api_key
     boot               = file("${path.module}/tenbox-boot.sh")
+    watchdog           = file("${path.module}/../../watchdog/tenbox-watchdog.sh")
   })
 }
 

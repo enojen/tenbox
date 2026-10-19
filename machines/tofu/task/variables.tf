@@ -16,6 +16,7 @@ variable "repo" {
 variable "cmd" {
   description = "The tenbox command the machine runs after boot, in the project's main checkout."
   type        = string
+  default     = ""
 }
 
 variable "up" {
@@ -25,8 +26,9 @@ variable "up" {
 }
 
 variable "server_type" {
-  type    = string
-  default = "cx33"
+  description = "machine.sh tries cx33, cx43 and cx23 in order; hel1 runs out of some."
+  type        = string
+  default     = "cx33"
 }
 
 variable "location" {
@@ -40,24 +42,22 @@ variable "volume_size" {
   default     = 10
 }
 
-variable "ssh_key" {
-  description = "The name of the ssh key in the Hetzner project that may log in as root."
+variable "ssh_keys" {
+  description = "The names of the ssh keys in the Hetzner project that may log in as root: yours and the workflow's."
+  type        = list(string)
+  default     = ["tenzel", "tenbox-machine"]
+}
+
+variable "control" {
+  description = "The GitHub repo whose machine.yml the watchdog calls for down."
   type        = string
-  default     = "tenzel"
+  default     = "enojen/tenbox"
 }
 
 variable "ntfy" {
   description = "The ntfy URL for notifications, empty for none."
   type        = string
   default     = ""
-}
-
-variable "git_name" {
-  type = string
-}
-
-variable "git_email" {
-  type = string
 }
 
 variable "hcloud_token" {
@@ -75,4 +75,11 @@ variable "claude_credentials" {
   description = "The contents of ~/.claude/.credentials.json; Remote Control needs a claude.ai login."
   type        = string
   sensitive   = true
+}
+
+variable "tracker_api_key" {
+  description = "tracker.api_key for the project's tenbox.local.yaml on the machine; empty for none."
+  type        = string
+  sensitive   = true
+  default     = ""
 }

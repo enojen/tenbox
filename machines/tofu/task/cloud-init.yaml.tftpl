@@ -11,6 +11,13 @@ write_files:
   - path: /root/tenbox-secrets/claude-credentials.json
     permissions: "0600"
     content: ${jsonencode(claude_credentials)}
+  - path: /root/tenbox-secrets/tracker-api-key
+    permissions: "0600"
+    content: ${jsonencode(tracker_api_key)}
+  # The current watchdog, over the copy the image was built with.
+  - path: /usr/local/bin/tenbox-watchdog
+    permissions: "0755"
+    content: ${jsonencode(watchdog)}
   - path: /usr/local/bin/tenbox-boot
     permissions: "0755"
     content: ${jsonencode(boot)}

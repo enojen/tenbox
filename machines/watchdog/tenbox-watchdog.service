@@ -1,5 +1,5 @@
 [Unit]
-Description=tenbox watchdog: notices when no claude session works any more
+Description=tenbox watchdog: asks for down when no claude session works any more
 
 [Service]
 Type=oneshot

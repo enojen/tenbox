@@ -11,8 +11,6 @@ repo="$(jq -r .repo "$cfg")"
 volume="$(jq -r .volume "$cfg")"
 cmd="$(jq -r .cmd "$cfg")"
 ntfy="$(jq -r .ntfy "$cfg")"
-git_name="$(jq -r .git_name "$cfg")"
-git_email="$(jq -r .git_email "$cfg")"
 home=/home/tenzel
 secrets=/root/tenbox-secrets
 as_tenzel() { sudo -u tenzel -H "$@"; }
@@ -51,11 +49,13 @@ jq -n --arg main "$main" --arg wt "$worktree" --arg rmain "$real_main" --arg rwt
   > "$home/.claude.json"
 chown tenzel:tenzel "$home/.claude.json"
 
-# gh and git as tenzel.
+# gh and git as tenzel; the git identity is the token's GitHub user.
 as_tenzel gh auth login --with-token < "$secrets/github-token"
 as_tenzel gh auth setup-git
-as_tenzel git config --global user.name "$git_name"
-as_tenzel git config --global user.email "$git_email"
+read -r login id name < <(as_tenzel gh api user --jq '[.login, .id, (.name // .login)] | @tsv')
+as_tenzel git config --global user.name "$name"
+as_tenzel git config --global user.email "$id+$login@users.noreply.github.com"
+tracker_api_key="$(cat "$secrets/tracker-api-key")"
 shred -u "$secrets"/*
 
 # The project: cloned on the first run of this task, kept on the volume after that.
@@ -63,10 +63,16 @@ if [ ! -d "$main/.git" ]; then
   as_tenzel mkdir -p "$(dirname "$main")"
   as_tenzel git clone --quiet "$repo" "$main"
 fi
-if [ -n "$ntfy" ]; then
-  printf 'notify:\n  ntfy: "%s"\n' "$ntfy" > "$main/tenbox.local.yaml"
-  chown tenzel:tenzel "$main/tenbox.local.yaml"
+# The project's local manifest layer: the tracker key and the ntfy URL.
+local_manifest="$main/tenbox.local.yaml"
+rm -f "$local_manifest"
+if [ -n "$tracker_api_key" ]; then
+  printf 'tracker:\n  api_key: "%s"\n' "$tracker_api_key" >> "$local_manifest"
 fi
+if [ -n "$ntfy" ]; then
+  printf 'notify:\n  ntfy: "%s"\n' "$ntfy" >> "$local_manifest"
+fi
+[ ! -f "$local_manifest" ] || chown tenzel:tenzel "$local_manifest"
 (cd "$home/tenbox" && as_tenzel tenbox install > /dev/null)
 
 # The tenbox command, detached from cloud-init so its claude session outlives this script.

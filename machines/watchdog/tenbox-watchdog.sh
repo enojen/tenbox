@@ -1,31 +1,59 @@
 #!/usr/bin/env bash
-# Runs every minute from tenbox-watchdog.timer. Counts the claude sessions of tenzel that
-# still work and logs how long the machine has been idle. Asking the control plane to shut
-# the machine down comes with TEN-421; until then this only logs.
+# Runs every minute from tenbox-watchdog.timer. The machine is busy while the tenbox command
+# of this boot runs, while a tenbox command runs (a long `tenbox check`) or while a claude
+# session works. After IDLE_MINUTES idle it asks the control plane, machine.yml in the
+# control repo, to take the machine down, and asks again every RETRY_MINUTES while it is still
+# here. The machine never deletes itself, so the state in the bucket stays true.
 set -euo pipefail
 
 IDLE_MINUTES="${IDLE_MINUTES:-5}"
+RETRY_MINUTES="${RETRY_MINUTES:-10}"
 state=/run/tenbox-watchdog
 mkdir -p "$state"
 now="$(date +%s)"
+as_tenzel() { sudo -u tenzel -H "$@"; }
+minutes_since() { echo $(( (now - $(cat "$1")) / 60 )); }
 
-if ! sessions="$(sudo -u tenzel -H claude agents --json 2>/dev/null)"; then
-  echo "cannot list sessions; counted as busy"
-  echo "$now" > "$state/last-busy"
-  exit 0
-fi
+busy_reason() {
+  if systemctl is-active --quiet tenbox-run; then
+    echo "the tenbox command of this boot still runs"
+    return
+  fi
+  if pgrep -u tenzel -f /home/tenzel/tenbox/cli/main.ts > /dev/null; then
+    echo "a tenbox command runs"
+    return
+  fi
+  local sessions working
+  if ! sessions="$(as_tenzel claude agents --json 2> /dev/null)"; then
+    echo "cannot list sessions"
+    return
+  fi
+  working="$(printf '%s' "$sessions" | jq '[.[] | select(.status == "busy" or .state == "working")] | length')"
+  if [ "$working" -gt 0 ]; then
+    echo "$working session(s) work"
+  fi
+}
 
-busy="$(printf '%s' "$sessions" | jq '[.[] | select(.status == "busy" or .state == "working")] | length')"
-if [ "$busy" -gt 0 ]; then
+reason="$(busy_reason)"
+if [ -n "$reason" ]; then
   echo "$now" > "$state/last-busy"
-  echo "busy: $busy session(s)"
+  echo "busy: $reason"
   exit 0
 fi
 
 [ -f "$state/last-busy" ] || echo "$now" > "$state/last-busy"
-idle=$(( (now - $(cat "$state/last-busy")) / 60 ))
-if [ "$idle" -ge "$IDLE_MINUTES" ]; then
-  echo "idle for $idle min: ready to go down"
-else
+idle="$(minutes_since "$state/last-busy")"
+if [ "$idle" -lt "$IDLE_MINUTES" ]; then
   echo "idle for $idle min"
+  exit 0
 fi
+if [ -f "$state/down-requested" ] && [ "$(minutes_since "$state/down-requested")" -lt "$RETRY_MINUTES" ]; then
+  echo "idle for $idle min, down requested"
+  exit 0
+fi
+
+control="$(jq -r .control /etc/tenbox-machine.json)"
+task="$(jq -r .task /etc/tenbox-machine.json)"
+as_tenzel gh workflow run machine.yml -R "$control" -f "task=$task" -f cmd=down
+echo "$now" > "$state/down-requested"
+echo "idle for $idle min: asked $control to take the machine down"
