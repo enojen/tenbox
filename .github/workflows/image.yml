@@ -1,0 +1,23 @@
+name: image
+# Every merge to main builds a new machine image (docs/design.md "Machines"); a new server
+# boots from the newest one. Run it by hand to move claude or bun.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+# One build at a time; a second one waits, so the newest snapshot is the newest merge.
+concurrency:
+  group: image
+jobs:
+  image:
+    # Packer works on Hetzner, the runner only waits; MACHINE_RUNNER moves it as in machine.yml.
+    runs-on: ${{ vars.MACHINE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: hashicorp/setup-packer@v3
+      - run: machines/packer/build.sh main
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
