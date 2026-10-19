@@ -3,13 +3,12 @@
 # command given to it runs, while any tenbox command runs (a long `tenbox check`) or while a
 # claude session works. After IDLE_MINUTES idle it asks the control plane, machine.yml in the
 # control repo, to take the machine down, and asks again every RETRY_MINUTES while it is still
-# here. The machine never deletes itself, so the state in the bucket stays true.
+# here. `tenbox-watchdog busy` only prints the busy reason. The machine never deletes itself, so the state in the bucket stays true.
 set -euo pipefail
 
 IDLE_MINUTES="${IDLE_MINUTES:-5}"
 RETRY_MINUTES="${RETRY_MINUTES:-10}"
 state=/run/tenbox-watchdog
-mkdir -p "$state"
 now="$(date +%s)"
 as_tenzel() { sudo -u tenzel -H "$@"; }
 minutes_since() { echo $(( (now - $(cat "$1")) / 60 )); }
@@ -34,6 +33,15 @@ busy_reason() {
   fi
 }
 
+# `tenbox-watchdog busy`: print `busy: <reason>`, nothing when idle. machine.sh down asks
+# this before it deletes the server; it neither asks for down nor writes the state.
+if [ "${1:-}" = busy ]; then
+  reason="$(busy_reason)"
+  [ -z "$reason" ] || echo "busy: $reason"
+  exit 0
+fi
+
+mkdir -p "$state"
 reason="$(busy_reason)"
 if [ -n "$reason" ]; then
   echo "$now" > "$state/last-busy"

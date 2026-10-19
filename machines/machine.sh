@@ -5,7 +5,7 @@
 #   machines/machine.sh <task> start <project> <repo url> [title]  # volume + server, tenbox start
 #   machines/machine.sh <task> build          # tenbox build on the live server, or a new one
 #   machines/machine.sh <task> close [--force] # tenbox close, archive the task dir, destroy all
-#   machines/machine.sh <task> down           # delete the server, keep the volume
+#   machines/machine.sh <task> down           # delete the server unless busy, keep the volume
 #   machines/machine.sh <task> destroy        # delete server, volume and state without close
 #
 # The bucket holds the state, tasks/<task>.tfstate, the facts of the task that every run
@@ -20,6 +20,7 @@
 # TENBOX_BUCKET_ENDPOINT, NTFY_URL, TRACKER_API_KEY, SERVER_TYPES ("cx33 cx43 cx23").
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/busy-answer.sh"
 task="${1:?task id}"
 action="${2:?start | build | close | down | destroy}"
 : "${HCLOUD_TOKEN:?}" "${TENBOX_BUCKET:?}" "${BUCKET_ACCESS_KEY:?}" "${BUCKET_SECRET_KEY:?}" \
@@ -122,6 +123,12 @@ build() {
 
 down() {
   fetch_facts || { echo "task $task has no machine; nothing to take down" >&2; exit 0; }
+  local answer reason
+  ip="$(live_ip)"
+  if [ -n "$ip" ] && answer="$(remote tenbox-watchdog busy 2> /dev/null)" && reason="$(busy_reason "$answer")"; then
+    echo "task $task is busy on $ip: $reason; the server stays"
+    exit 0
+  fi
   apply -var up=false
 }
 

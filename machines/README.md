@@ -89,7 +89,7 @@ the `MACHINE_RUNNER` variable when the hosted minutes are used up. What each com
 |---|---|---|
 | `start` | writes `tasks/<task>.json` (project, repo) | volume + server, `tenbox start <task> [--title ...]` |
 | `build` | reads it | server, `tenbox build <task>` |
-| `down` | reads it | deletes the server |
+| `down` | reads it | asks the live server `tenbox-watchdog busy` over ssh and keeps it while busy (`task <task> is busy on <ip>: <reason>; the server stays`, exit 0); else, or when it cannot be reached, deletes the server |
 | `destroy` | reads it; deletes the state and the facts | deletes server and volume, no archive |
 | `close` | reads it; archives `.tenbox/` from the volume to `archive/<task>-<time>.tar.gz`; deletes the state and the facts | server, `tenbox close <task> [--force]`, waits for it over ssh, then deletes server and volume |
 
@@ -148,6 +148,8 @@ lists a session with `status: busy` or `state: working`, or when `claude agents`
 run. Five idle minutes (`IDLE_MINUTES`) make it run `gh workflow run machine.yml -f
 cmd=down` in the control repo (`control` in `/etc/tenbox-machine.json`), as tenzel with the
 machine's GitHub token; it asks again every ten minutes while the machine is still here.
-The machine never deletes itself, so the state in the bucket stays true. Log:
+`tenbox-watchdog busy` prints `busy: <reason>` and nothing when idle, without asking for down or
+writing the state; `machine.sh down` runs it over ssh so a busy machine is not deleted. `down` keeps the server only when the output starts with `busy: `; any other output (an old watchdog, ssh errors, nothing) counts as idle. The
+machine never deletes itself, so the state in the bucket stays true. Log:
 `journalctl -u tenbox-watchdog`. The image carries a copy of the script; every boot
 overwrites it with the one from `watchdog/`, so a change needs no new image.
