@@ -132,10 +132,24 @@ down() {
   apply -var up=false
 }
 
+# Both destroy runs failed: tell the person, keep the state and the facts for a rerun.
+destroy_left_leftovers() {
+  local project line
+  project="$(jq -r '.project // "unknown"' "$facts")"
+  line="$project · $task · failed · destroy left the volume, the state and the facts → gh workflow run machine.yml -f task=$task -f cmd=destroy"
+  echo "$line" >&2
+  [ -z "${NTFY_URL:-}" ] || curl -sS -f -d "$line" "$NTFY_URL" > /dev/null || true
+  exit 1
+}
+
 # The way out when close fails on the machine: nothing is archived.
 destroy() {
   fetch_facts || { echo "task $task has no machine; nothing to destroy" >&2; exit 0; }
-  tofu destroy -auto-approve -input=false -var-file="$facts"
+  tofu destroy -auto-approve -input=false -var-file="$facts" || {
+    echo "tofu destroy failed; retrying in 60 seconds" >&2
+    sleep 60
+    tofu destroy -auto-approve -input=false -var-file="$facts" || destroy_left_leftovers
+  }
   object DELETE "tasks/$task.json"
   object DELETE "tasks/$task.tfstate"
 }

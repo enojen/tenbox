@@ -110,6 +110,13 @@ or for `destroy`, which deletes server, volume and state without an archive. A s
 shut down before it is deleted (`shutdown_before_deletion`): a plain delete is a power cut,
 and what the volume got in the last half minute is lost.
 
+Both `close` and `destroy` end in the same delete: `tofu destroy` runs again once, 60 seconds
+after a failed first run (Hetzner may still hold a lock on the server). When the second
+run fails too, `destroy` posts `<project> · <task> · failed · destroy left the volume, the
+state and the facts → gh workflow run machine.yml -f task=<task> -f cmd=destroy` to
+`NTFY_URL` and exits 1. What the failed run could not delete stays, and so do `tasks/<task>.tfstate`
+and `tasks/<task>.json`; run `destroy` again to finish the job.
+
 Secrets of this repo (Settings → Secrets and variables → Actions): `HCLOUD_TOKEN`,
 `BUCKET_ACCESS_KEY`, `BUCKET_SECRET_KEY`, `MACHINE_GITHUB_TOKEN` (a fine-grained token that
 reads and writes the projects and may run Actions in this repo: the watchdog calls
