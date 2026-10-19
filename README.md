@@ -259,7 +259,7 @@ a public API; only `cli/infra/claude/sessionLinks.ts` reads it. The states:
 | State | When | Detail | Next command |
 |---|---|---|---|
 | `needs-you` | `tenbox build done` with status `needs-you` | the decision card title | `tenbox answer <id> <recommended option>`; `tenbox attach <id>` without a card |
-| `ready-for-you` | `tenbox build done` with status `ready-for-you` | none | `tenbox pr <id>` |
+| `ready-for-you` | `tenbox build done` with status `ready-for-you` | the round and the attention, nice-to-have and unproven counts | `tenbox pr <id>` |
 | `failed` | `tenbox build done` with status `failed` | none | `tenbox attach <id>` |
 | `check-failed` | `tenbox check` with a new failure | the checks, the count and the round; `the build goes on` while there is no `build.json` | `tenbox attach <id>` |
 | `pr-opened` | `tenbox pr` creates the PR (an update sends nothing) | the PR URL | `tenbox close <id>` |

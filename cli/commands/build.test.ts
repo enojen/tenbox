@@ -278,13 +278,34 @@ describe("tenbox build done", () => {
     afterEach(() => ntfy.stop());
 
     test.each([
-      ["ready-for-you", "demo · T-1 · ready-for-you → tenbox pr T-1"],
       ["failed", "demo · T-1 · failed → tenbox attach T-1"],
       ["needs-you", "demo · T-1 · needs-you → tenbox attach T-1"],
     ])("%s sends one line", async (status, line) => {
       const run = await buildDone(...withJson({ status }));
       expect([run.code, run.json.ok]).toEqual([0, true]);
       expect(ntfy.lines()).toEqual([line]);
+    });
+
+    test("ready-for-you detail counts round, attention, nice-to-have and unproven", async () => {
+      await buildDone(...withJson(valid));
+      expect(ntfy.lines()).toEqual([
+        "demo · T-1 · ready-for-you · round 2, attention 1, nice-to-have 1, unproven 1 → tenbox pr T-1",
+      ]);
+    });
+
+    test("ready-for-you with empty lists shows zero counts", async () => {
+      await buildDone(
+        ...withJson({
+          status: "ready-for-you",
+          round: 1,
+          attention: [],
+          nice_to_have: [],
+          unproven: [],
+        }),
+      );
+      expect(ntfy.lines()).toEqual([
+        "demo · T-1 · ready-for-you · round 1, attention 0, nice-to-have 0, unproven 0 → tenbox pr T-1",
+      ]);
     });
 
     test("needs-you with a card shows its title and the answer with the recommended option", async () => {

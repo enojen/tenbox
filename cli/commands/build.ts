@@ -1,3 +1,4 @@
+import type { BuildResult } from "../../domain/build.ts";
 import { sessionName, type TaskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import { tenboxDir } from "../../domain/task.ts";
@@ -50,10 +51,17 @@ async function notifyEnd(id: TaskId, taskWorktree: string): Promise<void> {
   const state = notificationStateOf(result.status);
   if (state === null) return;
   const card = state === NOTIFICATION_STATE.needsYou ? result.decision : undefined;
+  const counts = state === NOTIFICATION_STATE.readyForYou ? readyDetail(result) : undefined;
   const notification: TaskNotification = {
     id,
     state,
     ...(card && { detail: card.title, recommended: card.recommended }),
+    ...(counts && { detail: counts }),
   };
   await notifications.send({ taskWorktree, notification });
+}
+
+function readyDetail(result: BuildResult): string {
+  const { round, attention, nice_to_have: niceToHave, unproven } = result;
+  return `round ${round}, attention ${attention.length}, nice-to-have ${niceToHave.length}, unproven ${unproven.length}`;
 }
