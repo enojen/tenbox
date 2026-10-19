@@ -49,6 +49,7 @@ async function runBuild(reviews: ReviewReply[][]) {
     }
     if (options.agentType === "worker") return { status: "done" };
     if (options.agentType === "runner") return { ok: true, commit: "c", file: "f" };
+    if (options.label === MERGE_LABEL) return null;
     const lens = options.label.endsWith("base") ? 0 : 1;
     return reviews[round - 1]?.[lens];
   };
@@ -202,6 +203,7 @@ test("the worker schema requires proofs of non-blank strings", async () => {
 });
 
 const MAX_NICE_TO_HAVE = 3;
+const MERGE_LABEL = "merge attention";
 
 /** Runs two rounds: the runner returns commit `c<round>`; round 1 review has must_fix, round 2 is clean. */
 async function runTwoReviewedRounds(round1: ReviewReply) {
@@ -215,6 +217,7 @@ async function runTwoReviewedRounds(round1: ReviewReply) {
     }
     if (options.agentType === "worker") return { status: "done", proofs: [] };
     if (options.agentType === "runner") return { ok: true, commit: `c${round}`, file: "f" };
+    if (options.label === MERGE_LABEL) return null;
     reviewerSchema = options.schema;
     reviewerPrompts.push(prompt);
     return round === 1 ? round1 : cleanReply;
@@ -787,4 +790,60 @@ test("the pr schema keeps groups, so a schema-shaped reply reports group 2 as wa
   };
   const result = await runWorkflow("TB-1", agent);
   expect(result.pr.groups).toEqual(groups);
+});
+
+/** One clean-checks round whose two lenses flag attention items; `merge` answers the merge agent. */
+async function runAttentionBuild(attention: string[][], merge: unknown) {
+  const merges: { prompt: string; schema: unknown }[] = [];
+  const agent: ScriptedAgent = async (prompt, options) => {
+    if (options.agentType === "planner") {
+      return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: ["security"] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType === "runner") return { ok: true, commit: "c", file: "f" };
+    if (options.label === MERGE_LABEL) {
+      merges.push({ prompt, schema: options.schema });
+      return merge;
+    }
+    const items = attention[options.label.endsWith("base") ? 0 : 1] ?? [];
+    return { ...cleanReply, attention: items };
+  };
+  const result = await runWorkflow("TB-1", agent);
+  return { result, merges };
+}
+
+test("two lenses flagging one hunk end with the one item the merge agent returns", async () => {
+  const { result, merges } = await runAttentionBuild(
+    [["a.ts: guard missing"], ["a.ts: missing guard"]],
+    { attention: ["a.ts: guard missing (base, security)"] },
+  );
+  expect(result.attention).toEqual(["a.ts: guard missing (base, security)"]);
+  expect(merges).toHaveLength(1);
+  const prompt = merges[0]?.prompt ?? "";
+  expect(prompt).toContain("round 1, lens base");
+  expect(prompt).toContain("round 1, lens security");
+  expect(prompt).toContain("a.ts: guard missing");
+  expect(prompt).toContain("a.ts: missing guard");
+  expect(prompt).toContain("not sure");
+  expect(prompt).toContain("last round");
+});
+
+test("the merge schema is { attention: string[] }", async () => {
+  const { merges } = await runAttentionBuild([["x"], []], { attention: ["x"] });
+  expect(merges[0]?.schema).toEqual({
+    type: "object",
+    properties: { attention: { type: "array", items: { type: "string" } } },
+    required: ["attention"],
+  });
+});
+
+test("no attention items run no merge agent and give attention []", async () => {
+  const { result, merges } = await runAttentionBuild([[], []], { attention: ["never"] });
+  expect(merges).toHaveLength(0);
+  expect(result.attention).toEqual([]);
+});
+
+test("a null merge reply leaves attention as the raw item texts", async () => {
+  const { result } = await runAttentionBuild([["one"], ["two"]], null);
+  expect(result.attention).toEqual(["one", "two"]);
 });

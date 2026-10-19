@@ -158,8 +158,27 @@ const PR = {
   },
   required: ['ok'],
 }
+// Every reviewed round's attention items, each with where it came from; `finish` merges them.
+const attentionItems = []
+const ATTENTION = {
+  type: 'object',
+  properties: { attention: { type: 'array', items: { type: 'string' } } },
+  required: ['attention'],
+}
+const attentionLine = (item) => `- round ${item.round}, lens ${item.lens}, worktree ${item.worktree ?? 'task worktree'}: ${item.text}`
+// One item per hunk: a null reply keeps the raw texts.
+const mergeAttention = async () => {
+  if (!attentionItems.length) return []
+  const merged = await agent(
+    `Merge the attention items below of task ${task} into one item per hunk.\n${attentionItems.map(attentionLine).join('\n')}\n`
+    + 'Merge items of the same file and topic into one item that names its lenses. '
+    + "Keep an item of an earlier round only when its hunk is still in the last round's diff: check it with git diff in the item's worktree. "
+    + 'When you are not sure two items are the same hunk, keep both. Return the merged items as attention.',
+    { agentType: 'reviewer', schema: ATTENTION, phase: 'Review', label: 'merge attention' })
+  return merged?.attention ?? attentionItems.map((item) => item.text)
+}
 const finish = async (result) => {
-  const full = { round: 0, proofs: [], attention: [], nice_to_have: [], unproven: [], ...result }
+  const full = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...result, attention: await mergeAttention() }
   // A quoted heredoc: a quote in the text cannot break the shell.
   const recorded = await agent(
     `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(full)}\nEOF\n)"`,
@@ -179,13 +198,12 @@ if (!approved?.ok || !approved.file) {
 
 // Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
 const unproven = []
-// Every reviewed round's attention and nice_to_have items: a scoped review no longer sees older hunks.
-const attention = []
+// Every reviewed round's nice_to_have items: a scoped review no longer sees older hunks.
 const niceToHave = []
 // Every round's worker proofs, each with its part id; `tenbox close` counts them.
 const proofs = []
 const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
-const collected = () => ({ attention, nice_to_have: niceToHave, unproven, proofs })
+const collected = () => ({ nice_to_have: niceToHave, unproven, proofs })
 
 const TASK_SCOPE = { group: null, worktree: null, tag: '', checkFlag: '' }
 const groupScope = (group, worktree) => ({ group, worktree, tag: `g${group.id} `, checkFlag: ` --group ${group.id}` })
@@ -267,9 +285,11 @@ const buildRounds = async (scope, listing) => {
     }
 
     phase('Review')
-    const reviews = (await parallel(['base', ...lenses].map((key) => () =>
-      agent(`Review task ${task} through this lens: ${LENSES[key].text}.\nWorker proofs so far:\n${proofLines()}${scopeLine()}${worktreeLine(scope)}${ownCommitsLine(scope)}`,
-        { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${scope.tag}${key}`, ...strongModelIf(LENSES[key].strong) })))).filter(Boolean)
+    const reviews = (await parallel(['base', ...lenses].map((key) => async () => {
+      const review = await agent(`Review task ${task} through this lens: ${LENSES[key].text}.\nWorker proofs so far:\n${proofLines()}${scopeLine()}${worktreeLine(scope)}${ownCommitsLine(scope)}`,
+        { agentType: 'reviewer', schema: REVIEW, phase: 'Review', label: `round ${round}: ${scope.tag}${key}`, ...strongModelIf(LENSES[key].strong) })
+      return review && { ...review, lens: key }
+    }))).filter(Boolean)
     // One -1 per part per round, however many lenses name it.
     const roundParts = new Set()
     for (const item of reviews.flatMap((r) => r.unproven)) {
@@ -278,7 +298,7 @@ const buildRounds = async (scope, listing) => {
       unproven.push(item)
     }
     reviewedCommit = checks.commit
-    attention.push(...reviews.flatMap((r) => r.attention))
+    for (const r of reviews) attentionItems.push(...r.attention.map((text) => ({ round, lens: r.lens, worktree: scope.worktree, text })))
     niceToHave.push(...reviews.flatMap((r) => r.nice_to_have))
     const mustFix = reviews.flatMap((r) => r.must_fix)
     if (mustFix.length) {

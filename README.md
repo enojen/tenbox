@@ -156,7 +156,9 @@ Every end status runs `tenbox build done` through a runner. The workflow returns
 below with the same keys for every status (`status`, `round`, `proofs`, `attention`,
 `nice_to_have`, `unproven`) and the command's JSON as `recorded`. `failed` gives `round`, the
 last round. It returns `not-approved` (round 0), `ready-for-you` with the attention and nice-to-have lists of all reviewed
-rounds, `needs-you`, or `failed` with the last feedback after the last round. Every result,
+rounds (`attention` holds one item per hunk, merged across lenses and rounds by one `reviewer` agent, `merge attention`, that
+keeps an earlier round's item only while its hunk is in the last round's diff; with no items there is no merge agent, and
+a reply that does not come back leaves the raw items), `needs-you`, or `failed` with the last feedback after the last round. Every result,
 `needs-you` too, also has `unproven`: the reviewers' items from all rounds, one per part
 per round. It also has `proofs`: the worker proofs `{ part, file, test, failure }` from all
 rounds; `tenbox close` counts them (see `stats.json`).
