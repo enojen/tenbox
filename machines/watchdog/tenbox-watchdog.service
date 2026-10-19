@@ -1,0 +1,6 @@
+[Unit]
+Description=tenbox watchdog: notices when no claude session works any more
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tenbox-watchdog

@@ -1,0 +1,18 @@
+#cloud-config
+# First boot of a task machine. The secrets travel in user data for now (TEN-420); the
+# boot script shreds them once gh and claude have them.
+write_files:
+  - path: /etc/tenbox-machine.json
+    permissions: "0644"
+    content: ${jsonencode(machine)}
+  - path: /root/tenbox-secrets/github-token
+    permissions: "0600"
+    content: ${jsonencode(github_token)}
+  - path: /root/tenbox-secrets/claude-credentials.json
+    permissions: "0600"
+    content: ${jsonencode(claude_credentials)}
+  - path: /usr/local/bin/tenbox-boot
+    permissions: "0755"
+    content: ${jsonencode(boot)}
+runcmd:
+  - [/usr/local/bin/tenbox-boot]

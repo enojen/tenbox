@@ -92,14 +92,14 @@ auth only), self-hosted E2B (needs a cluster and `/dev/kvm`).
 
 | # | Step | Who | Where | Output | Gate |
 |---|---|---|---|---|---|
-| 1 | Start | `tenbox start` | devbox shell | worktree, branch, `.tenbox/`, tmux session | |
+| 1 | Start | `tenbox start` | task machine | worktree, branch, `.tenbox/`, task session | |
 | 2 | Plan | `/tenbox-plan` | task session | `.tenbox/plan.md`, questions | 👤 you approve |
 | 3 | Build | workers | task worktree, or one worktree each | commits, `.tenbox/parts/*.md` | |
 | 4 | Checks | `tenbox check` | task worktree | `.tenbox/rounds/N/checks.json` | no new failures |
 | 5 | Review | reviewer panel | task worktree, read-only | `.tenbox/rounds/N/review.json`, draft PR | no must-fix |
 | 6 | Try | QA agents | **sandbox**, pinned commit | `.tenbox/rounds/N/qa/` | every criterion passes |
 | 7 | You | you | sandbox links, attention list, QA evidence | approve or request changes | 👤 you approve |
-| 8 | Close | `/tenbox-close` | task session | merged PR, cleaned devbox, Linear Done | CI green |
+| 8 | Close | `/tenbox-close` | task session | merged PR, machine and volume removed, Linear Done | CI green |
 
 Steps 3 to 6 are one workflow, `/tenbox-build`. A failure in 4, 5 or 6 becomes feedback
 for the next round of step 3. After `max_rounds` the workflow stops and reports to you.
@@ -131,19 +131,83 @@ The step-by-step page with commands: [`docs/tenbox-flow.html`](tenbox-flow.html)
 
 ## Where things run
 
+Nothing runs on your computer and nothing runs all day. Each task gets a **machine**: a
+small cloud server that exists only while an agent works on that task, plus a small disk
+that lives from `tenbox start` to `tenbox close`. See [Machines](#machines).
+
 ```
-devbox
-├ ~/tenbox/                          this repo: CLI, roles, workflows, hooks
-├ ~/wt/my-app/main/             main worktree
-├ ~/wt/my-app/TEN-301/          task worktree, branch feat/TEN-301
-│  └ .tenbox/                        the task's shared memory (gitignored)
-├ <worktrees created by isolation: 'worktree'>   parallel workers, step 3 only
-├ tmux session tenbox-TEN-301        one claude, cwd = task worktree
-└ docker compose -p tenbox-TEN-301   the sandbox, steps 6 and 7 only
+machine tenbox-TEN-301                 4 vCPU · 8 GB · exists per run
+├ /mnt/task → volume tenbox-TEN-301    10 GB · exists per task
+│  ├ wt/my-app/main/              clone of the project, made on the first run
+│  ├ wt/my-app/TEN-301/           task worktree, branch feat/TEN-301
+│  ├ .tenbox/<project id>/TEN-301/     the task's shared memory
+│  └ .claude/                          login copy, session transcripts
+├ claude --bg                          one session, cwd = task worktree
+└ docker compose -p tenbox-TEN-301     the sandbox, steps 6 and 7 only
 ```
 
 All agents are normal Claude Code subagents started by the workflow inside the task
-session, with your subscription login. Nothing runs in the cloud.
+session, with your subscription login. Your computer only sends commands and reads
+results; your phone sees every session through Remote Control.
+
+## Machines
+
+**Compute per run, disk per task.** A run is one tenbox command on one task: plan,
+build, close. The machine is created for the run and deleted a few minutes after the
+session stops working. `plan-ready`, `ready-for-you` and `needs-you` all end a run; you
+can take an hour or a week, nothing is billed and nothing is lost. The next command
+creates a new machine, attaches the same volume and resumes the session. Cloud prices are
+linear, so four small machines cost what one large one costs, and they die one by one.
+
+| Piece | Lifetime | Holds |
+|---|---|---|
+| snapshot `tenbox-image` | until the next Packer build | Ubuntu, bun, gh, claude, tenbox, the watchdog |
+| server `tenbox-<id>` | one run | nothing of its own |
+| volume `tenbox-<id>` | start to close | worktrees, `.tenbox/`, `.claude/` |
+| state `tasks/<id>.tfstate` | start to close | what exists for this task |
+
+**One command from your computer:**
+
+```
+tenbox machine run TEN-301 -- tenbox build TEN-301
+```
+
+It runs `gh workflow run machine.yml -f task=TEN-301 -f cmd=build` and nothing else;
+tenbox knows no cloud API. The workflow runs OpenTofu on a GitHub hosted runner (a minute,
+inside the free minutes) with the state in an S3 compatible bucket, and the server boots
+with cloud-init: mount the volume, clone the project if the volume is empty, pull the
+login, run the tenbox command. A watchdog on the server calls the same workflow with
+`cmd=down` when `claude agents --json` shows no running session for five minutes; the
+server never deletes itself, so the state stays true. `close` also removes the volume.
+
+**Login.** Remote Control needs a claude.ai login; `claude setup-token` runs the model
+but Remote Control refuses it (`Remote Control disconnected — /login`). A copy of
+`~/.claude/.credentials.json` works. Your computer uploads the file to a private bucket
+whenever it changes; the machine pulls it at boot. The access token lives hours and a run
+is shorter; the refresh token lives days, so `tenbox machine run` checks its expiry first
+and asks for `/login` instead of booting a machine that cannot connect.
+
+**Session links.** Every session connects Remote Control by itself
+(`remoteControlAtStartup`) and shows up in the Claude app under its name,
+`tenbox-TEN-301`. The link is `https://claude.ai/code/<bridgeSessionId>`, read from
+`~/.claude/sessions/<pid>.json`. A resumed session gets a new id and a new link, so each
+notification carries the link of the moment, as the ntfy `Click` header: one tap opens the
+session in the app.
+
+**CI runners the same way.** A project's `ci.yml` has three jobs: a hosted job creates a
+runner server from the same image and registers it with `--ephemeral`, the test job runs
+on it, a hosted job deletes it, `if: always()`. The first and last job call a reusable
+workflow in this repo, `runner.yml`, so a project adds ten lines and knows no cloud API.
+The always-on CI machine goes away.
+
+**What a project needs:** `tenbox.yaml` and those ten lines. Machine size may later come
+from the manifest (`machine: large`); the first version has one size. The secrets live in
+this repo: the cloud token, the bucket keys, one GitHub token that reads every project.
+
+**Limits.** Compute scales with the number of tasks; the subscription does not. Four
+builds at once burn tokens at once, so the cap on parallel tasks is a tenbox setting, not
+a cloud one. Volumes have no snapshots: code is on GitHub, `.tenbox/` and `.claude/` are
+copied to the bucket once a day.
 
 ## Parallel work
 
@@ -170,8 +234,8 @@ at the plan gate when two tasks touch the same files, so you can run them in seq
 - The planner, at the plan gate: a task over `budget.max_pr_lines` is proposed as
   subtasks; after you approve, `tenbox` creates them in the tracker through the adapter.
 
-Start with two or three tasks at once. The devbox has 8 vCPUs and the sessions share one
-subscription limit.
+Start with two or three tasks at once. Each task has its own machine; what they share is
+one subscription limit.
 
 ## Tracker
 
@@ -483,8 +547,8 @@ services:                             services:
 ## The sandbox
 
 The sandbox exists only in steps 6 and 7. Workers build and run unit tests in the
-worktree; the full stack starts when the work is ready to try. On an 8 vCPU devbox this
-is what lets several tasks run at once.
+worktree; the full stack starts when the work is ready to try. It runs on the task
+machine, which stays up through step 7 and goes down when nobody looks.
 
 - **Pinned commit**: `tenbox sandbox up` builds from the current commit, not the live
   worktree. QA tests, and you try, exactly the code that will merge. A new round builds a
@@ -563,7 +627,7 @@ only when one of those raises a doubt.
 | Proof per criterion | `.tenbox/rounds/N/qa/`, also summarised in the PR body |
 | The code | The GitHub PR for `feat/TEN-301`. Your comments become feedback for the next build |
 | What the agents did | `/workflows` in the task session: phases, every agent's prompt, tool calls, result. See [Watching a run](#watching-a-run) |
-| Everything, by hand | `code --remote ssh-remote+devbox ~/wt/my-app/TEN-301` |
+| Everything, by hand | `tenbox machine ssh TEN-301` while the machine is up, or the session in the Claude app |
 
 ## Subscription and limits
 
@@ -571,8 +635,8 @@ only when one of those raises a doubt.
   Workflows are available on all paid plans; on Pro, turn them on in `/config`.
 - Keep `autoContinueAtUsageLimit` on: a run that hits the limit waits for the reset and
   continues by itself.
-- Set `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` low on the devbox (start with 4) and
-  run browser tests through `heavy`.
+- Set `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` to match the machine (start with 4 on
+  4 vCPUs).
 - Set `workflowSizeGuideline: medium`. Several tasks at once share one limit.
 
 ## Watching a run
@@ -611,6 +675,7 @@ Ideas for its look are in the mockups.
 ├ workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
 ├ hooks/        locked-paths, qa-no-code
 ├ schemas/      tenbox.yaml JSON Schema, agent output schemas
+├ machines/     packer/ (the image), tofu/ (one module per task and per CI runner), cloud-init, watchdog
 ├ pane/         later: the live pane plugin
 ├ panel/        later
 └ docs/         flow page and mockups
@@ -626,14 +691,17 @@ file. Registering the hooks in `~/.claude/settings.json` comes in a later phase.
    Build, Checks and Review only. `tenbox start`, `tenbox check`.
 2. **PR and close**: `tenbox pr`, `/tenbox-close`, branch protection with CI. The ClickUp
    adapter and `createSubtask`.
-3. **Manifest and sandbox**: `tenbox.yaml`, `tenbox validate`, `tenbox sandbox`, the Try
+3. **Machines**: the image, the task module, `machine.yml`, the watchdog, the login sync,
+   `tenbox machine run`; then the ephemeral CI runner and the end of the always-on CI
+   machine. First by hand with `tofu apply`, then through the workflow.
+4. **Manifest and sandbox**: `tenbox.yaml`, `tenbox validate`, `tenbox sandbox`, the Try
    phase with QA.
-4. **Fakes from docs and OpenAPI-first**: Prism, stateful fakes, `oasdiff`, orval on the
+5. **Fakes from docs and OpenAPI-first**: Prism, stateful fakes, `oasdiff`, orval on the
    frontend.
-5. **Live pane**: a Claude Code plugin inside the task session; settles which hook events
+6. **Live pane**: a Claude Code plugin inside the task session; settles which hook events
    workflow agents emit.
-6. **Panel**.
-7. **Harder isolation**: gVisor for sandbox containers.
+7. **Panel**.
+8. **Harder isolation**: gVisor for sandbox containers.
 
 ## Open questions
 
@@ -644,7 +712,11 @@ file. Registering the hooks in `~/.claude/settings.json` comes in a later phase.
   hook and Claude Code sandbox rules need testing.
 - Many task sessions at once on one subscription: watch the limit before running more
   than two.
-- `gh` login on the devbox is expired; renew it before phase 2.
+- Login refresh on machines: whether a refresh on one machine invalidates the token on
+  your computer. Watch it in the first week of phase 3; if it does, the bucket copy has
+  to flow both ways.
+- Long checks and the watchdog: "no running session" must not fire in the middle of a long
+  `tenbox check`. Start conservative.
 - Stacked PRs: how `tenbox pr` sets the base branch, how CI runs on each PR, and how
   `/tenbox-close` merges them in order and rebases the rest. Decide before phase 2.
 - `max_pr_lines`: whether tests and generated files count. Start with everything except

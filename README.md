@@ -311,17 +311,26 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
     repositories/ data access per table, no rules: `find...`, `insert`
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
+machines/     the machine image (Packer) and the watchdog; see machines/README.md
 docs/         design.md (the target design), flow page and mockups
 ```
 
 CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on each pull request, on our own
 Linux runner (label `tenbox-ci`).
 
+## Machines: `machines/`
+
+Tasks will run on short-lived cloud machines, one per task, instead of your computer. What
+exists today is the image they boot from, built with Packer, the OpenTofu module that gives one
+task its volume and server, and the watchdog that logs when a machine is idle. See [`machines/README.md`](machines/README.md).
+
 ## Roadmap
 
 1. **Done**: roles, `/tenbox-plan`, `/tenbox-build` with Build, Checks and Review,
    `tenbox start`, `check`, `install`.
-2. **Now**: `tenbox close`, `tenbox pr`, `tenbox merge-check` and `/tenbox-close` are built.
-   Next: the ClickUp adapter.
-3. Later, see [`docs/design.md`](docs/design.md): the full manifest and the sandbox, the
+2. **Done**: `tenbox close`, `tenbox pr`, `tenbox merge-check`, `/tenbox-close`, the ClickUp
+   adapter.
+3. **Now**: machines. The image is built; next the task module, the control plane, the login
+   sync, `tenbox machine run`, ephemeral CI runners.
+4. Later, see [`docs/design.md`](docs/design.md): the full manifest and the sandbox, the
    Try phase with QA, fakes from API docs, the live pane, the panel.

@@ -18,11 +18,13 @@ with `gh`), `tenbox build` (starts `claude --bg` with `/tenbox-build` in the tas
 close` stops it), `tenbox stats` and `tenbox merge-check` (merge the open task PRs in a temporary
 worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`, which also
 pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp tracker.
-No sandbox yet.
+Phase 3 (machines, `docs/design.md` "Machines") has started: the Packer image, the
+watchdog and the task module in `machines/` (TEN-419, TEN-420). No sandbox yet.
 
 ## Rules
 
 - TypeScript on Bun, few dependencies, no Python. Code, docs and agent prompts in English.
+  `machines/` is the exception: Packer HCL, systemd units and bash that run on Ubuntu only.
 - Must run on macOS and Linux from the first commit: `os.homedir()` and `path.join`, no
   GNU-only or BSD-only shell flags, hooks as `bun run hooks/<name>.ts`. Spawn only `git`,
   `gh`, `docker`, `claude` and tenbox itself (`process.execPath`).
@@ -154,6 +156,8 @@ agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
+machines/   packer/ (the image: template, build.sh, scripts/), tofu/task/ (volume + server per task,
+            cloud-init, tenbox-boot.sh; task.sh runs it by hand), watchdog/ (script, service, timer)
 docs/       design.md (the target design), flow page and mockups
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```
