@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs every minute from tenbox-watchdog.timer. The machine is busy while the tenbox command
-# of this boot runs, while a tenbox command runs (a long `tenbox check`) or while a claude
-# session works. After IDLE_MINUTES idle it asks the control plane, machine.yml in the
+# Runs every minute from tenbox-watchdog.timer. The machine is busy while the last tenbox
+# command given to it runs, while any tenbox command runs (a long `tenbox check`) or while a
+# claude session works. After IDLE_MINUTES idle it asks the control plane, machine.yml in the
 # control repo, to take the machine down, and asks again every RETRY_MINUTES while it is still
 # here. The machine never deletes itself, so the state in the bucket stays true.
 set -euo pipefail
@@ -15,8 +15,8 @@ as_tenzel() { sudo -u tenzel -H "$@"; }
 minutes_since() { echo $(( (now - $(cat "$1")) / 60 )); }
 
 busy_reason() {
-  if systemctl is-active --quiet tenbox-run; then
-    echo "the tenbox command of this boot still runs"
+  if systemctl is-active --quiet 'tenbox-run-*'; then
+    echo "the last tenbox command still runs"
     return
   fi
   if pgrep -u tenzel -f /home/tenzel/tenbox/cli/main.ts > /dev/null; then

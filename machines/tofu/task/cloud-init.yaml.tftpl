@@ -21,5 +21,8 @@ write_files:
   - path: /usr/local/bin/tenbox-boot
     permissions: "0755"
     content: ${jsonencode(boot)}
+  - path: /usr/local/bin/tenbox-run
+    permissions: "0755"
+    content: ${jsonencode(run)}
 runcmd:
   - [/usr/local/bin/tenbox-boot]

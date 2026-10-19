@@ -55,9 +55,13 @@ run, mounts it on `/mnt/task` and bind-mounts its `wt`, `.tenbox` and `.claude` 
 `remoteControlAtStartup`, and trust for the main checkout and the task worktree; logs gh in
 and takes the git identity from the token's GitHub user; clones the project into
 `~/wt/<project>/main` on the first run; writes `tenbox.local.yaml` with the tracker key and
-the ntfy URL; runs `tenbox install`; then starts the tenbox command as a transient systemd
-unit `tenbox-run`, so its claude session outlives cloud-init. Output: `journalctl -u
-cloud-final`, `/var/log/tenbox-run.log`.
+the ntfy URL; runs `tenbox install`; then starts the tenbox command with `tenbox-run`.
+`tenbox-run.sh` (`/usr/local/bin/tenbox-run` on the machine) starts one tenbox command as
+a transient systemd unit `tenbox-run-<time>`, as tenzel in the main checkout, so its claude
+session outlives the caller: the boot script on a new server, `machine.sh` over ssh on a
+live one. One unit per command: the claude session a command leaves behind keeps its unit
+loaded, so a name is never reused; the newest is in `/run/tenbox-run.unit`. Output:
+`journalctl -u cloud-final`, `/var/log/tenbox-run.log` (emptied for every command).
 
 ## The control plane: `machine.yml` and `machine.sh`
 
@@ -70,7 +74,7 @@ What it runs is the same as these commands, which also work by hand (`down` has 
 ```
 gh workflow run machine.yml -f task=TEN-301 -f cmd=start \
   -f project=tenbox -f repo=https://github.com/enojen/tenbox.git [-f title="..."]
-gh workflow run machine.yml -f task=TEN-301 -f cmd=build   # a new server, same volume
+gh workflow run machine.yml -f task=TEN-301 -f cmd=build   # on the live server, or a new one on the same volume
 gh workflow run machine.yml -f task=TEN-301 -f cmd=down    # server gone, volume stays
 gh workflow run machine.yml -f task=TEN-301 -f cmd=close   # after the PR is merged; -f force=true for an abandoned task
 ```
@@ -87,9 +91,15 @@ the `MACHINE_RUNNER` variable when the hosted minutes are used up. What each com
 | `destroy` | reads it; deletes the state and the facts | deletes server and volume, no archive |
 | `close` | reads it; archives `.tenbox/` from the volume to `archive/<task>-<time>.tar.gz`; deletes the state and the facts | server, `tenbox close <task> [--force]`, waits for it over ssh, then deletes server and volume |
 
+"Server" means the task's live server when the state has one: `start`, `build` and `close`
+then start their command over ssh with `tenbox-run`, after the command before it has
+ended, and no `tofu apply` runs, so the server and its claude session stay. A `build`
+within the five idle minutes after `start` keeps the machine; a `build` after the watchdog
+took it down boots a new one.
+
 The state is `tasks/<task>.tfstate` in the bucket (`backend "s3"`, Hetzner Object
 Storage); `machine.sh` passes the bucket and the key at `tofu init` and talks to the bucket
-with `curl --aws-sigv4`. A server is tried as `cx33`, then `cx43`, then `cx23`
+with `curl --aws-sigv4`. A new server is tried as `cx33`, then `cx43`, then `cx23`
 (`SERVER_TYPES`): hel1 runs out of the bigger ones, and `cpx*` cannot be ordered there.
 `close` stops when `tenbox close` fails on the machine; the volume stays for a second try,
 or for `destroy`, which deletes server, volume and state without an archive. A server is
@@ -130,7 +140,7 @@ machine breaks the login on your computer is being watched for a week from 2026-
 ## The watchdog: `watchdog/`
 
 A systemd timer runs `tenbox-watchdog` every minute from two minutes after boot. The
-machine counts as busy while the `tenbox-run` unit of this boot runs, while any tenbox
+machine counts as busy while a `tenbox-run-*` unit runs, while any tenbox
 command runs (a long `tenbox check` through the runner), while `claude agents --json`
 lists a session with `status: busy` or `state: working`, or when `claude agents` cannot
 run. Five idle minutes (`IDLE_MINUTES`) make it run `gh workflow run machine.yml -f

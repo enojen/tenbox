@@ -74,6 +74,7 @@ resource "hcloud_server" "task" {
     claude_credentials = var.claude_credentials
     tracker_api_key    = var.tracker_api_key
     boot               = file("${path.module}/tenbox-boot.sh")
+    run                = file("${path.module}/tenbox-run.sh")
     watchdog           = file("${path.module}/../../watchdog/tenbox-watchdog.sh")
   })
 }

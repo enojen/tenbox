@@ -75,9 +75,4 @@ fi
 [ ! -f "$local_manifest" ] || chown tenzel:tenzel "$local_manifest"
 (cd "$home/tenbox" && as_tenzel tenbox install > /dev/null)
 
-# The tenbox command, detached from cloud-init so its claude session outlives this script.
-install -o tenzel -g tenzel -m 644 /dev/null /var/log/tenbox-run.log
-systemd-run --unit tenbox-run --uid tenzel --gid tenzel --working-directory "$main" \
-  --setenv HOME="$home" --setenv PATH=/usr/local/bin:/usr/bin:/bin -p KillMode=process \
-  bash -c "$cmd >> /var/log/tenbox-run.log 2>&1"
-echo "tenbox-run started: $cmd"
+/usr/local/bin/tenbox-run "$cmd"
