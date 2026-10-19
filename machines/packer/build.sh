@@ -20,14 +20,15 @@ git bundle create .build/tenbox.bundle "refs/heads/$branch"
 
 packer init .
 packer build -var "tenbox_branch=$branch" -var "tenbox_ref=$sha" .
-# Keep the newest KEEP_IMAGES snapshots labelled tenbox-image=true and delete the rest.
-# The image is built by now, so a pruning failure is only a note. In a `||` context set -e is
-# off, hence the explicit `|| return 1`.
+# After a main build, keep the newest KEEP_IMAGES (at least 1) snapshots labelled
+# tenbox-image=true and delete the rest; a build of another branch deletes nothing. The image
+# is built by now, so a pruning failure is only a note. In a `||` context set -e is off, hence
+# the explicit `|| return 1`.
 prune() {
-  local keep="${KEEP_IMAGES:-3}"
-  local api="${HCLOUD_API_URL:-https://api.hetzner.cloud/v1/images}"
+  local keep="${KEEP_IMAGES:-3}" api=https://api.hetzner.cloud/v1/images
   local auth="Authorization: Bearer $HCLOUD_TOKEN"
   local list old_ids id
+  [ "$keep" -ge 1 ] || { echo "KEEP_IMAGES must be at least 1, got $keep" >&2; return 1; }
   list="$(curl -fsS -H "$auth" \
     "$api?type=snapshot&label_selector=tenbox-image%3Dtrue&sort=created:desc&per_page=50")" || return 1
   old_ids="$(jq -r --argjson keep "$keep" '.images[$keep:][].id' <<<"$list")" || return 1
@@ -36,4 +37,6 @@ prune() {
     curl -fsS -X DELETE -H "$auth" "$api/$id" >/dev/null || return 1
   done
 }
-prune || echo "note: could not prune old images; the new image is built" >&2
+if [ "$branch" = main ]; then
+  prune || echo "note: could not prune old images; the new image is built" >&2
+fi

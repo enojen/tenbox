@@ -24,8 +24,9 @@ bundle and runs Packer on a temporary `cx23` in `hel1`. The snapshot is named
 module can pick the newest one. The versions that went in are in `/etc/tenbox-image.json`
 on the image. Every merge to main runs `.github/workflows/image.yml`, which builds `main` with
 `build.sh` (secret `HCLOUD_TOKEN`), so a new server boots from the newest image; run it by hand
-(`gh workflow run image.yml`) when claude or bun should move. `build.sh` then deletes the
-snapshots labelled `tenbox-image=true` beyond the newest `KEEP_IMAGES` (default 3).
+(`gh workflow run image.yml`) when claude or bun should move. After a build of `main`,
+`build.sh` deletes the snapshots labelled `tenbox-image=true` beyond the newest `KEEP_IMAGES`
+(default 3, at least 1); a build of another branch deletes nothing.
 
 Users and paths on the image:
 

@@ -71,10 +71,9 @@ async function create(next: NewGroup): Promise<void> {
     throw groupMergeConflictError(branch, [start, ...others], conflicted);
   }
   await setups.run(worktree, manifest.setup, true);
-  let head = await git.findHead(worktree);
-  if (reused) head = await git.findCommit(worktree, start);
+  const commit = await git.findCommit(worktree, reused ? start : "HEAD");
   const dir = groupDir(tenboxDir(taskWorktree), group);
-  await files.writeJson(groupFile(dir), { start: head ?? start });
+  await files.writeJson(groupFile(dir), { start: commit ?? start });
 }
 
 interface RebaseRequest {

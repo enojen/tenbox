@@ -20,7 +20,6 @@
 # TENBOX_BUCKET_ENDPOINT, NTFY_URL, TRACKER_API_KEY, SERVER_TYPES ("cx33 cx43 cx23").
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-. "$here/busy-answer.sh"
 task="${1:?task id}"
 action="${2:?start | build | close | down | destroy}"
 : "${HCLOUD_TOKEN:?}" "${TENBOX_BUCKET:?}" "${BUCKET_ACCESS_KEY:?}" "${BUCKET_SECRET_KEY:?}" \
@@ -123,10 +122,11 @@ build() {
 
 down() {
   fetch_facts || { echo "task $task has no machine; nothing to take down" >&2; exit 0; }
-  local answer reason
+  local answer
   ip="$(live_ip)"
-  if [ -n "$ip" ] && answer="$(remote tenbox-watchdog busy 2> /dev/null)" && reason="$(busy_reason "$answer")"; then
-    echo "task $task is busy on $ip: $reason; the server stays"
+  # Only a `busy: <reason>` line keeps the server: an old watchdog, ssh noise or no answer is idle.
+  if [ -n "$ip" ] && answer="$(remote tenbox-watchdog busy 2> /dev/null)" && [[ "$answer" == "busy: "* ]]; then
+    echo "task $task is busy on $ip: ${answer#busy: }; the server stays"
     exit 0
   fi
   apply -var up=false
