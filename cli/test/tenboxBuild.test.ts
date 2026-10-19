@@ -27,7 +27,7 @@ interface AgentOptions {
 type ScriptedAgent = (prompt: string, options: AgentOptions) => Promise<unknown>;
 
 interface ReviewerSchema {
-  properties: { nice_to_have: { maxItems?: number } };
+  properties: { nice_to_have: { maxItems?: number } } & Record<string, unknown>;
 }
 
 /** Runs the workflow script with a scripted agent; parallel jobs run at once. */
@@ -706,5 +706,85 @@ test("a plan without groups gives the same agent calls as today", async () => {
     "round 1: base",
     "round 1: full checks",
     "record build",
+    "open pr",
   ]);
+});
+
+/** Runs a one-part build whose runners answer by label; `reply` overrides a runner's answer. */
+async function runWithPr(reply: (label: string, prompt: string) => object | undefined) {
+  const calls: { label: string; prompt: string }[] = [];
+  const agent: ScriptedAgent = async (prompt, options) => {
+    calls.push({ label: options.label, prompt });
+    if (options.agentType === "planner") {
+      return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [], groups: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType === "runner") {
+      return reply(options.label, prompt) ?? { ok: true, commit: "c", file: "f", round: 1 };
+    }
+    return cleanReply;
+  };
+  const result = await runWorkflow("TB-1", agent);
+  return { result, calls, prCalls: calls.filter((call) => call.label === "open pr") };
+}
+
+test("a ready build whose record is ok runs `tenbox pr` and returns its JSON as pr", async () => {
+  const pr = { ok: true, task: "TB-1", groups: [] };
+  const { result, prCalls } = await runWithPr((label) => (label === "open pr" ? pr : undefined));
+  expect(result.status).toBe("ready-for-you");
+  expect(result.pr).toEqual(pr);
+  expect(prCalls).toHaveLength(1);
+  expect(prCalls[0]?.prompt).toContain("tenbox pr TB-1");
+});
+
+test("a failed tenbox pr keeps ready-for-you with pr.ok false", async () => {
+  const { result } = await runWithPr((label) =>
+    label === "open pr" ? { ok: false, error: "dirty" } : undefined,
+  );
+  expect(result.status).toBe("ready-for-you");
+  expect(result.pr).toMatchObject({ ok: false });
+});
+
+test("a ready build whose tenbox build done is not ok runs no tenbox pr", async () => {
+  const { result, prCalls } = await runWithPr((label) =>
+    label === "record build" ? { ok: false, error: "bad" } : undefined,
+  );
+  expect(result.status).toBe("ready-for-you");
+  expect(prCalls).toHaveLength(0);
+  expect("pr" in result).toBe(false);
+});
+
+test("not-approved and failed builds run no tenbox pr and have no pr key", async () => {
+  const notApproved = await runWithPr((label) =>
+    label === "approval" ? { ok: false, error: "no" } : undefined,
+  );
+  expect(notApproved.result.status).toBe("not-approved");
+  expect(notApproved.prCalls).toHaveLength(0);
+  expect("pr" in notApproved.result).toBe(false);
+  const failed = await runWithPr((label) =>
+    label.includes(": 01 check") ? { ok: false, error: "red" } : undefined,
+  );
+  expect(failed.result.status).toBe("failed");
+  expect(failed.prCalls).toHaveLength(0);
+  expect("pr" in failed.result).toBe(false);
+});
+
+test("the pr schema keeps groups, so a schema-shaped reply reports group 2 as waiting", async () => {
+  const groups = [
+    { id: 1, state: "opened" },
+    { id: 2, state: "waiting" },
+  ];
+  const agent: ScriptedAgent = async (_prompt, options) => {
+    if (options.agentType === "planner") {
+      return { parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [], groups: [] };
+    }
+    if (options.agentType === "worker") return { status: "done", proofs: [] };
+    if (options.agentType !== "runner") return cleanReply;
+    const reply: Record<string, unknown> = { ok: true, commit: "c", file: "f", round: 1, groups };
+    const allowed = Object.keys(options.schema?.properties ?? {});
+    if (options.label !== "open pr") return reply;
+    return Object.fromEntries(Object.entries(reply).filter(([key]) => allowed.includes(key)));
+  };
+  const result = await runWorkflow("TB-1", agent);
+  expect(result.pr.groups).toEqual(groups);
 });

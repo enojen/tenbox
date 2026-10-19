@@ -148,13 +148,26 @@ const RECORDED = {
   properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
   required: ['ok'],
 }
+// A ready build opens the PR; a failed `tenbox pr` keeps the status and shows in `pr.ok`.
+const PR = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    groups: { type: 'array', items: { type: 'object' } },
+    error: { type: 'string' },
+  },
+  required: ['ok'],
+}
 const finish = async (result) => {
   const full = { round: 0, proofs: [], attention: [], nice_to_have: [], unproven: [], ...result }
   // A quoted heredoc: a quote in the text cannot break the shell.
   const recorded = await agent(
     `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(full)}\nEOF\n)"`,
     { agentType: 'runner', schema: RECORDED, phase: 'Build', label: 'record build' })
-  return { ...full, recorded }
+  if (full.status !== BUILD_STATUS.readyForYou || !recorded?.ok) return { ...full, recorded }
+  const pr = await agent(`Run \`tenbox pr ${task}\` and return its JSON.`,
+    { agentType: 'runner', schema: PR, phase: 'Build', label: 'open pr' })
+  return { ...full, recorded, pr }
 }
 
 phase('Build')
