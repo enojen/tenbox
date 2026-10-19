@@ -60,6 +60,12 @@ resource "hcloud_server" "task" {
   labels      = local.labels
   # A plain delete is a power cut: what the volume got in the last half minute is lost.
   shutdown_before_deletion = true
+  # One IPv4 only: Hetzner counts every primary IP against one project limit, and the machine
+  # needs no IPv6.
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = false
+  }
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     machine = jsonencode({
       task    = var.task

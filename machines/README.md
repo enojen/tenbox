@@ -42,7 +42,8 @@ Users and paths on the image:
 ## The task module: `tofu/task/`
 
 One Tenbox task on Hetzner Cloud: a 10 GB volume `tenbox-<task>` that lives from start to
-close, and a server `tenbox-<task>` (`hel1`) that exists while `up` is true. The server
+close, and a server `tenbox-<task>` (`hel1`) that exists while `up` is true, with one IPv4
+and no IPv6 (Hetzner counts every primary IP against one project limit). The server
 boots from the newest snapshot labelled `tenbox-image=true` and gets cloud-init user data:
 the machine facts (`/etc/tenbox-machine.json`: task, project, repo, volume, the tenbox
 command, the ntfy URL, the control repo), the GitHub token, the claude.ai login copy from
