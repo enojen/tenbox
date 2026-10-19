@@ -48,7 +48,8 @@ export function resumePrompt(run: ResumableRun, args: object): string {
   ].join(" ");
 }
 
-/** The output of `claude agents --json`: interactive and background sessions. */
+/** The output of `claude agents --json`: interactive and background sessions. A session whose
+ * process is gone, as after a reboot of the machine, is still listed, without a `pid`. */
 const AgentListSchema = z.array(
   z.object({
     id: z.string().optional(),
@@ -56,6 +57,7 @@ const AgentListSchema = z.array(
     kind: z.string(),
     startedAt: z.number(),
     state: z.string().optional(),
+    pid: z.number().optional(),
   }),
 );
 
@@ -87,14 +89,15 @@ async function resumeBackground(run: ClaudeRun, resume: ClaudeResume): Promise<v
   await runChecked(run, ["--bg", "--resume", resume.session, "--", resume.prompt]);
 }
 
-/** The background sessions started in exactly `run.cwd`; `--cwd` also lists its subdirs. */
+/** The background sessions started in exactly `run.cwd` that still have a process; `--cwd` also
+ * lists its subdirs, and a session without a `pid` cannot be stopped, attached or busy. */
 async function listBackground(run: ClaudeRun): Promise<BackgroundSession[]> {
   const stdout = await runChecked(run, ["agents", "--json", "--cwd", run.cwd]);
   const parsed = AgentListSchema.safeParse(parseJson(stdout));
   if (!parsed.success) throw claudeError("agents", "output is not a session list");
   const sessions: BackgroundSession[] = [];
-  for (const { id, cwd, kind, startedAt, state } of parsed.data) {
-    if (kind === BACKGROUND && id !== undefined && cwd === run.cwd) {
+  for (const { id, cwd, kind, startedAt, state, pid } of parsed.data) {
+    if (kind === BACKGROUND && id !== undefined && pid !== undefined && cwd === run.cwd) {
       sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(state ?? "") });
     }
   }

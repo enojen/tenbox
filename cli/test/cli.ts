@@ -57,6 +57,8 @@ export interface FakeSession {
   startedAt: number;
   /** The `state` of a background session: working, blocked, done. */
   state?: string;
+  /** The process; a session from an earlier boot is listed without one. */
+  pid?: number;
 }
 
 /**

@@ -81,6 +81,7 @@ describe("tenbox build", () => {
     kind: "background",
     startedAt: 1,
     state,
+    pid: 11,
   });
 
   test("a working session of the task worktree is session-busy", async () => {

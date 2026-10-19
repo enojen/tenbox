@@ -453,9 +453,9 @@ describe("tenbox close", () => {
     const fake = await makeFakeClaude(project.root);
     const real = await files.realPath(taskWorktree);
     await fake.setSessions([
-      { id: "plan", cwd: real, kind: "background", startedAt: 1 },
-      { id: "build", cwd: real, kind: "background", startedAt: 2 },
-      { id: "shell", cwd: real, kind: "interactive", startedAt: 3 },
+      { id: "plan", cwd: real, kind: "background", startedAt: 1, pid: 11 },
+      { id: "build", cwd: real, kind: "background", startedAt: 2, pid: 12 },
+      { id: "shell", cwd: real, kind: "interactive", startedAt: 3, pid: 13 },
     ]);
     const run = await tenbox(["close", "T-1"], project.mainDir, fake.env);
     const calls = await fake.calls();
@@ -483,6 +483,19 @@ describe("tenbox close", () => {
     await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
     const again = await tenbox(["close", "T-1"], project.mainDir, fake.env);
     expect(again.json).toMatchObject({ ok: true, session: { state: "skipped" } });
+  });
+
+  test("a session listed without a pid has no process any more and is not stopped", async () => {
+    await setup();
+    const fake = await makeFakeClaude(project.root);
+    const real = await files.realPath(taskWorktree);
+    await fake.setSessions([
+      { id: "old-boot", cwd: real, kind: "background", startedAt: 1, state: "blocked" },
+    ]);
+    const run = await tenbox(["close", "T-1"], project.mainDir, fake.env);
+    const calls = await fake.calls();
+    expect(run.json).toMatchObject({ ok: true, session: { state: "skipped" } });
+    expect(calls.map((call) => call.args[0])).toEqual(["agents"]);
   });
 
   test("without claude in PATH the session step is skipped", async () => {

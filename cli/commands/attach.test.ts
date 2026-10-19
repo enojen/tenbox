@@ -25,10 +25,10 @@ describe("tenbox attach", () => {
   test("attaches to the newest background session whose cwd is the task worktree", async () => {
     await setup();
     await fake.setSessions([
-      { id: "old", cwd: real, kind: "background", startedAt: 1 },
-      { id: "new", cwd: real, kind: "background", startedAt: 3 },
-      { id: "shell", cwd: real, kind: "interactive", startedAt: 5 },
-      { id: "below", cwd: path.join(real, "sub"), kind: "background", startedAt: 9 },
+      { id: "old", cwd: real, kind: "background", startedAt: 1, pid: 11 },
+      { id: "new", cwd: real, kind: "background", startedAt: 3, pid: 12 },
+      { id: "shell", cwd: real, kind: "interactive", startedAt: 5, pid: 13 },
+      { id: "below", cwd: path.join(real, "sub"), kind: "background", startedAt: 9, pid: 14 },
     ]);
     const run = await attach("attach", "T-1");
     const calls = await fake.calls();

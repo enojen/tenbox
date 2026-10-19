@@ -146,7 +146,7 @@ test("a background session in the task worktree is kept: exists, no second claud
   await startTask(input({ setup: false }));
   const fake = await useFakeClaude();
   const real = await files.realPath(taskWorktree);
-  await fake.setSessions([{ id: "bg1", cwd: real, kind: "background", startedAt: 1 }]);
+  await fake.setSessions([{ id: "bg1", cwd: real, kind: "background", startedAt: 1, pid: 11 }]);
   const r = await startTask(input({ claude: true, setup: false }));
   const calls = await fake.calls();
   expect(r.claude.state).toBe("exists");

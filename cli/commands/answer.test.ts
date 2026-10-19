@@ -97,7 +97,9 @@ describe("tenbox answer", () => {
   test("records the option, stops the session and resumes the build run with the answer", async () => {
     await setup();
     await writeBuildRun();
-    await fake.setSessions([{ id: "6b17f570", cwd: real, kind: "background", startedAt: 1 }]);
+    await fake.setSessions([
+      { id: "6b17f570", cwd: real, kind: "background", startedAt: 1, pid: 11 },
+    ]);
     const answered = await run("answer", "T-1", "2");
     expect([answered.code, answered.json]).toEqual([
       0,
