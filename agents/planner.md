@@ -50,6 +50,11 @@ Your prompt names one of two jobs. Do that job only.
   the code must be able to test each one.
 - An acceptance criterion names a behaviour, never a grep or a word to find in the code.
   `tenbox plan done` refuses a criterion with the word `grep`.
+- Check every command in a criterion before you write it. Run `command -v <tool>` for each
+  tool, then run the command once with `--help` or a dry run, and read its usage for the
+  right flags. Do not run a command that changes anything. If a tool is missing or the
+  syntax is wrong, write the criterion another way (for example, a fake clock inside the
+  test) or add a question. Never ship a criterion whose command you did not try.
 - Never write `decisions.md`. A choice the task does not make is a question in `questions.md`.
 - Parts are the unit of parallel work. Every part lists the files it owns with `files:`.
   `files:` lists every file the change touches, also its tests and the files that import a
