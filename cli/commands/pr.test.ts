@@ -2,9 +2,11 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { files } from "../infra/files.ts";
+import { GH_STATE, type GhPrState } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
-import { tenbox } from "../test/cli.ts";
+import { type CliRun, tenbox } from "../test/cli.ts";
 import { startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
@@ -43,59 +45,205 @@ test("a branch with no commits ahead of main is refused and nothing is pushed", 
   expect(branches).toBe("");
 });
 
+const FAKE_GH = `#!/usr/bin/env bun
+import fs from "node:fs";
+const dir = process.env.GH_FAKE;
+const args = process.argv.slice(2);
+const db = dir + "/prs.json";
+const prs = fs.existsSync(db) ? JSON.parse(fs.readFileSync(db, "utf8")) : [];
+const flag = (name) => args[args.indexOf(name) + 1];
+fs.appendFileSync(dir + "/calls.log", JSON.stringify(args) + "\\n");
+const save = () => fs.writeFileSync(db, JSON.stringify(prs));
+if (args[0] === "pr" && args[1] === "create") {
+  const number = prs.length + 1;
+  prs.push({ number, url: "https://example.com/pull/" + number, isDraft: args.includes("--draft"),
+    state: "OPEN", headRefName: flag("--head"), title: flag("--title"), body: flag("--body") });
+  save();
+}
+if (args[0] === "pr" && args[1] === "list") {
+  const head = args.includes("--head") ? flag("--head") : null;
+  const open = args.includes("--state") && flag("--state") === "open";
+  console.log(JSON.stringify(prs.filter((p) => (!head || p.headRefName === head) && (!open || p.state === "OPEN"))));
+}
+if (args[0] === "api" && args.includes("PATCH")) {
+  const pr = prs.find((p) => args.some((a) => a.endsWith("/pulls/" + p.number)));
+  for (const a of args) {
+    if (a.startsWith("title=")) pr.title = a.slice(6);
+    if (a.startsWith("body=")) pr.body = a.slice(5);
+  }
+  save();
+}
+`;
+
+async function installGh() {
+  const bin = path.join(project.root, "bin");
+  const state = path.join(project.root, "gh-state");
+  await files.write(path.join(bin, "gh"), FAKE_GH);
+  await chmod(path.join(bin, "gh"), 0o755);
+  await files.write(path.join(state, ".keep"), "");
+  const db = path.join(state, "prs.json");
+  const read = async (): Promise<Record<string, unknown>[]> => {
+    const text = await files.read(db);
+    return JSON.parse(text ?? "[]");
+  };
+  return {
+    env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_FAKE: state },
+    prs: read,
+    setState: async (branch: string, next: GhPrState) => {
+      const prs = await read();
+      for (const pr of prs) if (pr.headRefName === branch) pr.state = next;
+      await files.write(db, JSON.stringify(prs));
+    },
+  };
+}
+
+async function commit(dir: string, name: string): Promise<void> {
+  await files.write(path.join(dir, name), `${name}\n`);
+  await git.run(["add", name], dir);
+  await git.run(["commit", "-q", "-m", name], dir);
+}
+
+const GroupRowsSchema = z.array(z.object({ group: z.number(), state: z.string() }));
+
+const rows = (run: CliRun) => GroupRowsSchema.parse(run.json.groups);
+const states = (run: CliRun) => rows(run).map((g) => [g.group, g.state]);
+
+const RECIPE = { model: "sonnet", effort: "medium", lenses: [], tier: "fast" };
+
+async function writeGroupPlan(): Promise<void> {
+  const plan = {
+    summary: "s",
+    estimated_lines: 10,
+    parts: [
+      { id: "01", difficulty: "easy" },
+      { id: "02", difficulty: "easy" },
+    ],
+    criteria: [],
+    lenses: [],
+    questions: [],
+    groups: [
+      { id: 1, name: "feat: first", parts: ["01"], needs: [], recipe: RECIPE },
+      { id: 2, name: "feat: second", parts: ["02"], needs: [1], recipe: RECIPE },
+    ],
+  };
+  await files.write(path.join(taskWorktree, ".tenbox", "plan.json"), JSON.stringify(plan));
+}
+
+async function makeGroupTask(): Promise<string> {
+  await writeGroupPlan();
+  const made = await tenbox(["worktree", "T-1", "--group", "2"], project.mainDir);
+  const groupWorktree = String(made.json.worktree);
+  await commit(taskWorktree, "one.txt");
+  await commit(groupWorktree, "two.txt");
+  return groupWorktree;
+}
+
 test("the PR title comes from task.json, not task.md", async () => {
   const dir = path.join(taskWorktree, ".tenbox");
   const taskText = await files.read(path.join(dir, "task.json"));
   const taskJson = JSON.parse(taskText ?? "null");
   await files.write(path.join(dir, "task.json"), JSON.stringify({ ...taskJson, title: "y" }));
-  await files.write(path.join(taskWorktree, "b.txt"), "b\n");
-  await git.run(["add", "b.txt"], taskWorktree);
-  await git.run(["commit", "-q", "-m", "b"], taskWorktree);
-  const bin = path.join(project.root, "bin");
-  const log = path.join(project.root, "gh.log");
-  const script = `#!/bin/sh
-printf '%s\\n' "$@" >> "${log}"
-if [ "$1 $2" = "pr list" ]; then
-  if [ -f "${log}.created" ]; then echo '[{"number":1,"url":"u","isDraft":true}]'; else echo '[]'; fi
-fi
-if [ "$1 $2" = "pr create" ]; then touch "${log}.created"; fi
-`;
-  await files.write(path.join(bin, "gh"), script);
-  await chmod(path.join(bin, "gh"), 0o755);
-  const run = await tenbox(["pr", "T-1"], project.mainDir, {
-    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-  });
-  const logged = await files.read(log);
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const [pr] = await gh.prs();
   expect([run.code, run.json.ok]).toEqual([0, true]);
-  expect((logged ?? "").split("\n")).toContain("T-1 · y");
+  expect(pr?.title).toBe("T-1 · y");
 });
 
-test("a created PR sends its URL; an update sends nothing", async () => {
+test("a plan without groups opens one PR whose body starts with the group 1 line", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const [pr] = await gh.prs();
+  expect(String(pr?.body).split("\n")[0]).toBe("tenbox: T-1 group 1");
+  expect(run.json.groups).toEqual([
+    {
+      group: 1,
+      branch: "feat/T-1",
+      state: "created",
+      pr: { number: 1, url: "https://example.com/pull/1", draft: true },
+    },
+  ]);
+});
+
+test("a group whose need is not merged waits and its branch is not pushed", async () => {
+  await makeGroupTask();
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const prs = await gh.prs();
+  expect(states(run)).toEqual([
+    [1, "created"],
+    [2, "waiting"],
+  ]);
+  expect(prs.map((p) => p.title)).toEqual(["T-1 · feat: first"]);
+  expect(String(prs[0]?.body).split("\n")[0]).toBe("tenbox: T-1 group 1");
+  const pushed = await originBranches();
+  expect(pushed.includes("feat/T-1-2")).toBe(false);
+});
+
+test("a second run updates the PR and sends no notification", async () => {
   const ntfy = startFakeNtfy();
-  const dir = path.join(taskWorktree, ".tenbox");
-  await files.write(path.join(dir, "override.yaml"), `notify: { ntfy: "${ntfy.url}" }\n`);
-  await files.write(path.join(taskWorktree, "b.txt"), "b\n");
-  await git.run(["add", "b.txt"], taskWorktree);
-  await git.run(["commit", "-q", "-m", "b"], taskWorktree);
-  const bin = path.join(project.root, "bin");
-  const created = path.join(project.root, "gh.created");
-  const script = `#!/bin/sh
-if [ "$1 $2" = "pr list" ]; then
-  if [ -f "${created}" ]; then echo '[{"number":1,"url":"https://example.com/pull/1","isDraft":true}]'; else echo '[]'; fi
-fi
-if [ "$1 $2" = "pr create" ]; then touch "${created}"; fi
-`;
-  await files.write(path.join(bin, "gh"), script);
-  await chmod(path.join(bin, "gh"), 0o755);
-  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
-  const first = await tenbox(["pr", "T-1"], project.mainDir, env);
+  await files.write(
+    path.join(taskWorktree, ".tenbox", "override.yaml"),
+    `notify: { ntfy: "${ntfy.url}" }\n`,
+  );
+  await makeGroupTask();
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
   const afterCreate = [...ntfy.lines()];
-  const second = await tenbox(["pr", "T-1"], project.mainDir, env);
+  const second = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
   const afterUpdate = [...ntfy.lines()];
   ntfy.stop();
-  expect([first.code, second.code]).toEqual([0, 0]);
+  expect(rows(second)[0]?.state).toBe("updated");
   expect(afterCreate).toEqual([
     "demo · T-1 · pr-opened · https://example.com/pull/1 → tenbox close T-1",
   ]);
   expect(afterUpdate).toEqual(afterCreate);
+});
+
+test("a group PR is found by its body line when the head branch differs", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const db = path.join(project.root, "gh-state", "prs.json");
+  const line = "tenbox: T-1 group 1";
+  const other = {
+    number: 7,
+    url: "https://example.com/pull/7",
+    isDraft: false,
+    state: GH_STATE.open,
+  };
+  await files.write(
+    db,
+    JSON.stringify([{ ...other, headRefName: "renamed", title: "old", body: `${line}\n\ntext` }]),
+  );
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const prs = await gh.prs();
+  expect([rows(run)[0]?.state, prs.length, prs[0]?.title]).toEqual(["updated", 1, "T-1 · x"]);
+});
+
+test("a PR with no body line is found by its branch", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const db = path.join(project.root, "gh-state", "prs.json");
+  const old = { number: 3, url: "https://example.com/pull/3", isDraft: true, state: GH_STATE.open };
+  await files.write(
+    db,
+    JSON.stringify([{ ...old, headRefName: "feat/T-1", title: "o", body: "" }]),
+  );
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const prs = await gh.prs();
+  expect([rows(run)[0]?.state, prs.length]).toEqual(["updated", 1]);
+});
+
+test("a group whose need is merged gets its PR", async () => {
+  await makeGroupTask();
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  expect(states(run)).toEqual([
+    [1, "merged"],
+    [2, "created"],
+  ]);
 });

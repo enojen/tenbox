@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
-import { checksSummary, prBody, prTitle } from "./pr.ts";
+import { bodyHasLine, checksSummary, groupLine, prBody, prTitle } from "./pr.ts";
 
 const PLAN = "# T\n\n## Summary\nAdd the thing.\n";
 
@@ -9,15 +9,15 @@ test("prTitle joins id and title, or gives the id alone", () => {
   expect(prTitle(taskId("TB-7"), null)).toBe("TB-7");
 });
 
-test("prBody puts the checks summary first, then the whole plan folded", () => {
-  expect(prBody(PLAN, "2 checks pass")).toBe(
-    "## Checks\n\n2 checks pass\n\n<details><summary>Plan</summary>\n\n# T\n\n## Summary\nAdd the thing.\n</details>",
+test("prBody puts the group line first, then the checks summary, then the whole plan folded", () => {
+  expect(prBody("tenbox: TB-7 group 1", PLAN, "2 checks pass")).toBe(
+    "tenbox: TB-7 group 1\n\n## Checks\n\n2 checks pass\n\n<details><summary>Plan</summary>\n\n# T\n\n## Summary\nAdd the thing.\n</details>",
   );
 });
 
 test("prBody leaves out what is missing", () => {
-  expect(prBody(null, null)).toBe("");
-  expect(prBody(null, "ok")).toBe("## Checks\n\nok");
+  expect(prBody("L", null, null)).toBe("L");
+  expect(prBody("L", null, "ok")).toBe("L\n\n## Checks\n\nok");
 });
 
 test("checksSummary reads summary, or null for missing text, bad JSON or no summary", () => {
@@ -25,4 +25,16 @@ test("checksSummary reads summary, or null for missing text, bad JSON or no summ
   expect(checksSummary(null)).toBeNull();
   expect(checksSummary("not json")).toBeNull();
   expect(checksSummary('{"ok":true}')).toBeNull();
+});
+
+test("groupLine names the task and the group", () => {
+  expect(groupLine(taskId("TB-7"), 2)).toBe("tenbox: TB-7 group 2");
+});
+
+test("bodyHasLine matches a whole line only", () => {
+  const line = "tenbox: TB-7 group 1";
+  expect(bodyHasLine(`${line}\n\nrest`, line)).toBe(true);
+  expect(bodyHasLine(`intro\r\n${line}\r\n`, line)).toBe(true);
+  expect(bodyHasLine("tenbox: TB-7 group 10\n", line)).toBe(false);
+  expect(bodyHasLine(`see ${line}`, line)).toBe(false);
 });

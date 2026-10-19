@@ -59,6 +59,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions, groups (`PlanResult`). |
 | group | One or more parts that become one PR; has a name, `needs` (smaller group ids) and a recipe (`Group`). |
 | group worktree | The worktree of a group above 1, `~/wt/<project>/<id>-<N>` on `<task branch>-<N>`; group 1 is the task worktree (`groupWorktreeDir`). |
+| PR | The GitHub pull request of one group; its body starts with the group line `tenbox: <id> group <N>` (`groupLine`, `GroupPr`). |
 | recipe | How a group is built: worker model and effort, review lenses, check tier (`Recipe`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
@@ -135,7 +136,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans  groups  checks  decisions  notifications  answers  autoAnswers
+    approvals  plans  groups  prs  checks  decisions  notifications  answers  autoAnswers
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker

@@ -4,16 +4,30 @@ import { parseObject } from "./utils.ts";
 /** What `tenbox pr` did with the PR. */
 export const PR_STATE = { created: "created", updated: "updated" } as const;
 
-export type PrState = (typeof PR_STATE)[keyof typeof PR_STATE];
+/** What `tenbox pr` did with one group: a PR state, or why it left the group alone. */
+export const GROUP_PR_STATE = { ...PR_STATE, waiting: "waiting", merged: "merged" } as const;
+
+export type GroupPrState = (typeof GROUP_PR_STATE)[keyof typeof GROUP_PR_STATE];
 
 /** `<id> · <title>`, or just the id when the task has no title. */
 export function prTitle(id: TaskId, title: string | null): string {
   return title ? `${id} · ${title}` : id;
 }
 
-/** The checks summary, then the whole plan folded; a part with no text is left out. */
-export function prBody(planText: string | null, checksSummary: string | null): string {
+/** The first line of a group's PR body; `tenbox pr` and `tenbox close` find the PR by it. */
+export const groupLine = (id: TaskId, group: number): string => `tenbox: ${id} group ${group}`;
+
+export const bodyHasLine = (body: string, line: string): boolean =>
+  body.split(/\r?\n/).some((l) => l === line);
+
+/** The group line, the checks summary, then the whole plan folded; a part with no text is left out. */
+export function prBody(
+  line: string,
+  planText: string | null,
+  checksSummary: string | null,
+): string {
   const parts = [
+    line,
     checksSummary ? `## Checks\n\n${checksSummary}` : null,
     planText ? `<details><summary>Plan</summary>\n\n${planText.trim()}\n</details>` : null,
   ];

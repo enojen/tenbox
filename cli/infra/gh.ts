@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
+import { bodyHasLine } from "../../domain/pr.ts";
 import { parseJson } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
 
@@ -15,19 +16,55 @@ interface CreatePrInput extends PrText {
   draft: boolean;
 }
 
-export interface OpenPr {
+export const GH_STATE = { open: "OPEN", closed: "CLOSED", merged: "MERGED" } as const;
+
+export type GhPrState = (typeof GH_STATE)[keyof typeof GH_STATE];
+
+export interface GroupPr {
   number: number;
   url: string;
   draft: boolean;
+  state: GhPrState;
 }
 
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
-export const gh = { findPr, isMergedAt, countParents, findOpen, listOpen, create, edit, markReady };
+export const gh = {
+  findPr,
+  isMergedAt,
+  countParents,
+  findByLine,
+  findByBranch,
+  listOpen,
+  create,
+  edit,
+  markReady,
+};
 
-/** The output of `gh pr list --json number,url,isDraft`. */
+const PR_FIELDS = "number,url,isDraft,state,body";
+
+/** The output of `gh pr list --json number,url,isDraft,state,body`. */
 const PrListSchema = z.array(
-  z.object({ number: z.number(), url: z.string(), isDraft: z.boolean() }),
+  z.object({
+    number: z.number(),
+    url: z.string(),
+    isDraft: z.boolean(),
+    state: z.enum(GH_STATE),
+    body: z.string(),
+  }),
 );
+
+type ListedPr = z.infer<typeof PrListSchema>[number];
+
+const toGroupPr = (pr: ListedPr): GroupPr => ({
+  number: pr.number,
+  url: pr.url,
+  draft: pr.isDraft,
+  state: pr.state,
+});
+
+/** The open PR first: a closed PR with the same line or branch is old. */
+const pickPr = (prs: ListedPr[]): ListedPr | undefined =>
+  prs.find((pr) => pr.state === GH_STATE.open) ?? prs[0];
 
 /** The output of `gh pr list --json number,headRefName`. */
 const PrBranchListSchema = z.array(z.object({ number: z.number(), headRefName: z.string() }));
@@ -42,18 +79,17 @@ const LIST_LIMIT = "100";
 
 /** The output of `gh pr view --json state,headRefOid,mergeCommit,createdAt,mergedAt`. */
 const PrViewSchema = z.object({
-  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  state: z.enum(GH_STATE),
   headRefOid: z.string(),
   mergeCommit: z.object({ oid: z.string() }).nullish(),
   createdAt: z.iso.datetime(),
   mergedAt: z.iso.datetime().nullish(),
 });
 type PrState = z.infer<typeof PrViewSchema>;
-const MERGED = "MERGED";
 
 /** Merged at exactly this head: a commit after the PR head is not on GitHub. */
 function isMergedAt(pr: PrState, head: string): boolean {
-  return pr.state === MERGED && pr.headRefOid === head;
+  return pr.state === GH_STATE.merged && pr.headRefOid === head;
 }
 
 /** `pr create`, `api --method`: enough to name the command in an error without its long arguments. */
@@ -88,13 +124,20 @@ async function countParents(dir: string, sha: string): Promise<number> {
   return parents;
 }
 
-/** The open PR of the branch, or null. */
-async function findOpen(dir: string, branch: string): Promise<OpenPr | null> {
-  const args = ["pr", "list", "--head", branch, "--state", "open", "--json", "number,url,isDraft"];
+/** GitHub search finds the body text; the exact line match is ours. */
+async function findByLine(dir: string, line: string): Promise<GroupPr | null> {
+  const args = ["pr", "list", "--state", "all", "--search", `"${line}" in:body`];
+  const out = await run([...args, "--limit", LIST_LIMIT, "--json", PR_FIELDS], dir);
+  const found = PrListSchema.parse(parseJson(out)).filter((pr) => bodyHasLine(pr.body, line));
+  const pr = pickPr(found);
+  return pr === undefined ? null : toGroupPr(pr);
+}
+
+async function findByBranch(dir: string, branch: string): Promise<GroupPr | null> {
+  const args = ["pr", "list", "--head", branch, "--state", "all", "--json", PR_FIELDS];
   const out = await run(args, dir);
-  const first = PrListSchema.parse(parseJson(out))[0];
-  if (first === undefined) return null;
-  return { number: first.number, url: first.url, draft: first.isDraft };
+  const pr = pickPr(PrListSchema.parse(parseJson(out)));
+  return pr === undefined ? null : toGroupPr(pr);
 }
 
 /** Every open PR into `base`. */

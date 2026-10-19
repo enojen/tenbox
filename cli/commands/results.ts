@@ -3,7 +3,7 @@ import type { Approval } from "../../domain/approval.ts";
 import type { RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
-import type { PrState } from "../../domain/pr.ts";
+import type { GroupPrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { FailedState } from "../../domain/utils.ts";
@@ -127,16 +127,21 @@ export interface AttachResult {
 export interface PrInfo {
   number: number;
   url: string;
-  state: PrState;
   draft: boolean;
+}
+
+/** `pr` is null for a waiting group with no PR yet. */
+export interface GroupPrResult {
+  group: number;
+  branch: string;
+  state: GroupPrState;
+  pr: PrInfo | null;
 }
 
 export interface PrResult {
   ok: true;
   task: string;
-  branch: string;
-  commit: string;
-  pr: PrInfo;
+  groups: GroupPrResult[];
 }
 
 export interface ProofResult {
