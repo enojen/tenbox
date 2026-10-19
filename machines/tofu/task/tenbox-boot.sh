@@ -25,27 +25,27 @@ mountpoint -q /mnt/task || mount "$dev" /mnt/task
 mkdir -p /mnt/task/wt /mnt/task/.tenbox /mnt/task/.claude
 chown tenzel:tenzel /mnt/task /mnt/task/wt /mnt/task/.tenbox /mnt/task/.claude
 
-# What must survive the server lives on the volume; the home directory only points there.
+# What must survive the server lives on the volume, bind-mounted into the home directory, so
+# every path stays a real /home/tenzel path: git, claude's trust and its transcripts key by
+# the real path, and a symlink would give them /mnt/task paths that tenbox does not know.
 for dir in wt .tenbox .claude; do
-  [ -L "$home/$dir" ] || rm -rf "${home:?}/$dir"
-  ln -sfn "/mnt/task/$dir" "$home/$dir"
-  chown -h tenzel:tenzel "$home/$dir"
+  [ -L "$home/$dir" ] && rm "$home/$dir"
+  mkdir -p "$home/$dir"
+  mountpoint -q "$home/$dir" || mount --bind "/mnt/task/$dir" "$home/$dir"
+  chown tenzel:tenzel "$home/$dir"
 done
 
 # claude: the login copy, Remote Control on, the worktrees trusted, no first-run questions.
-install -o tenzel -g tenzel -m 600 "$secrets/claude-credentials.json" /mnt/task/.claude/.credentials.json
-if [ ! -f /mnt/task/.claude/settings.json ]; then
-  echo '{ "remoteControlAtStartup": true }' > /mnt/task/.claude/settings.json
-  chown tenzel:tenzel /mnt/task/.claude/settings.json
+install -o tenzel -g tenzel -m 600 "$secrets/claude-credentials.json" "$home/.claude/.credentials.json"
+if [ ! -f "$home/.claude/settings.json" ]; then
+  echo '{ "remoteControlAtStartup": true }' > "$home/.claude/settings.json"
+  chown tenzel:tenzel "$home/.claude/settings.json"
 fi
 main="$home/wt/$project/main"
 worktree="$home/wt/$project/$task"
-# claude keys trust by the real path, so the /mnt/task paths are trusted as well as the links.
-real_main="/mnt/task/wt/$project/main"
-real_worktree="/mnt/task/wt/$project/$task"
-jq -n --arg main "$main" --arg wt "$worktree" --arg rmain "$real_main" --arg rwt "$real_worktree" --arg repo "$home/tenbox" \
+jq -n --arg main "$main" --arg wt "$worktree" --arg repo "$home/tenbox" \
   '{ hasCompletedOnboarding: true, theme: "dark",
-     projects: ([$main, $wt, $rmain, $rwt, $repo] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
+     projects: ([$main, $wt, $repo] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
   > "$home/.claude.json"
 chown tenzel:tenzel "$home/.claude.json"
 

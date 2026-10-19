@@ -49,13 +49,15 @@ with the ssh keys named in `ssh_keys`: yours (`tenzel`) and the workflow's
 (`tenbox-machine`).
 
 `tenbox-boot.sh` runs once per boot as root: waits for the volume, formats it on the first
-run, mounts it on `/mnt/task` and points `~tenzel/wt`, `~tenzel/.tenbox` and `~tenzel/.claude`
-there; writes the login, `remoteControlAtStartup`, and trust for the main checkout and the
-task worktree; logs gh in and takes the git identity from the token's GitHub user; clones
-the project into `~/wt/<project>/main` on the first run; writes `tenbox.local.yaml` with the
-tracker key and the ntfy URL; runs `tenbox install`; then starts the tenbox command as a
-transient systemd unit `tenbox-run`, so its claude session outlives cloud-init. Output:
-`journalctl -u cloud-final`, `/var/log/tenbox-run.log`.
+run, mounts it on `/mnt/task` and bind-mounts its `wt`, `.tenbox` and `.claude` onto
+`~tenzel/wt`, `~tenzel/.tenbox` and `~tenzel/.claude`, so every path stays a real home path
+(git, claude's trust and its transcripts key by the real path); writes the login,
+`remoteControlAtStartup`, and trust for the main checkout and the task worktree; logs gh in
+and takes the git identity from the token's GitHub user; clones the project into
+`~/wt/<project>/main` on the first run; writes `tenbox.local.yaml` with the tracker key and
+the ntfy URL; runs `tenbox install`; then starts the tenbox command as a transient systemd
+unit `tenbox-run`, so its claude session outlives cloud-init. Output: `journalctl -u
+cloud-final`, `/var/log/tenbox-run.log`.
 
 ## The control plane: `machine.yml` and `machine.sh`
 

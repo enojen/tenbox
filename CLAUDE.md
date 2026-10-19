@@ -84,7 +84,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
 | machine | A short-lived cloud server of one task, started and stopped by `machine.yml` (`machines`). |
-| run | One `machine.yml` workflow run that executes a tenbox command of a task on its machine; `tenbox machine run` starts it, `tenbox machine ls` lists them (`machines.run`). |
+| machine run | One `machine.yml` workflow run that executes a tenbox command of a task on its machine; `tenbox machine run` starts it, `tenbox machine ls` lists them (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
