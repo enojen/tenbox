@@ -98,7 +98,8 @@ describe("machine run", () => {
     await git.run(["remote", "add", "origin", origin], project.mainDir);
     const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
     expect(run.code).toBe(0);
-    expect(await ghCalls()).toBe(
+    const calls = await ghCalls();
+    expect(calls).toBe(
       "workflow run machine.yml -f task=TEN-1 -f cmd=start -f project=demo -f repo=https://github.com/o/demo.git\n",
     );
   });

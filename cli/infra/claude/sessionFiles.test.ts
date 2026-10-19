@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { cp } from "node:fs/promises";
 import path from "node:path";
 import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
 import { env } from "../env.ts";
@@ -300,4 +301,23 @@ test("an unfinished run without its script or without a timestamp is skipped", a
   await writeUnfinishedRun("wf_3", []);
   const runs = await claudeSessions.listRuns(CWD);
   expect(runs).toEqual([]);
+});
+
+const FIXTURE_2_1_303 = path.join(import.meta.dir, "fixtures", "claude-2.1.303", "session-1");
+
+test("a run file without workflow_agent entries (Claude Code 2.1.303) gets its agents from the run dir", async () => {
+  await cp(FIXTURE_2_1_303, sessionDir, { recursive: true });
+  const runs = await claudeSessions.listRuns(CWD);
+  expect(runs).toHaveLength(1);
+  expect(runs?.[0]).toMatchObject({ workflow: "tenbox-plan", finished: true, durationMs: 103078 });
+  const agents = runs?.[0]?.agents ?? [];
+  expect(agents.map((agent) => [agent.label, agent.role])).toEqual([
+    ["plan", "planner"],
+    ["record plan", "runner"],
+  ]);
+  for (const agent of agents) {
+    expect(agent.model).toStartWith("claude-");
+    expect(agent.output).toBeGreaterThan(0);
+  }
+  expect(JSON.stringify(runs)).not.toContain("TEN-426");
 });

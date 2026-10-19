@@ -1,0 +1,15 @@
+{
+  "runId": "wf_1",
+  "workflowName": "tenbox-plan",
+  "status": "completed",
+  "startTime": 1792427074491,
+  "durationMs": 103078,
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "title": "Plan"
+    }
+  ],
+  "totalTokens": 56974,
+  "totalToolCalls": 15
+}

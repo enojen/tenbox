@@ -11,6 +11,7 @@ import { readTranscript, type Transcript } from "./transcripts.ts";
  * agents. The tokens come from `<session>/subagents/workflows/<run>/agent-<agentId>.jsonl`.
  * A run whose session ended has no run file: its agents come from `<run>/journal.jsonl`, the
  * `agent-<agentId>.meta.json` and the transcripts, its workflow from the script name.
+ * A run file without agent entries (Claude Code 2.1.303) reads its agents from the run dir too.
  * Prompts and result text are never returned.
  */
 export const claudeSessions = { listRuns, findLastRun };
@@ -103,6 +104,11 @@ async function readRun(file: string): Promise<WorkflowRun | null> {
   for (const entry of progress.filter(isAgentEntry)) {
     const agent = await toFinishedAgent({ workflow: workflowName, entry, transcripts });
     agents.push(agent);
+  }
+  // Claude Code 2.1.303 writes no agent entries: the run dir has them.
+  if (agents.length === 0) {
+    const fromDir = await readRunDirAgents({ workflow: workflowName, runDir: transcripts });
+    agents.push(...fromDir.agents);
   }
   return {
     workflow: workflowName,
@@ -200,14 +206,7 @@ async function readUnfinishedRun(runDir: string): Promise<WorkflowRun | null> {
   const workflow = await findWorkflowName(runDir);
   const journal = await files.read(path.join(runDir, "journal.jsonl"));
   if (workflow === null || journal === null) return null;
-  const agents: RunAgent[] = [];
-  const ends: number[] = [];
-  for (const started of startedAgents(journal)) {
-    const agent = await toUnfinishedAgent({ workflow, runDir, started });
-    if (agent === null) continue;
-    agents.push(agent.agent);
-    ends.push(agent.endedAt);
-  }
+  const { agents, ends } = await readRunDirAgents({ workflow, runDir });
   const starts = agents.map((agent) => Date.parse(agent.started ?? ""));
   if (starts.length === 0) return null;
   const startMs = Math.min(...starts);
@@ -220,6 +219,29 @@ async function readUnfinishedRun(runDir: string): Promise<WorkflowRun | null> {
     finished: false,
     agents,
   };
+}
+
+interface RunDirAgents {
+  agents: RunAgent[];
+  ends: number[];
+}
+
+/** The agents of a run dir: the journal's `started` lines, the metas and the transcripts. */
+async function readRunDirAgents(input: {
+  workflow: string;
+  runDir: string;
+}): Promise<RunDirAgents> {
+  const { workflow, runDir } = input;
+  const journal = await files.read(path.join(runDir, "journal.jsonl"));
+  const result: RunDirAgents = { agents: [], ends: [] };
+  if (journal === null) return result;
+  for (const started of startedAgents(journal)) {
+    const agent = await toUnfinishedAgent({ workflow, runDir, started });
+    if (agent === null) continue;
+    result.agents.push(agent.agent);
+    result.ends.push(agent.endedAt);
+  }
+  return result;
 }
 
 /** `<workflow>` of the script `<session>/workflows/scripts/<workflow>-<run>.js`. */
