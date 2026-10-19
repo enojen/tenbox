@@ -1,0 +1,8 @@
+[Unit]
+Description=Upload the claude.ai login to the tenbox bucket when it changes
+
+[Path]
+PathModified=%h/.claude/.credentials.json
+
+[Install]
+WantedBy=default.target

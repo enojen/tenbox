@@ -325,7 +325,8 @@ Tasks run on short-lived cloud machines, one per task, instead of your computer.
 today: the image they boot from, built with Packer; the OpenTofu module that gives one task its
 volume and server; the control plane, `.github/workflows/machine.yml` with `cmd` start, build,
 close or down, which runs `machines/machine.sh` with the state in a bucket; and the watchdog
-that asks that workflow for `down` after five idle minutes. Start a run with `gh workflow run
+that asks that workflow for `down` after five idle minutes; and the login sync, which keeps a
+copy of your claude.ai login in the bucket for the machines. Start a run with `gh workflow run
 machine.yml -f task=TEN-301 -f cmd=build`; `tenbox machine run` comes next. See
 [`machines/README.md`](machines/README.md).
 
@@ -335,7 +336,7 @@ machine.yml -f task=TEN-301 -f cmd=build`; `tenbox machine run` comes next. See
    `tenbox start`, `check`, `install`.
 2. **Done**: `tenbox close`, `tenbox pr`, `tenbox merge-check`, `/tenbox-close`, the ClickUp
    adapter.
-3. **Now**: machines. The image, the task module and the control plane are built; next the
-   login sync, `tenbox machine run`, ephemeral CI runners.
+3. **Now**: machines. The image, the task module, the control plane and the login sync are
+   built; next `tenbox machine run`, ephemeral CI runners.
 4. Later, see [`docs/design.md`](docs/design.md): the full manifest and the sandbox, the
    Try phase with QA, fakes from API docs, the live pane, the panel.

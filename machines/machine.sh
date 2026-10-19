@@ -11,16 +11,19 @@
 # The bucket holds the state, tasks/<task>.tfstate, the facts of the task that every run
 # needs, tasks/<task>.json, and the archive of a closed task, archive/<task>-<time>.tar.gz.
 #
+# The bucket also holds the claude.ai login, login/credentials.json, uploaded by
+# machines/login/ from your computer; a machine gets the copy of the moment, and no machine
+# starts with a login whose refresh token has expired.
+#
 # Environment: HCLOUD_TOKEN, TENBOX_BUCKET, BUCKET_ACCESS_KEY, BUCKET_SECRET_KEY,
-# MACHINE_GITHUB_TOKEN, CLAUDE_CREDENTIALS (the contents of ~/.claude/.credentials.json),
-# MACHINE_SSH_KEY_FILE (close only). Optional: TENBOX_BUCKET_LOCATION (hel1),
-# TENBOX_BUCKET_ENDPOINT, NTFY_URL, TRACKER_API_KEY, SERVER_TYPES ("cx33 cx43 cx23").
+# MACHINE_GITHUB_TOKEN, MACHINE_SSH_KEY_FILE (close only). Optional: TENBOX_BUCKET_LOCATION
+# (hel1), TENBOX_BUCKET_ENDPOINT, NTFY_URL, TRACKER_API_KEY, SERVER_TYPES ("cx33 cx43 cx23").
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 task="${1:?task id}"
 action="${2:?start | build | close | down | destroy}"
 : "${HCLOUD_TOKEN:?}" "${TENBOX_BUCKET:?}" "${BUCKET_ACCESS_KEY:?}" "${BUCKET_SECRET_KEY:?}" \
-  "${MACHINE_GITHUB_TOKEN:?}" "${CLAUDE_CREDENTIALS:?}"
+  "${MACHINE_GITHUB_TOKEN:?}"
 location="${TENBOX_BUCKET_LOCATION:-hel1}"
 endpoint="${TENBOX_BUCKET_ENDPOINT:-https://$location.your-objectstorage.com}"
 bucket_url="${endpoint/:\/\//:\/\/$TENBOX_BUCKET.}"
@@ -40,8 +43,21 @@ object() { # <method> <key> [curl options]
 }
 fetch_facts() { object GET "tasks/$task.json" -o "$facts" 2> /dev/null; }
 
+# The login of the moment, from the bucket; refused when its refresh token has expired.
+login="$work/credentials.json"
+fetch_login() {
+  object GET login/credentials.json -o "$login" 2> /dev/null \
+    || { echo "no login in the bucket: run machines/login/install.sh on your computer" >&2; return 1; }
+  local expiry
+  expiry="$(jq -r '(.claudeAiOauth.refreshTokenExpiresAt // 0) / 1000 | floor' "$login")"
+  if [ "$expiry" -le "$(date +%s)" ]; then
+    echo "the claude.ai login expired on $(jq -rn "$expiry | todate"): run /login on your computer" >&2
+    return 1
+  fi
+}
+
 export TF_VAR_task="$task" TF_VAR_hcloud_token="$HCLOUD_TOKEN" \
-  TF_VAR_github_token="$MACHINE_GITHUB_TOKEN" TF_VAR_claude_credentials="$CLAUDE_CREDENTIALS" \
+  TF_VAR_github_token="$MACHINE_GITHUB_TOKEN" \
   TF_VAR_ntfy="${NTFY_URL:-}" TF_VAR_tracker_api_key="${TRACKER_API_KEY:-}"
 cd "$here/tofu/task"
 tofu init -input=false -reconfigure \
@@ -51,6 +67,9 @@ apply() { tofu apply -auto-approve -input=false -var-file="$facts" "$@"; }
 # A server with the tenbox command, trying the server types in order: hel1 runs out of some.
 up() { # <tenbox command>
   local type log="$work/apply.log"
+  fetch_login
+  export TF_VAR_claude_credentials
+  TF_VAR_claude_credentials="$(cat "$login")"
   for type in $server_types; do
     if apply -var up=true -var "cmd=$1" -var "server_type=$type" 2>&1 | tee "$log"; then
       return 0

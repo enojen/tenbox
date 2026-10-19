@@ -20,8 +20,8 @@ worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`
 pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp tracker.
 Phase 3 (machines, `docs/design.md` "Machines") has started: the Packer image, the task
 module, the control plane `machine.yml` + `machines/machine.sh` (start, build, close, down, destroy;
-state in a bucket) and the watchdog that asks for `down` (TEN-419, TEN-420, TEN-421). No
-`tenbox machine` command and no sandbox yet.
+state in a bucket), the watchdog that asks for `down` and the login sync (TEN-419 to
+TEN-422). No `tenbox machine` command and no sandbox yet.
 
 ## Rules
 
@@ -160,7 +160,8 @@ rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, 
             rules.test.ts proves each one
 machines/   packer/ (the image: template, build.sh, scripts/), tofu/task/ (volume + server per task,
             cloud-init, tenbox-boot.sh), machine.sh (one command of .github/workflows/machine.yml;
-            local.sh runs it from your computer), watchdog/ (script, service, timer)
+            local.sh runs it from your computer), login/ (the claude.ai login sync from your
+            computer to the bucket), watchdog/ (script, service, timer)
 docs/       design.md (the target design), flow page and mockups
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```

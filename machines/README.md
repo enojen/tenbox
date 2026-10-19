@@ -42,8 +42,8 @@ One Tenbox task on Hetzner Cloud: a 10 GB volume `tenbox-<task>` that lives from
 close, and a server `tenbox-<task>` (`hel1`) that exists while `up` is true. The server
 boots from the newest snapshot labelled `tenbox-image=true` and gets cloud-init user data:
 the machine facts (`/etc/tenbox-machine.json`: task, project, repo, volume, the tenbox
-command, the ntfy URL, the control repo), the GitHub token, the claude.ai login copy, the
-tracker key, the current watchdog script and `tenbox-boot.sh`. For now the secrets travel
+command, the ntfy URL, the control repo), the GitHub token, the claude.ai login copy from
+the bucket, the tracker key, the current watchdog script and `tenbox-boot.sh`. For now the secrets travel
 in user data; the boot script shreds them once gh and claude have them. Root may log in
 with the ssh keys named in `ssh_keys`: yours (`tenzel`) and the workflow's
 (`tenbox-machine`).
@@ -94,11 +94,10 @@ and what the volume got in the last half minute is lost.
 Secrets of this repo (Settings → Secrets and variables → Actions): `HCLOUD_TOKEN`,
 `BUCKET_ACCESS_KEY`, `BUCKET_SECRET_KEY`, `MACHINE_GITHUB_TOKEN` (a fine-grained token that
 reads and writes the projects and may run Actions in this repo: the watchdog calls
-`machine.yml` with it), `CLAUDE_CREDENTIALS` (the contents of `~/.claude/.credentials.json`
-of the account whose phone app should show the sessions), `MACHINE_SSH_KEY` (the private
-key of the Hetzner ssh key `tenbox-machine`), and optional `NTFY_URL` and
-`TRACKER_API_KEY`. Variables: `TENBOX_BUCKET` (the bucket name), optional
-`TENBOX_BUCKET_LOCATION` (`hel1`) and `MACHINE_RUNNER`.
+`machine.yml` with it), `MACHINE_SSH_KEY` (the private key of the Hetzner ssh key
+`tenbox-machine`), and optional `NTFY_URL` and `TRACKER_API_KEY`. Variables:
+`TENBOX_BUCKET` (the bucket name), optional `TENBOX_BUCKET_LOCATION` (`hel1`) and
+`MACHINE_RUNNER`.
 
 `machines/local.sh` runs the same `machine.sh` from your computer, against the same
 bucket, with the secrets read from `~/.config/tenbox/` (`hcloud-token`, `github-token`,
@@ -110,6 +109,18 @@ machines/local.sh DEMO-3 start tenbox-demo https://github.com/enojen/tenbox-demo
 machines/local.sh DEMO-3 build
 machines/local.sh DEMO-3 close --force
 ```
+
+## The login: `login/`
+
+Remote Control needs a claude.ai login; `claude setup-token` runs the model but Remote
+Control refuses it, and a copy of `~/.claude/.credentials.json` works. The copy lives in the
+bucket as `login/credentials.json`. `machines/login/install.sh` installs a systemd user path
+unit on your computer that uploads the file whenever it changes, and uploads it once right
+away; `/login` on your computer is all a new account needs. Every `start`, `build` and
+`close` reads the copy of the moment and gives it to the machine in user data; when its
+refresh token has expired, `machine.sh` stops before any server with "run /login on your
+computer". The access token lives hours and the refresh token days; whether a refresh on a
+machine breaks the login on your computer is being watched for a week from 2026-10-20.
 
 ## The watchdog: `watchdog/`
 

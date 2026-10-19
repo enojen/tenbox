@@ -63,7 +63,6 @@ jobs:
           BUCKET_ACCESS_KEY: ${{ secrets.BUCKET_ACCESS_KEY }}
           BUCKET_SECRET_KEY: ${{ secrets.BUCKET_SECRET_KEY }}
           MACHINE_GITHUB_TOKEN: ${{ secrets.MACHINE_GITHUB_TOKEN }}
-          CLAUDE_CREDENTIALS: ${{ secrets.CLAUDE_CREDENTIALS }}
           MACHINE_SSH_KEY: ${{ secrets.MACHINE_SSH_KEY }}
           MACHINE_SSH_KEY_FILE: ${{ runner.temp }}/machine-key
           NTFY_URL: ${{ secrets.NTFY_URL }}

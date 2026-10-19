@@ -1,0 +1,6 @@
+[Unit]
+Description=Upload the claude.ai login to the tenbox bucket
+
+[Service]
+Type=oneshot
+ExecStart=%h/tenbox/machines/login/tenbox-login-sync.sh
