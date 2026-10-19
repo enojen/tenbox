@@ -39,7 +39,8 @@ test("a dirty worktree is refused and nothing is pushed", async () => {
 });
 
 test("a branch with no commits ahead of main is refused and nothing is pushed", async () => {
-  const run = await tenbox(["pr", "T-1"], project.mainDir);
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
   const branches = await originBranches();
   expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "no-commits"]);
   expect(branches).toBe("");
@@ -240,10 +241,79 @@ test("a group whose need is merged gets its PR", async () => {
   await makeGroupTask();
   const gh = await installGh();
   await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
   await gh.setState("feat/T-1", GH_STATE.merged);
   const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
   expect(states(run)).toEqual([
     [1, "merged"],
     [2, "created"],
   ]);
+});
+
+/** Group 2 starts after the commit of group 1, so its branch holds that commit too. */
+async function makeStackedGroups(): Promise<string> {
+  await writeGroupPlan();
+  await commit(taskWorktree, "one.txt");
+  const made = await tenbox(["worktree", "T-1", "--group", "2"], project.mainDir);
+  const groupWorktree = String(made.json.worktree);
+  await commit(groupWorktree, "two.txt");
+  return groupWorktree;
+}
+
+/** Squash merges group 1 on origin: one commit with its files on main. */
+async function squashGroupOne(text: string): Promise<void> {
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
+  await files.write(path.join(project.mainDir, "one.txt"), text);
+  await git.run(["add", "one.txt"], project.mainDir);
+  await git.run(["commit", "-q", "-m", "feat: first (#1)"], project.mainDir);
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
+}
+
+test("a waiting group is rebased onto the base after its need is squash merged", async () => {
+  await makeStackedGroups();
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("one.txt\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const own = await git.run(["log", "--format=%s", "main..feat/T-1-2"], origin);
+  const prs = await gh.prs();
+  expect(states(run)).toEqual([
+    [1, "merged"],
+    [2, "created"],
+  ]);
+  expect(own).toBe("two.txt");
+  expect(String(prs[1]?.body).split("\n")[0]).toBe("tenbox: T-1 group 2");
+});
+
+test("a rebase conflict gives the group conflict with the files and pushes nothing", async () => {
+  const groupWorktree = await makeStackedGroups();
+  await files.write(path.join(groupWorktree, "one.txt"), "group 2\n");
+  await git.run(["commit", "-q", "-am", "edit one"], groupWorktree);
+  const before = await git.findHead(groupWorktree);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("main\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const after = await git.findHead(groupWorktree);
+  const pushed = await originBranches();
+  expect([run.code, run.json.ok]).toEqual([0, true]);
+  expect(run.json.groups).toEqual([
+    expect.objectContaining({ group: 1, state: "merged" }),
+    { group: 2, branch: "feat/T-1-2", state: "conflict", pr: null, files: ["one.txt"] },
+  ]);
+  expect(after).toBe(before);
+  expect(pushed.includes("feat/T-1-2")).toBe(false);
+});
+
+test("tenbox pr never merges a PR", async () => {
+  await makeStackedGroups();
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("one.txt\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const log = await files.read(path.join(project.root, "gh-state", "calls.log"));
+  expect(log?.includes('"merge"')).toBe(false);
 });

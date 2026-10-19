@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
 import {
   nextRound,
+  readGroupStart,
   readTaskFile,
   renderTaskMd,
   type Task,
@@ -50,4 +51,10 @@ test("readTaskFile reads task.json and gives null for anything else", () => {
   expect(readTaskFile(JSON.stringify(file))).toEqual(file);
   expect(readTaskFile('{"id":"T-1"}')).toBeNull();
   expect(readTaskFile("not json")).toBeNull();
+});
+
+test("readGroupStart reads group.json and gives null for anything else", () => {
+  expect(readGroupStart('{"start":"abc123"}')).toEqual({ start: "abc123" });
+  expect(readGroupStart('{"start":1}')).toBeNull();
+  expect(readGroupStart("not json")).toBeNull();
 });

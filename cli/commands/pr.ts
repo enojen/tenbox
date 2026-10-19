@@ -108,15 +108,45 @@ async function openGroupPr(input: OpenGroupInput): Promise<GroupPrResult> {
     manifest: run.manifest,
     taskWorktree: run.taskWorktree,
   });
-  await assertPushable(checkout.worktree, group.branch, run.baseBranch);
   const dir = checkout.worktree;
+  await assertClean(dir);
   const own = await prs.find({ dir, id, group: group.id, branch: group.branch });
+  // A squash merged branch has no commits ahead of a pulled base, so this comes first.
   if (own?.state === GH_STATE.merged) return result(group, GROUP_PR_STATE.merged, own);
-  await git.push(dir, group.branch);
+  await assertAhead(dir, group.branch, run.baseBranch);
+  const conflicted = await pushGroup({ run, group, dir, own });
+  if (conflicted.length > 0) {
+    return { ...result(group, GROUP_PR_STATE.conflict, null), files: conflicted };
+  }
   const text = await readPrText(run, group);
   const state = await createOrUpdate({ run, group, dir, text, own });
   if (state.state === GROUP_PR_STATE.created) await notifyOpened(run, state.pr);
   return state;
+}
+
+interface PushInput {
+  run: PrRun;
+  group: PrGroup;
+  dir: string;
+  own: GroupPr | null;
+}
+
+/**
+ * A group with needs and no PR yet waited for them: it is rebased onto the base first, so only
+ * its own commits stay. Returns the conflicted files of that rebase; nothing is pushed then.
+ */
+async function pushGroup(input: PushInput): Promise<string[]> {
+  const { run, group, dir, own } = input;
+  const waited = own === null && group.needs.length > 0;
+  if (!waited) {
+    await git.push(dir, group.branch);
+    return [];
+  }
+  const rebase = { taskWorktree: run.taskWorktree, group: group.id, worktree: dir };
+  const conflicted = await groups.rebase({ ...rebase, base: run.baseBranch });
+  if (conflicted.length > 0) return conflicted;
+  await git.forcePush(dir, group.branch);
+  return [];
 }
 
 async function needsMerged(input: OpenGroupInput): Promise<boolean> {
@@ -151,15 +181,14 @@ async function notifyOpened(run: PrRun, pr: PrInfo | null): Promise<void> {
   await notifications.send({ taskWorktree: run.taskWorktree, notification });
 }
 
-async function assertPushable(taskWorktree: string, branch: string, base: string): Promise<void> {
-  const dirty = await git.hasChanges(taskWorktree);
-  if (dirty) {
-    throw dirtyBeforePrError(taskWorktree);
-  }
-  const merged = await git.isMerged(taskWorktree, base, branch);
-  if (merged) {
-    throw noCommitsError(branch, base);
-  }
+async function assertClean(dir: string): Promise<void> {
+  const dirty = await git.hasChanges(dir);
+  if (dirty) throw dirtyBeforePrError(dir);
+}
+
+async function assertAhead(dir: string, branch: string, base: string): Promise<void> {
+  const merged = await git.isMerged(dir, base, branch);
+  if (merged) throw noCommitsError(branch, base);
 }
 
 async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {

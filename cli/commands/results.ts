@@ -136,6 +136,8 @@ export interface GroupPrResult {
   branch: string;
   state: GroupPrState;
   pr: PrInfo | null;
+  /** Only with state `conflict`: the files the rebase onto the base conflicted in. */
+  files?: string[];
 }
 
 export interface PrResult {

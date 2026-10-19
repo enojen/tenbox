@@ -5,7 +5,12 @@ import { parseObject } from "./utils.ts";
 export const PR_STATE = { created: "created", updated: "updated" } as const;
 
 /** What `tenbox pr` did with one group: a PR state, or why it left the group alone. */
-export const GROUP_PR_STATE = { ...PR_STATE, waiting: "waiting", merged: "merged" } as const;
+export const GROUP_PR_STATE = {
+  ...PR_STATE,
+  waiting: "waiting",
+  merged: "merged",
+  conflict: "conflict",
+} as const;
 
 export type GroupPrState = (typeof GROUP_PR_STATE)[keyof typeof GROUP_PR_STATE];
 

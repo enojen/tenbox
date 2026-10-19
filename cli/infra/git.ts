@@ -37,12 +37,14 @@ export const git = {
   hasChanges,
   isMerged,
   push,
+  forcePush,
   pull,
   remoteBranchExists,
   deleteRemoteBranch,
   fetch,
   addDetachedWorktree,
   merge,
+  rebaseOnto,
   ensureExcludes,
   hasFileChanges,
 };
@@ -215,6 +217,11 @@ async function push(dir: string, branch: string): Promise<void> {
   await run(["push", "-u", "origin", branch], dir);
 }
 
+/** Pushes the rebased branch; refuses when `origin` has commits this checkout has not fetched. */
+async function forcePush(dir: string, branch: string): Promise<void> {
+  await run(["push", "-u", "--force-with-lease", "origin", branch], dir);
+}
+
 /** Moves the checked-out `base` of `dir` to `origin/<base>`; throws unless it is a fast-forward. */
 async function pull(dir: string, base: string): Promise<void> {
   await run(["pull", "--quiet", "--ff-only", "origin", base], dir);
@@ -248,6 +255,20 @@ async function merge(dir: string, ref: string): Promise<string[]> {
   const result = await runRaw(args, dir);
   if (result.code === 0) return [];
   const out = await run(["diff", "--name-only", "--diff-filter=U"], dir);
+  if (out === "") throw gitError(args, result);
+  return out.split("\n");
+}
+
+/**
+ * Replays the commits after `start` onto `onto`. On a conflict it aborts, so the branch is as
+ * before, and returns the conflicted files; empty after a clean rebase.
+ */
+async function rebaseOnto(dir: string, onto: string, start: string): Promise<string[]> {
+  const args = [...MERGE_IDENTITY, "rebase", "--onto", onto, start];
+  const result = await runRaw(args, dir);
+  if (result.code === 0) return [];
+  const out = await run(["diff", "--name-only", "--diff-filter=U"], dir);
+  await run(["rebase", "--abort"], dir);
   if (out === "") throw gitError(args, result);
   return out.split("\n");
 }

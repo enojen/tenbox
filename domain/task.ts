@@ -31,6 +31,17 @@ export const groupDir = (dir: string, group: number): string =>
   path.join(dir, "groups", String(group));
 /** `group.json` in a group folder. */
 export const groupFile = (dir: string): string => path.join(dir, "group.json");
+
+const GroupStartSchema = z.object({ start: z.string() });
+
+/** Where a group branch left its needs; `tenbox pr` replays only the commits after `start`. */
+export type GroupStart = z.infer<typeof GroupStartSchema>;
+
+/** The start in `group.json` text; null when it is not a JSON object or does not match. */
+export function readGroupStart(text: string): GroupStart | null {
+  const parsed = GroupStartSchema.safeParse(parseObject(text));
+  return parsed.success ? parsed.data : null;
+}
 export const groupWorktreeDir = (taskWorktree: string, group: number): string =>
   `${taskWorktree}-${group}`;
 export const groupBranch = (taskBranchName: string, group: number): string =>

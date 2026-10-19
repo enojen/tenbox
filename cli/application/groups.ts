@@ -7,6 +7,7 @@ import {
   groupDir,
   groupFile,
   groupWorktreeDir,
+  readGroupStart,
   tenboxDir,
 } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
@@ -38,7 +39,7 @@ interface NewGroup {
 }
 
 /** Groups of a task. Group 1 is the task itself; group N > 1 has its own worktree and branch. */
-export const groups = { ensure };
+export const groups = { ensure, rebase };
 
 async function ensure(request: GroupRequest): Promise<GroupCheckout> {
   const { id, group, manifest, taskWorktree } = request;
@@ -72,4 +73,31 @@ async function create(next: NewGroup): Promise<void> {
   const head = await git.findHead(worktree);
   const dir = groupDir(tenboxDir(taskWorktree), group);
   await files.writeJson(groupFile(dir), { start: head });
+}
+
+interface RebaseRequest {
+  taskWorktree: string;
+  group: number;
+  /** The group worktree, on the group branch. */
+  worktree: string;
+  base: string;
+}
+
+/**
+ * Replays the group's own commits, those after the start in `group.json`, onto `origin/<base>`
+ * and saves that base as the new start. Returns the conflicted files; the branch is as before then.
+ */
+async function rebase(request: RebaseRequest): Promise<string[]> {
+  const { taskWorktree, group, worktree, base } = request;
+  const file = groupFile(groupDir(tenboxDir(taskWorktree), group));
+  const text = await files.read(file);
+  const saved = text === null ? null : readGroupStart(text);
+  if (saved === null) return [];
+  await git.fetch(worktree);
+  const onto = `origin/${base}`;
+  const conflicted = await git.rebaseOnto(worktree, onto, saved.start);
+  if (conflicted.length > 0) return conflicted;
+  const start = await git.findCommit(worktree, onto);
+  await files.writeJson(file, { start });
+  return [];
 }

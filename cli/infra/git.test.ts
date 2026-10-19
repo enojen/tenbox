@@ -116,3 +116,35 @@ test("listGeneratedFiles answers the paths marked linguist-generated", async () 
   const generated = await git.listGeneratedFiles(project.mainDir, ["gen.lock", "a.txt", "sub/x"]);
   expect(generated).toEqual(["gen.lock"]);
 });
+
+async function commitFile(name: string, text: string): Promise<string> {
+  await files.write(path.join(project.mainDir, name), text);
+  await git.run(["add", name], project.mainDir);
+  await git.run(["commit", "-q", "-m", name], project.mainDir);
+  return git.run(["rev-parse", "HEAD"], project.mainDir);
+}
+
+test("rebaseOnto keeps only the commits after the start", async () => {
+  await git.run(["checkout", "-q", "-b", "need"], project.mainDir);
+  const start = await commitFile("need.txt", "need\n");
+  await git.run(["checkout", "-q", "-b", "own"], project.mainDir);
+  await commitFile("own.txt", "own\n");
+  const conflicted = await git.rebaseOnto(project.mainDir, "main", start);
+  const log = await git.run(["log", "--format=%s", "main..HEAD"], project.mainDir);
+  expect(conflicted).toEqual([]);
+  expect(log).toBe("own.txt");
+});
+
+test("rebaseOnto gives the conflicted files and leaves the branch as before", async () => {
+  await git.run(["checkout", "-q", "-b", "own"], project.mainDir);
+  const start = await git.run(["rev-parse", "HEAD"], project.mainDir);
+  const before = await commitFile("a.txt", "own\n");
+  await git.run(["checkout", "-q", "main"], project.mainDir);
+  await commitFile("a.txt", "main\n");
+  await git.run(["checkout", "-q", "own"], project.mainDir);
+  const conflicted = await git.rebaseOnto(project.mainDir, "main", start);
+  const head = await git.findHead(project.mainDir);
+  const branch = await git.findBranch(project.mainDir);
+  expect(conflicted).toEqual(["a.txt"]);
+  expect([head, branch]).toEqual([before, "own"]);
+});
