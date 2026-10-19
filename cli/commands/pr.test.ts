@@ -317,3 +317,19 @@ test("tenbox pr never merges a PR", async () => {
   const log = await files.read(path.join(project.root, "gh-state", "calls.log"));
   expect(log?.includes('"merge"')).toBe(false);
 });
+
+test("a reused group branch keeps only its own commits after its need is squash merged", async () => {
+  const groupWorktree = await makeStackedGroups();
+  await git.run(["worktree", "remove", "--force", groupWorktree], project.mainDir);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("one.txt\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const own = await git.run(["log", "--format=%s", "main..feat/T-1-2"], origin);
+  expect(states(run)).toEqual([
+    [1, "merged"],
+    [2, "created"],
+  ]);
+  expect(own).toBe("two.txt");
+});
