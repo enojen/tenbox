@@ -83,7 +83,7 @@ gh workflow run machine.yml -f task=TEN-301 -f cmd=down    # server gone, volume
 gh workflow run machine.yml -f task=TEN-301 -f cmd=close   # after the PR is merged; -f force=true for an abandoned task
 ```
 
-One run per task at a time (`concurrency`); a second one waits. The job runs
+One run per task at a time (`concurrency`); a second one waits. Commands of different tasks may run at the same time from one checkout: each run keeps its own `tofu init` in its temporary directory (`TF_DATA_DIR`), so `machines/tofu/task/` gets no `.terraform/`. The job runs
 `machines/machine.sh <task> <cmd> ...` on a hosted runner, or on the self-hosted label in
 the `MACHINE_RUNNER` variable when the hosted minutes are used up. What each command does:
 

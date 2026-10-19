@@ -60,6 +60,7 @@ fetch_login() {
 export TF_VAR_task="$task" TF_VAR_hcloud_token="$HCLOUD_TOKEN" \
   TF_VAR_github_token="$MACHINE_GITHUB_TOKEN" TF_VAR_claude_credentials="" \
   TF_VAR_ntfy="${NTFY_URL:-}" TF_VAR_tracker_api_key="${TRACKER_API_KEY:-}"
+export TF_DATA_DIR="$work/.terraform"
 cd "$here/tofu/task"
 tofu init -input=false -reconfigure \
   -backend-config="bucket=$TENBOX_BUCKET" -backend-config="key=tasks/$task.tfstate" > /dev/null
