@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { files } from "../infra/files.ts";
-import { tenbox } from "../test/cli.ts";
+import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -9,6 +9,7 @@ const QUESTIONS = "## product\n- [ ] (blocking) Can a shipped order be cancelled
 const ANSWER = [{ question: "Can a shipped order be cancelled?", answer: "No" }];
 
 let project: TempProject;
+let fake: FakeClaude;
 let decisionsFile: string;
 let questionsFile: string;
 
@@ -17,6 +18,7 @@ beforeEach(async () => {
   const dir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
   decisionsFile = path.join(dir, "decisions.md");
   questionsFile = path.join(dir, "questions.md");
+  fake = await makeFakeClaude(project.root);
   await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   await files.write(questionsFile, QUESTIONS);
 });
@@ -25,9 +27,17 @@ afterEach(async () => {
   await project.remove();
 });
 
-const decide = (...args: string[]) => tenbox(["decide", "T-1", ...args], project.mainDir);
+const decide = (...args: string[]) => tenbox(["decide", "T-1", ...args], project.mainDir, fake.env);
+const approve = async () => {
+  await files.write(path.join(path.dirname(decisionsFile), "plan.md"), "# plan\n");
+  await tenbox(["approve", "T-1"], project.mainDir, fake.env);
+};
+const bgCalls = async () => {
+  const calls = await fake.calls();
+  return calls.filter((call) => call.args[0] === "--bg");
+};
 const readFiles = () => Promise.all([files.read(decisionsFile), files.read(questionsFile)]);
-const withJson = (items: unknown) => decide("--json", JSON.stringify(items));
+const withJson = (items: unknown) => decide("--json", JSON.stringify(items), "--no-build");
 
 describe("tenbox decide", () => {
   test("answers a question, ticks it and leaves the other lines", async () => {
@@ -79,6 +89,8 @@ describe("tenbox decide", () => {
     ["a missing answer", '[{"question":"Other?"}]'],
   ])("--json with %s is bad-decisions and writes nothing", async (_name, json) => {
     const run = await decide("--json", json);
+    const started = await bgCalls();
+    expect(started).toEqual([]);
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-decisions"]);
     const written = await files.exists(decisionsFile);
     expect(written).toBe(false);
@@ -87,5 +99,53 @@ describe("tenbox decide", () => {
   test("a missing --json is a usage error", async () => {
     const run = await decide();
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+  });
+
+  test("sends the build after the answers", async () => {
+    await approve();
+    const run = await decide("--json", JSON.stringify(ANSWER));
+    const calls = await bgCalls();
+    expect([run.code, run.json]).toEqual([
+      0,
+      {
+        ok: true,
+        task: "T-1",
+        file: decisionsFile,
+        added: 1,
+        ticked: 1,
+        sent: "/tenbox-build T-1",
+      },
+    ]);
+    expect(calls.map((call) => call.args.at(-1))).toEqual(["/tenbox-build T-1"]);
+  });
+
+  test("not-approved comes after the answers are written and starts nothing", async () => {
+    const run = await decide("--json", JSON.stringify(ANSWER));
+    const decisions = await files.read(decisionsFile);
+    expect([run.code, run.json.code]).toEqual([1, "not-approved"]);
+    expect(decisions).toBe("- Can a shipped order be cancelled?\n  Answer: No\n");
+    const started = await bgCalls();
+    expect(started).toEqual([]);
+  });
+
+  test("a working session is session-busy after the answers are written", async () => {
+    await approve();
+    const cwd = await files.realPath(path.dirname(path.dirname(decisionsFile)));
+    await fake.setSessions([
+      { id: "s1", cwd, kind: "background", startedAt: 1, state: "working", pid: 11 },
+    ]);
+    const run = await decide("--json", JSON.stringify(ANSWER));
+    const decisions = await files.read(decisionsFile);
+    expect([run.code, run.json.code]).toEqual([1, "session-busy"]);
+    expect(decisions).toContain("Answer: No");
+    const started = await bgCalls();
+    expect(started).toEqual([]);
+  });
+
+  test("a missing --json starts no build", async () => {
+    await approve();
+    await decide();
+    const started = await bgCalls();
+    expect(started).toEqual([]);
   });
 });

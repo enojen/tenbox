@@ -47,7 +47,7 @@ const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
-const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]'";
+const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
 const WAIT_USAGE = "tenbox wait <id> --for plan|build|round [--timeout 600]";
@@ -156,11 +156,12 @@ const COMMANDS: Record<string, Command> = {
   },
   decide: {
     usage: DECIDE_USAGE,
-    options: { json: { type: "string" } },
+    options: { json: { type: "string" }, build: { type: "boolean", default: true } },
     run: (positionals, values) => {
       const json = stringValue(values, "json");
       if (!json) throw usageError(`usage: ${DECIDE_USAGE}`);
-      return decide({ id: idArg(positionals, DECIDE_USAGE), json });
+      const build = flagValue(values, "build");
+      return decide({ id: idArg(positionals, DECIDE_USAGE), json, build });
     },
   },
   plan: {

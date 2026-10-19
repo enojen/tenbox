@@ -166,6 +166,8 @@ export interface ProofResult {
 export interface DecideResult extends DecisionsSaved {
   ok: true;
   task: string;
+  /** The build prompt sent; missing with `--no-build`. */
+  sent?: string;
 }
 
 export interface StatsResult extends UsageReport {
