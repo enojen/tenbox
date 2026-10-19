@@ -1,6 +1,16 @@
 import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
-import { bodyHasLine, checksSummary, groupLine, prBody, prTitle } from "./pr.ts";
+import {
+  bodyHasLine,
+  CI_STATE,
+  checksCommit,
+  checksSummary,
+  ciState,
+  groupLine,
+  parseCiChecks,
+  prBody,
+  prTitle,
+} from "./pr.ts";
 
 const PLAN = "# T\n\n## Summary\nAdd the thing.\n";
 
@@ -37,4 +47,39 @@ test("bodyHasLine matches a whole line only", () => {
   expect(bodyHasLine(`intro\r\n${line}\r\n`, line)).toBe(true);
   expect(bodyHasLine("tenbox: TB-7 group 10\n", line)).toBe(false);
   expect(bodyHasLine(`see ${line}`, line)).toBe(false);
+});
+
+test("checksCommit reads commit, or null for missing text, bad JSON or no commit", () => {
+  expect(checksCommit('{"ok":true,"commit":"abc123"}')).toBe("abc123");
+  expect(checksCommit(null)).toBeNull();
+  expect(checksCommit("not json")).toBeNull();
+  expect(checksCommit('{"ok":true}')).toBeNull();
+});
+
+const line = (name: string, state: string) => `${name}\t${state}\t1m\thttps://x/${name}`;
+
+test("parseCiChecks reads name, state, time and url and ignores extra columns", () => {
+  const text = `${line("lint", "pass")}\textra\n\n${line("unit", "pending")}\n`;
+  expect(parseCiChecks(text)).toEqual([
+    { name: "lint", state: "pass", time: "1m", url: "https://x/lint" },
+    { name: "unit", state: "pending", time: "1m", url: "https://x/unit" },
+  ]);
+});
+
+test("ciState is pending while a check is pending", () => {
+  const checks = parseCiChecks([line("a", "pass"), line("b", "pending")].join("\n"));
+  expect(ciState(checks)).toBe(CI_STATE.pending);
+});
+
+test("ciState is pass for pass and skipping lines", () => {
+  const checks = parseCiChecks([line("a", "pass"), line("b", "skipping")].join("\n"));
+  expect(ciState(checks)).toBe(CI_STATE.pass);
+});
+
+test("ciState is fail for a cancel or fail line, and none for no checks", () => {
+  expect(ciState(parseCiChecks(line("a", "cancel")))).toBe(CI_STATE.fail);
+  expect(ciState(parseCiChecks([line("a", "pending"), line("b", "fail")].join("\n")))).toBe(
+    CI_STATE.fail,
+  );
+  expect(ciState([])).toBe(CI_STATE.none);
 });

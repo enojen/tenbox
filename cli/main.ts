@@ -45,7 +45,7 @@ const CHECK_USAGE =
 const WORKTREE_USAGE = "tenbox worktree <id> --group N";
 const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
-const PR_USAGE = "tenbox pr <id> [--ready]";
+const PR_USAGE = "tenbox pr <id> [--ready] [--force] [--wait]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
@@ -133,9 +133,18 @@ const COMMANDS: Record<string, Command> = {
   },
   pr: {
     usage: PR_USAGE,
-    options: { ready: { type: "boolean", default: false } },
+    options: {
+      ready: { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
+      wait: { type: "boolean", default: false },
+    },
     run: (positionals, values) =>
-      openPr({ id: idArg(positionals, PR_USAGE), ready: flagValue(values, "ready") }),
+      openPr({
+        id: idArg(positionals, PR_USAGE),
+        ready: flagValue(values, "ready"),
+        force: flagValue(values, "force"),
+        wait: flagValue(values, "wait"),
+      }),
   },
   proof: {
     usage: PROOF_USAGE,

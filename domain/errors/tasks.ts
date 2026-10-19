@@ -154,3 +154,30 @@ export function groupMergeConflictError(
     { branch, needs, files },
   );
 }
+
+export interface ChecksStale {
+  id: string;
+  group: number;
+  /** The commit of the latest round's checks.json; null when no round ran. */
+  checked: string | null;
+  head: string;
+}
+
+export function checksStaleError(input: ChecksStale): TenboxError {
+  const { id, group, checked, head } = input;
+  const ran = checked === null ? "no tenbox check ran" : `tenbox check ran at ${checked}`;
+  const flag = group > 1 ? ` --group ${group}` : "";
+  return new TenboxError(
+    `group ${group}: ${ran}, HEAD is ${head}; run: tenbox check ${id}${flag}, or pass --force`,
+    "checks-stale",
+  );
+}
+
+/** `result` is the whole `tenbox pr` result, with the `ci` of each group. */
+export function ciFailedError(result: unknown): TenboxError {
+  return new TenboxError("the CI checks of a PR failed", "ci-failed", result);
+}
+
+export function ciTimeoutError(result: unknown): TenboxError {
+  return new TenboxError("the CI checks of a PR did not finish in time", "ci-timeout", result);
+}

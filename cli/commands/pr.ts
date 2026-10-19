@@ -1,10 +1,20 @@
-import { dirtyBeforePrError, noCommitsError } from "../../domain/errors/tasks.ts";
+import {
+  checksStaleError,
+  ciFailedError,
+  ciTimeoutError,
+  dirtyBeforePrError,
+  noCommitsError,
+} from "../../domain/errors/tasks.ts";
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifest.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import {
+  CI_STATE,
+  type CiCheck,
+  checksCommit,
   checksSummary,
+  ciState,
   GROUP_PR_STATE,
   type GroupPrState,
   groupLine,
@@ -22,6 +32,7 @@ import {
   roundsDir,
   tenboxDir,
 } from "../../domain/task.ts";
+import { MS_PER_SECOND } from "../../domain/utils.ts";
 import { groups } from "../application/groups.ts";
 import { notifications } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
@@ -32,12 +43,17 @@ import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { GH_STATE, type GroupPr, gh, type PrText } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
-import type { GroupPrResult, PrInfo, PrResult } from "./results.ts";
+import { pollUntil } from "../infra/poll.ts";
+import type { CiResult, GroupPrResult, PrInfo, PrResult } from "./results.ts";
 
 export interface PrInput {
   id: TaskId;
   /** Marks the PR ready for review; without it a new PR is a draft. */
   ready: boolean;
+  /** Pushes although the latest checks ran on another commit than HEAD, or never. */
+  force: boolean;
+  /** Polls the CI checks of each pushed PR until they finish. */
+  wait: boolean;
 }
 
 /** A group as `tenbox pr` sees it: a plan without groups is one group 1 with the task title. */
@@ -70,7 +86,52 @@ export async function openPr(input: PrInput): Promise<PrResult> {
     const opened = await openGroupPr({ run, group });
     results.push(opened);
   }
-  return { ok: true, task: id, groups: results };
+  const done: PrResult = { ok: true, task: id, groups: results };
+  if (input.wait) await waitForCi({ run, done });
+  return done;
+}
+
+const CI_INTERVAL_SECONDS = 10;
+const CI_DEADLINE_MINUTES = 30;
+/** GitHub needs a moment to register the checks of a new push. */
+const CI_REGISTER_MINUTES = 2;
+const SECONDS_PER_MINUTE = 60;
+const CI_INTERVAL_MS = CI_INTERVAL_SECONDS * MS_PER_SECOND;
+const CI_DEADLINE_MS = CI_DEADLINE_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND;
+const CI_REGISTER_MS = CI_REGISTER_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND;
+
+interface CiWaitInput {
+  run: PrRun;
+  done: PrResult;
+}
+
+/** Sets `ci` on each group that was pushed; a failed or late CI throws with the whole result. */
+async function waitForCi(input: CiWaitInput): Promise<void> {
+  const { run, done } = input;
+  const started = Date.now();
+  let timedOut = false;
+  for (const group of done.groups) {
+    const number = group.pr?.number;
+    const pushed = group.state === GROUP_PR_STATE.created || group.state === GROUP_PR_STATE.updated;
+    if (number === undefined || !pushed) continue;
+    const latest: { checks: CiCheck[] } = { checks: [] };
+    const check = async (): Promise<CiCheck[] | null> => {
+      latest.checks = await gh.listChecks(run.taskWorktree, number);
+      if (latest.checks.length === 0) return Date.now() - started >= CI_REGISTER_MS ? [] : null;
+      return ciState(latest.checks) === CI_STATE.pending ? null : latest.checks;
+    };
+    const found = await pollUntil({
+      check,
+      deadlineMs: started + CI_DEADLINE_MS,
+      intervalMs: CI_INTERVAL_MS,
+    });
+    const checks = found ?? latest.checks;
+    const ci: CiResult = { state: ciState(checks), checks };
+    group.ci = ci;
+    timedOut ||= found === null;
+  }
+  if (done.groups.some((g) => g.ci?.state === CI_STATE.fail)) throw ciFailedError(done);
+  if (timedOut) throw ciTimeoutError(done);
 }
 
 interface GroupListInput {
@@ -114,6 +175,8 @@ async function openGroupPr(input: OpenGroupInput): Promise<GroupPrResult> {
   // A squash merged branch has no commits ahead of a pulled base, so this comes first.
   if (own?.state === GH_STATE.merged) return result(group, GROUP_PR_STATE.merged, own);
   await assertAhead(dir, group.branch, run.baseBranch);
+  if (!run.input.force)
+    await assertChecked({ id, group: group.id, dir, taskWorktree: run.taskWorktree });
   const conflicted = await pushGroup({ run, group, dir, own });
   if (conflicted.length > 0) {
     return { ...result(group, GROUP_PR_STATE.conflict, null), files: conflicted };
@@ -191,25 +254,46 @@ async function assertAhead(dir: string, branch: string, base: string): Promise<v
   if (merged) throw noCommitsError(branch, base);
 }
 
+interface CheckedInput {
+  id: TaskId;
+  group: number;
+  /** The group worktree. */
+  dir: string;
+  taskWorktree: string;
+}
+
+/** The latest round's checks ran on the commit that is about to be pushed. */
+async function assertChecked(input: CheckedInput): Promise<void> {
+  const { id, group, dir, taskWorktree } = input;
+  const head = await git.findHead(dir);
+  const text = await latestChecksText(groupTaskDir(taskWorktree, group));
+  const checked = checksCommit(text);
+  if (head !== null && checked === head) return;
+  throw checksStaleError({ id, group, checked, head: head ?? "unknown" });
+}
+
+const groupTaskDir = (taskWorktree: string, group: number): string =>
+  group === 1 ? tenboxDir(taskWorktree) : groupDir(tenboxDir(taskWorktree), group);
+
 async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   const { id } = run.input;
   const dir = tenboxDir(run.taskWorktree);
   const task = await tasks.find(dir);
   const planText = await files.read(planMdFile(dir));
-  const summary = await latestChecksSummary(group.id === 1 ? dir : groupDir(dir, group.id));
+  const checksText = await latestChecksText(groupTaskDir(run.taskWorktree, group.id));
+  const summary = checksSummary(checksText);
   return {
     title: prTitle(id, group.name ?? task?.title ?? null),
     body: prBody(groupLine(id, group.id), planText, summary),
   };
 }
 
-/** The `summary` of the highest round's `checks.json` in `dir`; null when there is none. */
-async function latestChecksSummary(dir: string): Promise<string | null> {
+/** The text of the highest round's `checks.json` in `dir`; null when there is none. */
+async function latestChecksText(dir: string): Promise<string | null> {
   const names = await files.list(roundsDir(dir));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;
-  const text = await files.read(checksFile(roundDir(dir, latest)));
-  return checksSummary(text);
+  return files.read(checksFile(roundDir(dir, latest)));
 }
 
 interface CreateOrUpdateInput {

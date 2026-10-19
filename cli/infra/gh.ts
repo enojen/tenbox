@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
-import { bodyHasLine } from "../../domain/pr.ts";
+import { bodyHasLine, type CiCheck, parseCiChecks } from "../../domain/pr.ts";
 import { parseJson } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
 
@@ -42,6 +42,7 @@ export const gh = {
   markReady,
   runWorkflow,
   listRuns,
+  listChecks,
 };
 
 const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
@@ -224,4 +225,17 @@ async function listRuns(dir: string, workflow: string): Promise<WorkflowRunRow[]
     url: r.url,
     created: r.createdAt,
   }));
+}
+
+const NO_CHECKS = "no checks reported";
+
+/**
+ * The CI checks of a PR. gh exits 1 when a check failed and 8 while one is pending: both come
+ * with the lines on stdout, so only an empty stdout is an error.
+ */
+async function listChecks(dir: string, number: number): Promise<CiCheck[]> {
+  const result = await processes.run(["gh", "pr", "checks", String(number)], { cwd: dir });
+  if (result.stdout.trim() !== "") return parseCiChecks(result.stdout);
+  if (result.code === 0 || result.stderr.includes(NO_CHECKS)) return [];
+  throw ghError("pr checks", result.stderr.trim());
 }

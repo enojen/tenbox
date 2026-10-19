@@ -45,3 +45,44 @@ export function checksSummary(text: string | null): string | null {
   const parsed = parseObject(text);
   return typeof parsed?.summary === "string" ? parsed.summary : null;
 }
+
+/** `commit` from a round's `checks.json`; null when the text is missing, not JSON or has none. */
+export function checksCommit(text: string | null): string | null {
+  if (text === null) return null;
+  const parsed = parseObject(text);
+  return typeof parsed?.commit === "string" ? parsed.commit : null;
+}
+
+/** What the CI checks of a PR add up to; `none` is a PR with no checks reported. */
+export const CI_STATE = { pass: "pass", fail: "fail", pending: "pending", none: "none" } as const;
+
+export type CiState = (typeof CI_STATE)[keyof typeof CI_STATE];
+
+/** One line of `gh pr checks`: the state is gh's word (pass, fail, pending, skipping, cancel). */
+export interface CiCheck {
+  name: string;
+  state: string;
+  time: string;
+  url: string;
+}
+
+/** The tab-separated output of `gh pr checks`: name, state, time, url; extra columns are ignored. */
+export function parseCiChecks(stdout: string): CiCheck[] {
+  return stdout
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== "")
+    .map((l) => {
+      const [name = "", state = "", time = "", url = ""] = l.split("\t");
+      return { name, state, time, url };
+    });
+}
+
+const FAILED_CI = new Set(["fail", "cancel"]);
+
+/** `fail` when any check failed or was cancelled, else `pending` when any is, else `pass`. */
+export function ciState(checks: CiCheck[]): CiState {
+  if (checks.length === 0) return CI_STATE.none;
+  if (checks.some((c) => FAILED_CI.has(c.state))) return CI_STATE.fail;
+  if (checks.some((c) => c.state === CI_STATE.pending)) return CI_STATE.pending;
+  return CI_STATE.pass;
+}

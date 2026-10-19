@@ -3,7 +3,7 @@ import type { Approval } from "../../domain/approval.ts";
 import type { RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
-import type { GroupPrState } from "../../domain/pr.ts";
+import type { CiCheck, CiState, GroupPrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { FailedState } from "../../domain/utils.ts";
@@ -148,6 +148,13 @@ export interface GroupPrResult {
   pr: PrInfo | null;
   /** Only with state `conflict`: the files the rebase onto the base conflicted in. */
   files?: string[];
+  /** Only with `--wait`, on a group that was pushed: its CI checks. */
+  ci?: CiResult;
+}
+
+export interface CiResult {
+  state: CiState;
+  checks: CiCheck[];
 }
 
 export interface PrResult {

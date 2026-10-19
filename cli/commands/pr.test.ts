@@ -3,12 +3,14 @@ import { chmod, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { taskId } from "../../domain/ids.ts";
 import { files } from "../infra/files.ts";
 import { GH_STATE, type GhPrState } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { type CliRun, tenbox } from "../test/cli.ts";
 import { startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
+import { openPr } from "./pr.ts";
 
 let project: TempProject;
 let origin: string;
@@ -32,7 +34,7 @@ const originBranches = () => git.run(["branch", "--list"], origin);
 
 test("a dirty worktree is refused and nothing is pushed", async () => {
   await files.write(path.join(taskWorktree, "new.txt"), "x\n");
-  const run = await tenbox(["pr", "T-1"], project.mainDir);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir);
   const branches = await originBranches();
   expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "dirty"]);
   expect(branches).toBe("");
@@ -40,7 +42,7 @@ test("a dirty worktree is refused and nothing is pushed", async () => {
 
 test("a branch with no commits ahead of main is refused and nothing is pushed", async () => {
   const gh = await installGh();
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const branches = await originBranches();
   expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "no-commits"]);
   expect(branches).toBe("");
@@ -66,6 +68,19 @@ if (args[0] === "pr" && args[1] === "list") {
   const open = args.includes("--state") && flag("--state") === "open";
   console.log(JSON.stringify(prs.filter((p) => (!head || p.headRefName === head) && (!open || p.state === "OPEN"))));
 }
+if (args[0] === "pr" && args[1] === "checks") {
+  const seq = dir + "/checks.seq";
+  if (fs.existsSync(seq)) {
+    const list = JSON.parse(fs.readFileSync(seq, "utf8"));
+    const next = list.length > 1 ? list.shift() : list[0];
+    fs.writeFileSync(seq, JSON.stringify(list));
+    process.stdout.write(next);
+    process.exit(0);
+  }
+  const out = dir + "/checks.out";
+  if (fs.existsSync(out)) process.stdout.write(fs.readFileSync(out, "utf8"));
+  process.exit(Number(fs.existsSync(dir + "/checks.code") ? fs.readFileSync(dir + "/checks.code", "utf8") : 0));
+}
 if (args[0] === "api" && args.includes("PATCH")) {
   const pr = prs.find((p) => args.some((a) => a.endsWith("/pulls/" + p.number)));
   for (const a of args) {
@@ -90,6 +105,17 @@ async function installGh() {
   return {
     env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_FAKE: state },
     prs: read,
+    setChecks: async (out: string, code: number) => {
+      await files.write(path.join(state, "checks.out"), out);
+      await files.write(path.join(state, "checks.code"), String(code));
+    },
+    setCheckSequence: async (outputs: string[]) => {
+      await files.write(path.join(state, "checks.seq"), JSON.stringify(outputs));
+    },
+    calls: async () => {
+      const log = await files.read(path.join(state, "calls.log"));
+      return log ?? "";
+    },
     setState: async (branch: string, next: GhPrState) => {
       const prs = await read();
       for (const pr of prs) if (pr.headRefName === branch) pr.state = next;
@@ -146,7 +172,7 @@ test("the PR title comes from task.json, not task.md", async () => {
   await files.write(path.join(dir, "task.json"), JSON.stringify({ ...taskJson, title: "y" }));
   await commit(taskWorktree, "b.txt");
   const gh = await installGh();
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const [pr] = await gh.prs();
   expect([run.code, run.json.ok]).toEqual([0, true]);
   expect(pr?.title).toBe("T-1 · y");
@@ -155,7 +181,7 @@ test("the PR title comes from task.json, not task.md", async () => {
 test("a plan without groups opens one PR whose body starts with the group 1 line", async () => {
   await commit(taskWorktree, "b.txt");
   const gh = await installGh();
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const [pr] = await gh.prs();
   expect(String(pr?.body).split("\n")[0]).toBe("tenbox: T-1 group 1");
   expect(run.json.groups).toEqual([
@@ -171,7 +197,7 @@ test("a plan without groups opens one PR whose body starts with the group 1 line
 test("a group whose need is not merged waits and its branch is not pushed", async () => {
   await makeGroupTask();
   const gh = await installGh();
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const prs = await gh.prs();
   expect(states(run)).toEqual([
     [1, "created"],
@@ -191,9 +217,9 @@ test("a second run updates the PR and sends no notification", async () => {
   );
   await makeGroupTask();
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const afterCreate = [...ntfy.lines()];
-  const second = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const second = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const afterUpdate = [...ntfy.lines()];
   ntfy.stop();
   expect(rows(second)[0]?.state).toBe("updated");
@@ -218,7 +244,7 @@ test("a group PR is found by its body line when the head branch differs", async 
     db,
     JSON.stringify([{ ...other, headRefName: "renamed", title: "old", body: `${line}\n\ntext` }]),
   );
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const prs = await gh.prs();
   expect([rows(run)[0]?.state, prs.length, prs[0]?.title]).toEqual(["updated", 1, "T-1 · x"]);
 });
@@ -232,7 +258,7 @@ test("a PR with no body line is found by its branch", async () => {
     db,
     JSON.stringify([{ ...old, headRefName: "feat/T-1", title: "o", body: "" }]),
   );
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const prs = await gh.prs();
   expect([rows(run)[0]?.state, prs.length]).toEqual(["updated", 1]);
 });
@@ -240,10 +266,10 @@ test("a PR with no body line is found by its branch", async () => {
 test("a group whose need is merged gets its PR", async () => {
   await makeGroupTask();
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   await git.run(["push", "-q", "origin", "main"], project.mainDir);
   await gh.setState("feat/T-1", GH_STATE.merged);
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   expect(states(run)).toEqual([
     [1, "merged"],
     [2, "created"],
@@ -272,10 +298,10 @@ async function squashGroupOne(text: string): Promise<void> {
 test("a waiting group is rebased onto the base after its need is squash merged", async () => {
   await makeStackedGroups();
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   await squashGroupOne("one.txt\n");
   await gh.setState("feat/T-1", GH_STATE.merged);
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const own = await git.run(["log", "--format=%s", "main..feat/T-1-2"], origin);
   const prs = await gh.prs();
   expect(states(run)).toEqual([
@@ -292,10 +318,10 @@ test("a rebase conflict gives the group conflict with the files and pushes nothi
   await git.run(["commit", "-q", "-am", "edit one"], groupWorktree);
   const before = await git.findHead(groupWorktree);
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   await squashGroupOne("main\n");
   await gh.setState("feat/T-1", GH_STATE.merged);
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const after = await git.findHead(groupWorktree);
   const pushed = await originBranches();
   expect([run.code, run.json.ok]).toEqual([0, true]);
@@ -310,10 +336,10 @@ test("a rebase conflict gives the group conflict with the files and pushes nothi
 test("tenbox pr never merges a PR", async () => {
   await makeStackedGroups();
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   await squashGroupOne("one.txt\n");
   await gh.setState("feat/T-1", GH_STATE.merged);
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const log = await files.read(path.join(project.root, "gh-state", "calls.log"));
   expect(log?.includes('"merge"')).toBe(false);
 });
@@ -322,14 +348,184 @@ test("a reused group branch keeps only its own commits after its need is squash 
   const groupWorktree = await makeStackedGroups();
   await git.run(["worktree", "remove", "--force", groupWorktree], project.mainDir);
   const gh = await installGh();
-  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   await squashGroupOne("one.txt\n");
   await gh.setState("feat/T-1", GH_STATE.merged);
-  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
   const own = await git.run(["log", "--format=%s", "main..feat/T-1-2"], origin);
   expect(states(run)).toEqual([
     [1, "merged"],
     [2, "created"],
   ]);
   expect(own).toBe("two.txt");
+});
+
+/** Runs `tenbox check` with one passing check, so the round has a checks.json. */
+async function runChecks() {
+  const override = path.join(taskWorktree, ".tenbox", "override.yaml");
+  await files.write(override, "checks:\n  ok: 'true'\n");
+  const run = await tenbox(["check", "T-1"], project.mainDir);
+  expect(run.json.ok).toBe(true);
+  return run;
+}
+
+test("a commit after the last tenbox check is refused with checks-stale and nothing is pushed", async () => {
+  await commit(taskWorktree, "b.txt");
+  await runChecks();
+  await commit(taskWorktree, "c.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const branches = await originBranches();
+  expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "checks-stale"]);
+  expect(String(run.json.error)).toContain("tenbox check T-1");
+  expect(branches).toBe("");
+});
+
+test("--force pushes a stale group and creates the PR", async () => {
+  await commit(taskWorktree, "b.txt");
+  await runChecks();
+  await commit(taskWorktree, "c.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  expect([run.code, rows(run)[0]?.state]).toEqual([0, "created"]);
+});
+
+test("after tenbox check at HEAD the PR is created without --force", async () => {
+  await commit(taskWorktree, "b.txt");
+  await runChecks();
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  expect([run.code, rows(run)[0]?.state]).toEqual([0, "created"]);
+});
+
+test("a group with no checks.json is refused with checks-stale", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  expect([run.code, run.json.code]).toEqual([1, "checks-stale"]);
+});
+
+const CiGroupsSchema = z.array(z.object({ ci: z.unknown().optional() }).passthrough());
+
+const CiRowsSchema = z.array(z.object({ ci: z.object({ state: z.string() }).optional() }));
+
+test("--wait puts the CI checks on the pushed group", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setChecks("lint\tpass\t1m\thttps://x/1\nunit\tpass\t2m\thttps://x/2\n", 0);
+  const run = await tenbox(["pr", "T-1", "--force", "--wait"], project.mainDir, gh.env);
+  expect([run.code, run.json.ok]).toEqual([0, true]);
+  expect(rows(run)).toHaveLength(1);
+  expect(CiGroupsSchema.parse(run.json.groups)[0]?.ci).toEqual({
+    state: "pass",
+    checks: [
+      { name: "lint", state: "pass", time: "1m", url: "https://x/1" },
+      { name: "unit", state: "pass", time: "2m", url: "https://x/2" },
+    ],
+  });
+});
+
+test("--wait with a failed check exits 1 with ci-failed and the pr result in details", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setChecks("unit\tfail\t2m\thttps://x/2\n", 1);
+  const run = await tenbox(["pr", "T-1", "--force", "--wait"], project.mainDir, gh.env);
+  const details = z.object({ groups: CiRowsSchema }).parse(run.json.details);
+  expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "ci-failed"]);
+  expect(details.groups[0]?.ci?.state).toBe("fail");
+});
+
+test("without --wait the group has no ci key and gh pr checks is never called", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  const calls = await gh.calls();
+  expect(Object.keys(CiGroupsSchema.parse(run.json.groups)[0] ?? {})).not.toContain("ci");
+  expect(calls.includes('"checks"')).toBe(false);
+});
+
+const ONE_MINUTE_MS = 60_000;
+const HALF_HOUR_MS = 30 * ONE_MINUTE_MS;
+
+interface WaitOutcome {
+  result: Awaited<ReturnType<typeof openPr>> | null;
+  caught: unknown;
+}
+
+/** Runs `tenbox pr --wait` in this process on a clock that only `Bun.sleep` moves. */
+async function waitOnFakeClock(env: Record<string, string>) {
+  const realNow = Date.now;
+  const realSleep = Bun.sleep;
+  const realCwd = process.cwd();
+  const savedEnv = { PATH: process.env.PATH, GH_FAKE: process.env.GH_FAKE };
+  let now = realNow();
+  let slept = 0;
+  Date.now = () => now;
+  const fakeSleep: typeof Bun.sleep = async (ms) => {
+    const step = Number(ms);
+    now += step;
+    slept += step;
+  };
+  Bun.sleep = fakeSleep;
+  Object.assign(process.env, env);
+  process.chdir(project.mainDir);
+  try {
+    const outcome = await openPr({ id: taskId("T-1"), force: true, wait: true, ready: false }).then(
+      (result): WaitOutcome => ({ result, caught: null }),
+      (caught: unknown): WaitOutcome => ({ result: null, caught }),
+    );
+    return { ...outcome, slept };
+  } finally {
+    Date.now = realNow;
+    Bun.sleep = realSleep;
+    process.chdir(realCwd);
+    Object.assign(process.env, savedEnv);
+  }
+}
+
+test("--wait with checks that stay pending times out with ci-timeout and the pending checks", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setChecks("unit\tpending\t0\thttps://x/2\n", 8);
+  const { caught, slept } = await waitOnFakeClock(gh.env);
+  expect(caught).toMatchObject({
+    code: "ci-timeout",
+    details: {
+      groups: [
+        {
+          ci: {
+            state: "pending",
+            checks: [{ name: "unit", state: "pending", time: "0", url: "https://x/2" }],
+          },
+        },
+      ],
+    },
+  });
+  expect(slept).toBeGreaterThanOrEqual(HALF_HOUR_MS);
+});
+
+test("--wait with no checks gives ci none after the register window and exits 0", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setChecks("", 0);
+  const { result, caught, slept } = await waitOnFakeClock(gh.env);
+  expect(caught).toBeNull();
+  expect(result?.groups[0]?.ci).toEqual({ state: "none", checks: [] });
+  expect(slept).toBeGreaterThanOrEqual(2 * ONE_MINUTE_MS);
+  expect(slept).toBeLessThan(HALF_HOUR_MS);
+});
+
+test("--wait keeps polling through a pending line until the checks pass", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setCheckSequence([
+    "unit\tpending\t0\thttps://x/2\n",
+    "unit\tpending\t0\thttps://x/2\n",
+    "unit\tpass\t2m\thttps://x/2\n",
+  ]);
+  const { result, caught, slept } = await waitOnFakeClock(gh.env);
+  expect(caught).toBeNull();
+  expect(result?.groups[0]?.ci?.state).toBe("pass");
+  expect(slept).toBeGreaterThan(0);
+  expect(slept).toBeLessThan(HALF_HOUR_MS);
 });
