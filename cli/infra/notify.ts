@@ -5,6 +5,8 @@ import { http } from "./http.ts";
 interface NotifyRequest {
   url: string;
   line: string;
+  /** The link a tap on the notification opens; no key in the body without it. */
+  click?: string;
 }
 
 /** ntfy answers a publish with the message it stored. */
@@ -16,6 +18,7 @@ export const notify = { send };
 async function send(request: NotifyRequest): Promise<void> {
   const { origin, pathname } = new URL(request.url);
   const endpoint = { service: "ntfy", url: origin, headers: {}, errorCode: "ntfy" };
-  const body = { topic: pathname.slice(1), message: request.line };
+  const topic = { topic: pathname.slice(1), message: request.line };
+  const body = request.click === undefined ? topic : { ...topic, click: request.click };
   await http.post({ endpoint, body, schema: PublishedSchema });
 }

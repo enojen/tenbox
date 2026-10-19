@@ -43,3 +43,17 @@ export function noTrackerError(id: string): TenboxError {
     "no-tracker",
   );
 }
+
+export function noLoginError(file: string): TenboxError {
+  return new TenboxError(
+    `no claude.ai login at ${file}; run /login in claude on this computer`,
+    "no-login",
+  );
+}
+
+export function loginExpiredError(expiry: Date): TenboxError {
+  return new TenboxError(
+    `the claude.ai login expired at ${expiry.toISOString()}; run /login in claude on this computer`,
+    "login-expired",
+  );
+}

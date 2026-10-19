@@ -40,6 +40,8 @@ export const gh = {
   create,
   edit,
   markReady,
+  runWorkflow,
+  listRuns,
 };
 
 const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
@@ -169,4 +171,57 @@ async function edit(dir: string, number: number, text: PrText): Promise<void> {
 
 async function markReady(dir: string, number: number): Promise<void> {
   await run(["pr", "ready", String(number)], dir);
+}
+
+/** One `-f name=value` workflow input. */
+export type WorkflowFields = Record<string, string>;
+
+interface WorkflowRunInput {
+  dir: string;
+  workflow: string;
+  fields: WorkflowFields;
+}
+
+const RUN_URL = /https:\/\/\S+\/actions\/runs\/\d+/;
+
+/** Starts the workflow; the URL of its run, or null when `gh` printed none. */
+async function runWorkflow(input: WorkflowRunInput): Promise<string | null> {
+  const fields = Object.entries(input.fields).flatMap(([k, v]) => ["-f", `${k}=${v}`]);
+  const out = await run(["workflow", "run", input.workflow, ...fields], input.dir);
+  return RUN_URL.exec(out)?.[0] ?? null;
+}
+
+export interface WorkflowRunRow {
+  id: number;
+  title: string;
+  status: string;
+  conclusion: string;
+  url: string;
+  created: string;
+}
+
+/** The output of `gh run list --json databaseId,displayTitle,status,conclusion,url,createdAt`. */
+const RunListSchema = z.array(
+  z.object({
+    databaseId: z.number(),
+    displayTitle: z.string(),
+    status: z.string(),
+    conclusion: z.string(),
+    url: z.string(),
+    createdAt: z.iso.datetime(),
+  }),
+);
+
+/** The latest runs of the workflow, newest first. */
+async function listRuns(dir: string, workflow: string): Promise<WorkflowRunRow[]> {
+  const fields = "databaseId,displayTitle,status,conclusion,url,createdAt";
+  const out = await run(["run", "list", "--workflow", workflow, "--json", fields], dir);
+  return RunListSchema.parse(parseJson(out)).map((r) => ({
+    id: r.databaseId,
+    title: r.displayTitle,
+    status: r.status,
+    conclusion: r.conclusion,
+    url: r.url,
+    created: r.createdAt,
+  }));
 }

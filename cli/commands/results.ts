@@ -14,7 +14,7 @@ import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
 import type { StatusUpdate } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
-import type { PrBranch } from "../infra/gh.ts";
+import type { PrBranch, WorkflowRunRow } from "../infra/gh.ts";
 import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
 import type { LINK_STATE } from "./install.ts";
 
@@ -294,4 +294,17 @@ export interface Failure {
   error: string;
   code: string;
   details?: unknown;
+}
+
+export interface MachineRunResultJson {
+  ok: true;
+  task: string;
+  cmd: string;
+  /** The run on GitHub; null when `gh` printed none. */
+  url: string | null;
+}
+
+export interface MachineLsResult {
+  ok: true;
+  runs: WorkflowRunRow[];
 }

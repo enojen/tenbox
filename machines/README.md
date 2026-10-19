@@ -59,8 +59,11 @@ transient systemd unit `tenbox-run`, so its claude session outlives cloud-init. 
 
 ## The control plane: `machine.yml` and `machine.sh`
 
-`.github/workflows/machine.yml` is the only place that holds the machine secrets. Start it
-by hand until `tenbox machine run` exists (TEN-423):
+`.github/workflows/machine.yml` is the only place that holds the machine secrets. Start a
+machine with `tenbox machine run <id> -- tenbox start|build|close <id>`. It runs
+`gh workflow run machine.yml` and refuses with `no-login` or `login-expired` before gh runs.
+What it runs is the same as these commands, which also work by hand (`down` has no
+`tenbox machine run` form):
 
 ```
 gh workflow run machine.yml -f task=TEN-301 -f cmd=start \

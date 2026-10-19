@@ -21,6 +21,7 @@ import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { decide } from "./commands/decide.ts";
 import { install } from "./commands/install.ts";
+import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { planDone } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
@@ -55,6 +56,8 @@ const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
 const BUILD_USAGE = "tenbox build <id>";
+const MACHINE_USAGE =
+  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
@@ -229,12 +232,26 @@ const COMMANDS: Record<string, Command> = {
     options: {},
     run: (positionals) => showStats(idArg(positionals, STATS_USAGE)),
   },
+  machine: {
+    usage: MACHINE_USAGE,
+    options: {},
+    run: (positionals) => {
+      const [action, ...rest] = positionals;
+      if (action === "ls" && rest.length === 0) return listMachineRuns();
+      if (action !== "run" || !hasCommandSeparator()) throw usageError(`usage: ${MACHINE_USAGE}`);
+      const [, ...words] = rest;
+      return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
+    },
+  },
   install: {
     usage: "tenbox install",
     options: {},
     run: () => install(),
   },
 };
+
+/** `parseArgs` drops `--`; the words after it must have been separated. */
+const hasCommandSeparator = (): boolean => process.argv.slice(2).includes("--");
 
 async function main(argv: string[]): Promise<void> {
   const [name, ...rest] = argv;

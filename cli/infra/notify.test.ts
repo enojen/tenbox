@@ -15,3 +15,14 @@ test("a refused connection is a tenbox error", async () => {
   const refused = notify.send({ url: "http://localhost:1/topic", line: "x" });
   await expect(refused).rejects.toMatchObject({ code: "ntfy" });
 });
+
+test("a click link goes into the body as click", async () => {
+  const before = ntfy.posts().length;
+  await notify.send({ url: ntfy.url, line: "x", click: "https://claude.ai/code/session_A" });
+  expect(ntfy.posts().slice(before)).toEqual([
+    {
+      path: "/",
+      body: { topic: "topic", message: "x", click: "https://claude.ai/code/session_A" },
+    },
+  ]);
+});

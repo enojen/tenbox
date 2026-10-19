@@ -40,6 +40,7 @@ export const git = {
   forcePush,
   pull,
   remoteBranchExists,
+  findRemoteUrl,
   deleteRemoteBranch,
   fetch,
   addDetachedWorktree,
@@ -60,6 +61,9 @@ const NOT_A_REPOSITORY = "not a git repository";
 
 /** Decides from a failed git result whether it is the expected "not found" answer. */
 type IsNotFound = (result: ProcessResult) => boolean;
+
+/** `git remote get-url` exits 2 for a remote that is not set. */
+const NO_REMOTE_CODE = 2;
 
 const exitedWithOne: IsNotFound = (result) => result.code === 1;
 const outsideRepository: IsNotFound = (result) => result.stderr.includes(NOT_A_REPOSITORY);
@@ -225,6 +229,11 @@ async function forcePush(dir: string, branch: string): Promise<void> {
 /** Moves the checked-out `base` of `dir` to `origin/<base>`; throws unless it is a fast-forward. */
 async function pull(dir: string, base: string): Promise<void> {
   await run(["pull", "--quiet", "--ff-only", "origin", base], dir);
+}
+
+/** The URL of `origin`; null without that remote. */
+function findRemoteUrl(dir: string): Promise<string | null> {
+  return find(["remote", "get-url", "origin"], dir, (result) => result.code === NO_REMOTE_CODE);
 }
 
 async function remoteBranchExists(dir: string, branch: string): Promise<boolean> {

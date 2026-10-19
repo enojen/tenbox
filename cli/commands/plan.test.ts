@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
@@ -76,6 +77,34 @@ describe("tenbox plan done", () => {
     expect(afterGood).toEqual([
       "demo · T-1 · plan-ready · parts 2, open questions 3 (1 blocking) → tenbox approve T-1",
     ]);
+  });
+
+  test("a notification links the newest session of the task worktree and none without one", async () => {
+    const ntfy = startFakeNtfy();
+    const worktree = await realpath(path.join(project.wtRoot, "demo", "T-1"));
+    const claudeDir = path.join(project.root, "claude");
+    const override = path.join(worktree, ".tenbox", "override.yaml");
+    await files.write(override, `notify: { ntfy: "${ntfy.url}" }\n`);
+    const env = { CLAUDE_CONFIG_DIR: claudeDir };
+    const session = (pid: number, startedAt: number, id: string) =>
+      files.write(
+        path.join(claudeDir, "sessions", `${pid}.json`),
+        JSON.stringify({ pid, cwd: worktree, startedAt, bridgeSessionId: id }),
+      );
+    const plan = JSON.stringify(valid);
+    await tenbox(["plan", "done", "T-1", "--json", plan], worktree, env);
+    await session(1300, 1, "session_A");
+    await tenbox(["plan", "done", "T-1", "--json", plan], worktree, env);
+    await session(1400, 2, "session_B");
+    await tenbox(["plan", "done", "T-1", "--json", plan], worktree, env);
+    const bodies = ntfy.posts().map((post) => post.body);
+    ntfy.stop();
+    expect(bodies.map((body) => body?.click)).toEqual([
+      undefined,
+      "https://claude.ai/code/session_A",
+      "https://claude.ai/code/session_B",
+    ]);
+    expect(Object.keys(bodies[0] ?? {})).not.toContain("click");
   });
 
   test("a plan without notify.ntfy sends nothing and still succeeds", async () => {

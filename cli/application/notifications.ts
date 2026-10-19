@@ -1,5 +1,6 @@
 import { type Notification, notificationLine } from "../../domain/notifications.ts";
 import { errorMessage } from "../../domain/utils.ts";
+import { sessionLinks } from "../infra/claude/sessionLinks.ts";
 import { log } from "../infra/env.ts";
 import { notify } from "../infra/notify.ts";
 import { manifests } from "./manifests.ts";
@@ -24,7 +25,8 @@ async function send(input: NotificationSend): Promise<void> {
   if (config.ntfy === undefined) return;
   const line = notificationLine({ ...notification, project: project.name });
   try {
-    await notify.send({ url: config.ntfy, line });
+    const click = await sessionLinks.find(taskWorktree);
+    await notify.send({ url: config.ntfy, line, ...(click === null ? {} : { click }) });
   } catch (e) {
     log(`notification not sent: ${errorMessage(e)}`);
   }
