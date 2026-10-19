@@ -110,7 +110,7 @@ describe("runChecks", () => {
     });
     expect(r.summary).toBe("unit: 1 new failure(s)\n  FAIL  new");
     const ran = await calls();
-    const expectedDirs = await realDirs(taskWorktree);
+    const expectedDirs = await realDirs(taskWorktree, taskWorktree);
     expect(ran).toEqual(expectedDirs);
   });
 
@@ -128,8 +128,58 @@ describe("runChecks", () => {
       new_failures: ["FAIL  x"],
     });
     const ran = await calls();
-    const expectedDirs = await realDirs(taskWorktree);
+    const expectedDirs = await realDirs(taskWorktree, taskWorktree);
     expect(ran).toEqual(expectedDirs);
+  });
+});
+
+describe("runChecks flaky", () => {
+  /** Fails on the first run only; `n` in the temp root counts the runs. */
+  const FLAKY_ONCE = `n=$(cat ../../../n 2>/dev/null || echo 0); echo $((n+1)) > ../../../n; if [ "$n" = 0 ]; then echo " FA""IL  flaky one"; exit 1; fi`;
+  const ALWAYS = `n=$(cat ../../../n 2>/dev/null || echo 0); echo $((n+1)) > ../../../n; echo " FA""IL  solid one"; exit 1`;
+  async function runCount(): Promise<number> {
+    const text = await files.read(path.join(project.root, "n"));
+    return Number(text);
+  }
+
+  async function setupWith(cmd: string): Promise<void> {
+    await setup({ "tenbox.yaml": manifest({ checks: { unit: cmd } }) });
+    const baseSha = await baseShaOf();
+    await baselineStore.save(KEY, { sha: baseSha, lines: [] }, META);
+  }
+
+  test("a new failure that passes on the rerun is flaky and does not fail the check", async () => {
+    await setupWith(FLAKY_ONCE);
+    const r = await runChecks(input());
+    expect(r.ok).toBe(true);
+    expect(r.checks[0]).toMatchObject({
+      exit_code: 0,
+      failures: 0,
+      new_failures: [],
+      flaky: ["FAIL  flaky one"],
+    });
+    const count = await runCount();
+    expect(count).toBe(2);
+    expect(r.summary).toBe(
+      "all 1 check(s) pass with no new failures\nunit: 1 flaky (failed once, passed on the rerun)\n  FAIL  flaky one",
+    );
+  });
+
+  test("a new failure that fails again stays a new failure", async () => {
+    await setupWith(ALWAYS);
+    const r = await runChecks(input());
+    expect(r.ok).toBe(false);
+    expect(r.checks[0]).toMatchObject({ new_failures: ["FAIL  solid one"], flaky: [] });
+    const count = await runCount();
+    expect(count).toBe(2);
+  });
+
+  test("a green check runs once and has an empty flaky list", async () => {
+    await setupWith(`n=$(cat ../../../n 2>/dev/null || echo 0); echo $((n+1)) > ../../../n`);
+    const r = await runChecks(input());
+    expect(r.checks[0]?.flaky).toEqual([]);
+    const count = await runCount();
+    expect(count).toBe(1);
   });
 });
 

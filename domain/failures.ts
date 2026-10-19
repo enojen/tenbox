@@ -66,6 +66,12 @@ export function compareWithBaseline(
   };
 }
 
+/** A new failure of the first run that the rerun did not repeat. */
+export function findFlaky(firstNew: FailureLine[], rerunNew: FailureLine[]): FailureLine[] {
+  const repeated = new Set(rerunNew);
+  return firstNew.filter((line) => !repeated.has(line));
+}
+
 function isFailureLine(failurePattern: string): (line: FailureLine) => boolean {
   const re = new RegExp(failurePattern);
   return (line) => re.test(line);

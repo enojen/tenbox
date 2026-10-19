@@ -1,9 +1,9 @@
-import { compareWithBaseline, parseFailures } from "../../domain/failures.ts";
+import { compareWithBaseline, findFlaky, parseFailures } from "../../domain/failures.ts";
 import type { Project } from "../../domain/project.ts";
 import { elapsedMs } from "../../domain/utils.ts";
 import type { CheckOutcome } from "../commands/results.ts";
 import { log } from "../infra/env.ts";
-import { shell } from "../infra/shell.ts";
+import { type ShellResult, shell } from "../infra/shell.ts";
 import { baselines } from "./baselines.ts";
 
 /** One check run and judged: only failures the base commit did not have count. */
@@ -30,23 +30,29 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
   const { name, cmd, cwd, pattern, baseSha, timeoutMs } = request;
   log(`tenbox check: ${name}: ${cmd}`);
   const started = performance.now();
-  const ran = await shell.run(cmd, { cwd, timeoutMs });
-  const durationMs = elapsedMs(started);
-  const exitCode = shell.exitCode(ran);
-  const current = parseFailures(ran.output, exitCode, pattern);
+  const first = await shell.run(cmd, { cwd, timeoutMs });
   const hit = await baselines.find({ ...request, taskWorktree: cwd, check: name });
+  const firstFailures = parseFailures(first.output, shell.exitCode(first), pattern);
+  const firstJudged = compareWithBaseline(hit?.lines ?? [], firstFailures);
+  const second = await rerunWhenNew({ request, newCount: firstJudged.newFailures.length });
+  const last = second ?? first;
+  const exitCode = shell.exitCode(last);
+  const durationMs = elapsedMs(started);
+  const current = second ? parseFailures(second.output, exitCode, pattern) : firstFailures;
   const { newFailures, fixed } = compareWithBaseline(hit?.lines ?? [], current);
+  const flaky = findFlaky(firstJudged.newFailures, newFailures);
   log(
-    `tenbox check: ${name}: ${current.length} failures, ${newFailures.length} new, ${fixed.length} fixed (${durationMs} ms)`,
+    `tenbox check: ${name}: ${current.length} failures, ${newFailures.length} new, ${flaky.length} flaky, ${fixed.length} fixed (${durationMs} ms)`,
   );
   const outcome: CheckOutcome = {
     name,
     cmd,
     exit_code: exitCode,
     duration_ms: durationMs,
-    timed_out: ran.timedOut,
+    timed_out: last.timedOut,
     failures: current.length,
     new_failures: newFailures,
+    flaky,
     fixed,
     baseline: {
       sha: hit?.sha ?? baseSha,
@@ -54,16 +60,41 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
       failures: hit?.lines.length ?? 0,
     },
   };
-  return { outcome, output: ran.output };
+  return {
+    outcome,
+    output: second ? `${first.output}\n--- rerun ---\n${second.output}` : first.output,
+  };
+}
+
+interface RerunRequest {
+  request: CheckRequest;
+  newCount: number;
+}
+
+/** One more run when the first had new failures; a green check costs nothing extra. */
+function rerunWhenNew(rerun: RerunRequest): Promise<ShellResult | null> {
+  const { request, newCount } = rerun;
+  if (newCount === 0) return Promise.resolve(null);
+  log(`tenbox check: ${request.name}: ${newCount} new, running it once more`);
+  return shell.run(request.cmd, { cwd: request.cwd, timeoutMs: request.timeoutMs });
 }
 
 function summarize(outcomes: CheckOutcome[]): string {
   const failing = outcomes.filter((r) => r.new_failures.length > 0);
-  if (failing.length === 0) return `all ${outcomes.length} check(s) pass with no new failures`;
-  return failing.map(describeNewFailures).join("\n");
+  const flaky = outcomes.filter((r) => r.flaky.length > 0).map(describeFlaky);
+  const head =
+    failing.length === 0
+      ? [`all ${outcomes.length} check(s) pass with no new failures`]
+      : failing.map(describeNewFailures);
+  return [...head, ...flaky].join("\n");
 }
 
 function describeNewFailures(outcome: CheckOutcome): string {
   const lines = outcome.new_failures.map((line) => `  ${line}`).join("\n");
   return `${outcome.name}: ${outcome.new_failures.length} new failure(s)\n${lines}`;
+}
+
+function describeFlaky(outcome: CheckOutcome): string {
+  const lines = outcome.flaky.map((line) => `  ${line}`).join("\n");
+  return `${outcome.name}: ${outcome.flaky.length} flaky (failed once, passed on the rerun)\n${lines}`;
 }

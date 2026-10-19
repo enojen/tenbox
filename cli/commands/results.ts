@@ -219,6 +219,8 @@ export interface CheckOutcome {
   timed_out: boolean;
   failures: number;
   new_failures: string[];
+  /** New failures of the first run that the rerun did not repeat; they do not fail the check. */
+  flaky: string[];
   fixed: string[];
   baseline: BaselineSummary;
 }
