@@ -7,16 +7,23 @@ import {
 } from "../../domain/errors/tasks.ts";
 import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { TRACKER_KIND } from "../../domain/manifest.ts";
-import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
+import { type Project, taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
+import { tenboxDir } from "../../domain/task.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { failedState } from "../../domain/utils.ts";
+import { type ExtraGroup, groups } from "../application/groups.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
+import { prs } from "../application/prs.ts";
 import { sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
 import { tasks } from "../application/tasks.ts";
-import { worktrees } from "../application/worktrees/index.ts";
+import {
+  type BranchRemoveState,
+  type WorktreeRemoveState,
+  worktrees,
+} from "../application/worktrees/index.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { gh } from "../infra/gh.ts";
@@ -25,6 +32,7 @@ import { makeTracker } from "../infra/tracker/index.ts";
 import type {
   CloseResult,
   CommentState,
+  GroupCloseResult,
   PullState,
   RemoteBranchState,
   SessionState,
@@ -78,7 +86,13 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const dir = projectId === undefined ? null : taskDir(tenboxHome, projectId, id);
   const { base } = manifest;
   const closeTarget = { mainDir: project.mainDir, taskWorktree, branch, base };
-  const { mergedOnGithub, pr } = await assertSafe(closeTarget, force);
+  const extra = await groups.listExtra({
+    planDir: dir ?? tenboxDir(taskWorktree),
+    taskWorktree,
+    taskBranch: branch,
+  });
+  const safe: SafeInput = { target: closeTarget, id, extra, force };
+  const { mergedOnGithub, pr, groupTargets } = await assertSafe(safe);
   const pull = await pullBase(closeTarget, mergedOnGithub);
   const recordedProofs = await proofs.read(taskWorktree);
   let written: WrittenStats = { info: SKIPPED_STATS, stats: null };
@@ -98,9 +112,11 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     written = await writeStats(statsInput);
   }
   const session = await stopSessions({ id, taskWorktree });
+  const removedGroups = await removeGroupCheckouts(project, groupTargets);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
   const status = await tasks.updateStatus({ id, title: undefined }, tracker, TASK_STATUS.done);
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
+  const closedGroups = await removeGroupRemotes(closeTarget, removedGroups);
   const comment = await postComment({ id, tracker, stats: written.stats });
   return {
     ok: true,
@@ -113,6 +129,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
     worktree: { path: taskWorktree, state: removed.worktree },
     branch: { name: branch, state: removed.branch },
     remote_branch: { name: branch, state: remote },
+    ...(closedGroups.length > 0 && { groups: closedGroups }),
     tracker: { kind: tracker.kind, status },
     comment: { state: comment },
   };
@@ -123,19 +140,58 @@ interface SafeClose {
   mergedOnGithub: boolean;
   /** The times of the PR GitHub reported; null without one. */
   pr: PrTimes | null;
+  /** The groups above 1 with the branch their PR names; empty for a task without groups. */
+  groupTargets: GroupTarget[];
 }
 
-const NO_GITHUB: SafeClose = { mergedOnGithub: false, pr: null };
+interface GroupTarget extends ExtraGroup {
+  mergedOnGithub: boolean;
+}
+
+type TaskSafe = Pick<SafeClose, "mergedOnGithub" | "pr">;
+
+const NO_GITHUB: TaskSafe = { mergedOnGithub: false, pr: null };
+
+interface SafeInput {
+  target: CloseTarget;
+  id: TaskId;
+  extra: ExtraGroup[];
+  force: boolean;
+}
 
 /**
  * Throws before anything changes. `force` skips the dirty, unmerged and merge-commit checks, not
  * the one for the task worktree.
  */
-async function assertSafe(target: CloseTarget, force: boolean): Promise<SafeClose> {
+async function assertSafe(input: SafeInput): Promise<SafeClose> {
+  const { target, id, extra, force } = input;
   await assertOutsideWorktree(target.taskWorktree);
-  if (force) return NO_GITHUB;
+  if (force) {
+    const forced = extra.map((g) => ({ ...g, mergedOnGithub: false }));
+    return { ...NO_GITHUB, groupTargets: forced };
+  }
   await assertClean(target);
-  return assertMerged(target);
+  const task = await assertMerged(target, target.branch);
+  const groupTargets: GroupTarget[] = [];
+  for (const g of extra) {
+    const checked = await assertGroupMerged(target, id, g);
+    groupTargets.push(checked);
+  }
+  return { ...task, groupTargets };
+}
+
+/** The PR of the group names its branch; its worktree is clean and its PR is merged at the head. */
+async function assertGroupMerged(
+  target: CloseTarget,
+  id: TaskId,
+  g: ExtraGroup,
+): Promise<GroupTarget> {
+  const found = await prs.find({ dir: target.mainDir, id, group: g.group, branch: g.branch });
+  const branch = found?.branch ?? g.branch;
+  const own = { ...target, taskWorktree: g.worktree, branch };
+  await assertClean(own);
+  const merged = await assertMerged(own, `group ${g.group} (${branch})`);
+  return { ...g, branch, mergedOnGithub: merged.mergedOnGithub };
 }
 
 /** The close removes the task worktree; a run inside it would end in a directory that is gone. */
@@ -157,10 +213,10 @@ async function assertClean(target: CloseTarget): Promise<void> {
   throw dirtyBeforeCloseError(target.taskWorktree);
 }
 
-/** Throws when the branch is not merged. */
-async function assertMerged(target: CloseTarget): Promise<SafeClose> {
+/** Throws when the branch is not merged; `label` names it in the error. */
+async function assertMerged(target: CloseTarget, label: string): Promise<TaskSafe> {
   const merge = await findMerge(target);
-  if (merge.source === MERGE_SOURCE.unmerged) throw unmergedError(target.branch, target.base);
+  if (merge.source === MERGE_SOURCE.unmerged) throw unmergedError(label, target.base);
   if (merge.source === MERGE_SOURCE.git) return NO_GITHUB;
   await assertNotMergeCommit(target, merge.commit);
   return { mergedOnGithub: true, pr: merge.pr };
@@ -286,4 +342,40 @@ async function postComment(input: CommentInput): Promise<CommentState> {
   } catch (e) {
     return failedState(e);
   }
+}
+
+interface RemovedGroup extends GroupTarget {
+  worktreeState: WorktreeRemoveState;
+  branchState: BranchRemoveState;
+}
+
+/** Each group worktree and its local branch, before the task worktree. */
+async function removeGroupCheckouts(
+  project: Project,
+  targets: GroupTarget[],
+): Promise<RemovedGroup[]> {
+  const removed: RemovedGroup[] = [];
+  for (const g of targets) {
+    const states = await worktrees.remove({ project, taskWorktree: g.worktree, branch: g.branch });
+    removed.push({ ...g, worktreeState: states.worktree, branchState: states.branch });
+  }
+  return removed;
+}
+
+/** The remote branch of each group, after the tracker step; a failure never undoes the close. */
+async function removeGroupRemotes(
+  target: CloseTarget,
+  removed: RemovedGroup[],
+): Promise<GroupCloseResult[]> {
+  const results: GroupCloseResult[] = [];
+  for (const g of removed) {
+    const remote = await removeRemoteBranch({ ...target, branch: g.branch }, g.mergedOnGithub);
+    results.push({
+      group: g.group,
+      worktree: { path: g.worktree, state: g.worktreeState },
+      branch: { name: g.branch, state: g.branchState },
+      remote_branch: { name: g.branch, state: remote },
+    });
+  }
+  return results;
 }

@@ -25,6 +25,8 @@ export interface GroupPr {
   url: string;
   draft: boolean;
   state: GhPrState;
+  /** The head branch of the PR, as GitHub names it. */
+  branch: string;
 }
 
 /** The GitHub CLI commands Tenbox uses, run in the task worktree. */
@@ -40,9 +42,9 @@ export const gh = {
   markReady,
 };
 
-const PR_FIELDS = "number,url,isDraft,state,body";
+const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
 
-/** The output of `gh pr list --json number,url,isDraft,state,body`. */
+/** The output of `gh pr list --json number,url,isDraft,state,body,headRefName`. */
 const PrListSchema = z.array(
   z.object({
     number: z.number(),
@@ -50,6 +52,7 @@ const PrListSchema = z.array(
     isDraft: z.boolean(),
     state: z.enum(GH_STATE),
     body: z.string(),
+    headRefName: z.string(),
   }),
 );
 
@@ -60,6 +63,7 @@ const toGroupPr = (pr: ListedPr): GroupPr => ({
   url: pr.url,
   draft: pr.isDraft,
   state: pr.state,
+  branch: pr.headRefName,
 });
 
 /** The open PR first: a closed PR with the same line or branch is old. */

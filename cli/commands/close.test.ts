@@ -656,6 +656,113 @@ describe("tenbox close", () => {
   });
 });
 
+describe("tenbox close a task with groups", () => {
+  const RECIPE = { model: "sonnet", effort: "medium", lenses: [], tier: "fast" };
+  const GROUP_PLAN = {
+    summary: "s",
+    estimated_lines: 10,
+    parts: [
+      { id: "01", difficulty: "easy" },
+      { id: "02", difficulty: "easy" },
+    ],
+    criteria: [],
+    lenses: [],
+    questions: [],
+    groups: [
+      { id: 1, name: "feat: first", parts: ["01"], needs: [], recipe: RECIPE },
+      { id: 2, name: "feat: second", parts: ["02"], needs: [1], recipe: RECIPE },
+    ],
+  };
+  const ODD_BRANCH = "odd-name";
+  const FAKE_GH = `#!/usr/bin/env bun
+import fs from "node:fs";
+const prs = JSON.parse(fs.readFileSync(process.env.GH_PRS, "utf8"));
+const [a, b, c] = process.argv.slice(2);
+const view = (pr) => ({ state: pr.state, headRefOid: pr.head, mergeCommit: { oid: "m" }, createdAt: "2026-01-01T00:00:00Z" });
+if (a === "pr" && b === "list") console.log(JSON.stringify(prs));
+if (a === "pr" && b === "view") console.log(JSON.stringify(view(prs.find((p) => p.headRefName === c))));
+if (a === "api") console.log("1");
+`;
+
+  interface GroupTask {
+    groupWorktree: string;
+    origin: string;
+    prs: string;
+    env: Record<string, string>;
+  }
+
+  /** Group 1 on feat/T-1 and group 2 on a branch whose name does not fit `names.branch`; both pushed. */
+  async function makeGroupTask(state2: string): Promise<GroupTask> {
+    await setup();
+    await files.write(path.join(taskWorktree, ".tenbox", "plan.json"), JSON.stringify(GROUP_PLAN));
+    const made = await tenbox(["worktree", "T-1", "--group", "2"], project.mainDir);
+    const groupWorktree = String(made.json.worktree);
+    await commitOn(taskWorktree, "one.txt");
+    await commitOn(groupWorktree, "two.txt");
+    await git.run(["branch", "-m", "feat/T-1-2", ODD_BRANCH], groupWorktree);
+    const origin = path.join(project.root, "origin.git");
+    await git.run(["init", "-q", "--bare", "-b", "main", origin], project.root);
+    await git.run(["remote", "add", "origin", origin], project.mainDir);
+    await git.run(["push", "-q", "origin", "main", "feat/T-1", ODD_BRANCH], project.mainDir);
+    const out1 = await git.run(["rev-parse", "HEAD"], taskWorktree);
+    const out2 = await git.run(["rev-parse", "HEAD"], groupWorktree);
+    const [head1, head2] = [out1.trim(), out2.trim()];
+    const prs = path.join(project.root, "prs.json");
+    const pr = (n: number, state: string, head: string, branch: string) => ({
+      number: n,
+      url: `https://example.com/pull/${n}`,
+      isDraft: false,
+      state,
+      body: `tenbox: T-1 group ${n}\n\ntext`,
+      headRefName: branch,
+      head,
+    });
+    const list = [pr(1, "MERGED", head1, "feat/T-1"), pr(2, state2, head2, ODD_BRANCH)];
+    await files.write(prs, JSON.stringify(list));
+    const bin = path.join(project.root, "gbin");
+    await files.write(path.join(bin, "gh"), FAKE_GH);
+    await chmod(path.join(bin, "gh"), EXECUTABLE);
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_PRS: prs };
+    return { groupWorktree, origin, prs, env };
+  }
+
+  test("closes when every group PR is merged and removes every group", async () => {
+    const task = await makeGroupTask("MERGED");
+    const run = await tenbox(["close", "T-1"], project.mainDir, task.env);
+    const worktreeList = await git.run(["worktree", "list"], project.mainDir);
+    const localBranches = await git.run(["branch", "--list"], project.mainDir);
+    const remoteBranches = await git.run(["branch", "--list"], task.origin);
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(run.json).toMatchObject({
+      groups: [
+        {
+          group: 2,
+          worktree: { path: task.groupWorktree, state: "removed" },
+          branch: { name: ODD_BRANCH, state: "deleted" },
+          remote_branch: { name: ODD_BRANCH, state: "deleted" },
+        },
+      ],
+    });
+    expect(worktreeList).not.toContain("T-1");
+    expect(localBranches).not.toContain(ODD_BRANCH);
+    expect(localBranches).not.toContain("feat/T-1");
+    expect(remoteBranches).not.toContain(ODD_BRANCH);
+    expect(remoteBranches).not.toContain("feat/T-1");
+  });
+
+  test("an open group PR gives unmerged, names the group and changes nothing", async () => {
+    const task = await makeGroupTask("OPEN");
+    const run = await tenbox(["close", "T-1"], project.mainDir, task.env);
+    const groupExists = await files.isDir(task.groupWorktree);
+    const taskExists = await files.isDir(taskWorktree);
+    const branches = await git.run(["branch", "--list"], project.mainDir);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "unmerged"]);
+    expect(String(run.json.error)).toContain("group 2");
+    expect([groupExists, taskExists]).toEqual([true, true]);
+    expect(branches).toContain(ODD_BRANCH);
+  });
+});
+
 interface RunFixture {
   name: string;
   workflow: string;

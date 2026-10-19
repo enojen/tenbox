@@ -95,6 +95,14 @@ interface CommentInfo {
   state: CommentState;
 }
 
+/** What the close did with one group above 1. */
+export interface GroupCloseResult {
+  group: number;
+  worktree: WorktreeRemoveInfo;
+  branch: BranchRemoveInfo;
+  remote_branch: RemoteBranchInfo;
+}
+
 export interface CloseResult {
   ok: true;
   task: string;
@@ -106,6 +114,8 @@ export interface CloseResult {
   worktree: WorktreeRemoveInfo;
   branch: BranchRemoveInfo;
   remote_branch: RemoteBranchInfo;
+  /** The groups above 1 of the plan; the key is missing for a task without them. */
+  groups?: GroupCloseResult[];
   tracker: TrackerInfo;
   comment: CommentInfo;
 }

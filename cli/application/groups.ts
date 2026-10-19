@@ -39,7 +39,7 @@ interface NewGroup {
 }
 
 /** Groups of a task. Group 1 is the task itself; group N > 1 has its own worktree and branch. */
-export const groups = { ensure, rebase };
+export const groups = { ensure, rebase, listExtra };
 
 async function ensure(request: GroupRequest): Promise<GroupCheckout> {
   const { id, group, manifest, taskWorktree } = request;
@@ -100,4 +100,32 @@ async function rebase(request: RebaseRequest): Promise<string[]> {
   const start = await git.findCommit(worktree, onto);
   await files.writeJson(file, { start });
   return [];
+}
+
+/** A group above 1 as `tenbox close` sees it: its worktree and its branch by name. */
+export interface ExtraGroup {
+  group: number;
+  worktree: string;
+  branch: string;
+}
+
+interface ExtraGroupsRequest {
+  /** The task dir; `plan.json` is read there. */
+  planDir: string;
+  taskWorktree: string;
+  taskBranch: string;
+}
+
+/** The groups above 1 of the plan; none for a plan without groups. */
+async function listExtra(request: ExtraGroupsRequest): Promise<ExtraGroup[]> {
+  const { planDir, taskWorktree, taskBranch } = request;
+  const plan = await plans.find(planDir);
+  const listed = plan?.groups ?? [];
+  return listed
+    .filter((g) => g.id > 1)
+    .map((g) => ({
+      group: g.id,
+      worktree: groupWorktreeDir(taskWorktree, g.id),
+      branch: groupBranch(taskBranch, g.id),
+    }));
 }
