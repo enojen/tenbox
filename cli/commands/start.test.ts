@@ -453,3 +453,60 @@ test("--kind docs writes the plan and starts no session", async () => {
   const approved = await tenbox(["approve", "T-1"], project.mainDir);
   expect([approved.code, approved.json.ok]).toEqual([0, true]);
 });
+
+/** A bare origin with `main` pushed, and a second clone that pushes one more commit to it. */
+async function addMovedOrigin(): Promise<string> {
+  const origin = path.join(project.root, "origin.git");
+  await git.run(["init", "-q", "--bare", "-b", "main", origin], project.root);
+  await git.run(["remote", "add", "origin", origin], project.mainDir);
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
+  const other = path.join(project.root, "other");
+  await git.run(["clone", "-q", origin, other], project.root);
+  await git.run(["commit", "-q", "--allow-empty", "-m", "ahead"], other);
+  await git.run(["push", "-q", "origin", "main"], other);
+  return head(other);
+}
+
+async function head(dir: string, ref = "HEAD"): Promise<string> {
+  const out = await git.run(["rev-parse", ref], dir);
+  return out.trim();
+}
+
+test("a main checkout on another branch starts the worktree at the moved origin base", async () => {
+  await setup("project: demo\n");
+  const remoteHead = await addMovedOrigin();
+  await git.run(["switch", "-q", "-c", "other"], project.mainDir);
+  await startTask(input({ setup: false }));
+  const worktreeHead = await head(taskWorktree);
+  const mainBranch = await head(project.mainDir, "main");
+  expect(worktreeHead).toBe(remoteHead);
+  expect(mainBranch).toBe(remoteHead);
+});
+
+test("a checked-out base fast-forwards the main checkout and the worktree", async () => {
+  await setup("project: demo\n");
+  const remoteHead = await addMovedOrigin();
+  await startTask(input({ setup: false }));
+  const worktreeHead = await head(taskWorktree);
+  const mainHead = await head(project.mainDir);
+  expect(worktreeHead).toBe(remoteHead);
+  expect(mainHead).toBe(remoteHead);
+});
+
+test("a failed fetch of the base keeps the local base and goes on", async () => {
+  await setup("project: demo\n");
+  const origin = path.join(project.root, "empty.git");
+  await git.run(["init", "-q", "--bare", origin], project.root);
+  await git.run(["remote", "add", "origin", origin], project.mainDir);
+  const localHead = await head(project.mainDir);
+  const logged = spyOn(process.stderr, "write");
+  try {
+    await startTask(input({ setup: false }));
+    const lines = logged.mock.calls.map((call) => String(call[0]));
+    expect(lines.filter((line) => line.includes("git fetch origin main failed"))).toHaveLength(1);
+  } finally {
+    logged.mockRestore();
+  }
+  const worktreeHead = await head(taskWorktree);
+  expect(worktreeHead).toBe(localHead);
+});

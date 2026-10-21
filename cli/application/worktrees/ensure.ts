@@ -3,6 +3,7 @@ import { worktreeError } from "../../../domain/errors/git.ts";
 import { noBaseError } from "../../../domain/errors/index.ts";
 import { EXCLUDED_PATHS, type Project } from "../../../domain/project.ts";
 import { tenboxDir } from "../../../domain/task.ts";
+import { errorMessage } from "../../../domain/utils.ts";
 import { claudeSettings } from "../../infra/claude/settings.ts";
 import { log } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
@@ -38,6 +39,7 @@ async function addOrReuse(input: WorktreeInput): Promise<boolean> {
     log(`tenbox start: worktree ${taskWorktree} exists, reusing it`);
     return false;
   }
+  await fastForwardBase(project.mainDir, base);
   const baseExists = await git.refExists(project.mainDir, `${base}^{commit}`);
   if (!baseExists) throw noBaseError(base, "not found");
   await files.mkdir(path.dirname(taskWorktree));
@@ -64,4 +66,17 @@ async function ensureLink(link: string, taskDir: string): Promise<void> {
   if (isDir) return;
   await files.mkdir(taskDir);
   await files.symlink(taskDir, link);
+}
+
+/** The base moves to `origin` when that is a fast-forward; a failure keeps the local base. */
+async function fastForwardBase(mainDir: string, base: string): Promise<void> {
+  const origin = await git.findRemoteUrl(mainDir);
+  if (origin === null) return;
+  try {
+    await git.fastForwardBranch(mainDir, base);
+  } catch (e) {
+    log(
+      `tenbox start: git fetch origin ${base} failed (${errorMessage(e)}), using the local ${base}`,
+    );
+  }
 }
