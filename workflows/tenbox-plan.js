@@ -12,6 +12,9 @@ const DEEP_MODEL = 'fable'
 
 const LENSES = ['security', 'contract']
 
+// From the shortest flow to the longest, as in domain/kind.ts.
+const KINDS = ['docs', 'small', 'normal', 'large']
+
 // One PR of the task; `needs` holds smaller group ids, an empty list branches off the base.
 const GROUP = {
   type: 'object',
@@ -37,6 +40,7 @@ const GROUP = {
 const PLAN = {
   type: 'object',
   properties: {
+    kind: { enum: KINDS },
     summary: { type: 'string' },
     estimated_lines: { type: 'integer', minimum: 0 },
     // id is the two-digit part number of the part file, for example "01"
@@ -96,7 +100,7 @@ const PLAN = {
       },
     },
   },
-  required: ['summary', 'estimated_lines', 'parts', 'examples', 'decisions', 'lenses', 'questions'],
+  required: ['kind', 'summary', 'estimated_lines', 'parts', 'examples', 'decisions', 'lenses', 'questions'],
 }
 
 // `file` comes only from the CLI; `code` and `error` say why plan.json was not written.

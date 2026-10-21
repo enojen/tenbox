@@ -42,7 +42,7 @@ const PLAN = {
   questions: [],
 };
 const TAKE = [{ decision: "Where the list", taken: 2 }];
-const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", parts: PLAN.parts, lenses: [] })}`;
+const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", kind: "normal", reviews: 3, parts: PLAN.parts, lenses: [] })}`;
 const planJsonFile = () => path.join(path.dirname(decisionsFile), "plan.json");
 const writePlan = async () => {
   await files.write(path.join(path.dirname(decisionsFile), "plan.md"), "# plan\n");

@@ -2,6 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import { badPlanError, noPlanError } from "./errors/tasks.ts";
 import { GroupSchema, groupIssues, LensSchema } from "./group.ts";
+import { DEFAULT_KIND, TaskKindSchema } from "./kind.ts";
 import { issueLines, parseObject } from "./utils.ts";
 
 const text = z.string().min(1);
@@ -71,6 +72,8 @@ const PlanResultSchema = z
     lenses: z.array(LensSchema),
     questions: z.array(QuestionSchema),
     groups: z.array(GroupSchema).optional(),
+    /** Missing in the plans written before kinds. */
+    kind: TaskKindSchema.default(DEFAULT_KIND),
   })
   .superRefine((plan, ctx) => {
     const partIds = plan.parts.map((part) => part.id);

@@ -1,7 +1,19 @@
 import path from "node:path";
 import { z } from "zod";
-import { answeredError, badBuildError, noDecisionError } from "./errors/tasks.ts";
+import { type ChangedFile, changedLines } from "./changedFile.ts";
+import { answeredError, badBuildError, kindRaisedError, noDecisionError } from "./errors/tasks.ts";
 import { usageError } from "./errors/usage.ts";
+import type { Group } from "./group.ts";
+import {
+  DEFAULT_KIND,
+  KIND_PRESETS,
+  kindForDiff,
+  reviewOf,
+  type TaskKind,
+  TaskKindSchema,
+} from "./kind.ts";
+import { CHECK_TIER, type CheckTier } from "./manifest.ts";
+import type { PlanResult } from "./plan.ts";
 import { ProofSchema } from "./proof.ts";
 import { isFilled, issueLines, parseObject } from "./utils.ts";
 
@@ -72,6 +84,8 @@ const BuildResultSchema = z.looseObject({
   /** When the recommended option is taken; null when the card may not be auto-answered. */
   deadline: z.iso.datetime().nullable().optional(),
   answered: AnsweredSchema.optional(),
+  /** The kind the build ran as; missing means the plan's kind. */
+  kind: TaskKindSchema.optional(),
 });
 
 export type BuildResult = z.infer<typeof BuildResultSchema>;
@@ -128,4 +142,97 @@ export function getOption(card: DecisionCard, option: number): string {
     throw usageError(`option must be a number from 1 to ${card.options.length}`);
   }
   return text;
+}
+
+/** A plan without groups is one group at the full tier, unless its kind forces another. */
+const UNGROUPED_TIER = CHECK_TIER.full;
+
+/** The JSON args `tenbox build` sends to `/tenbox-build`. */
+export interface BuildArgs {
+  task: string;
+  kind: TaskKind;
+  /** How many rounds the build may review. */
+  reviews: number;
+  parts: PlanResult["parts"];
+  lenses: PlanResult["lenses"];
+  groups?: Group[];
+}
+
+export interface BuildArgsInput {
+  task: string;
+  plan: PlanResult;
+}
+
+/** The args of a plan, with its lenses and group recipes as its kind gives them. */
+export function buildArgs(input: BuildArgsInput): BuildArgs {
+  const { task, plan } = input;
+  const { kind } = plan;
+  const { lenses, reviews } = reviewOf({ kind, lenses: plan.lenses, tier: UNGROUPED_TIER });
+  const groups = plan.groups?.map((group) => withKind(group, kind));
+  return { task, kind, reviews, parts: plan.parts, lenses, ...(groups && { groups }) };
+}
+
+function withKind(group: Group, kind: TaskKind): Group {
+  const { recipe } = group;
+  const { lenses, tier } = reviewOf({ kind, lenses: recipe.lenses, tier: recipe.tier });
+  return { ...group, recipe: { ...recipe, lenses, tier } };
+}
+
+/** A plan, or null without `plan.json`, and the kind a build runs as. */
+export interface KindPlan {
+  plan: PlanResult | null;
+  kind: TaskKind;
+}
+
+/** One group and the check tier its recipe has under the kind. */
+export interface GroupTier {
+  group: number;
+  tier: CheckTier;
+}
+
+/** The tier of each group under the kind; a plan without groups is group 1. */
+export function groupTiers(input: KindPlan): GroupTier[] {
+  const { plan, kind } = input;
+  if (!plan?.groups) {
+    return [{ group: 1, tier: reviewOf({ kind, lenses: [], tier: UNGROUPED_TIER }).tier }];
+  }
+  return plan.groups.map((group) => ({ group: group.id, tier: withKind(group, kind).recipe.tier }));
+}
+
+export interface BuildKindInput {
+  result: BuildResult;
+  plan: PlanResult | null;
+}
+
+/** The kind a build result runs as: its own, else the plan's, else the default. */
+export function buildKind(input: BuildKindInput): TaskKind {
+  const { result, plan } = input;
+  return result.kind ?? plan?.kind ?? DEFAULT_KIND;
+}
+
+/** The files of several diffs with each path once, at its largest change. */
+export function uniqueFiles(diffs: ChangedFile[][]): ChangedFile[] {
+  const byPath = new Map<string, ChangedFile>();
+  for (const file of diffs.flat()) {
+    const known = byPath.get(file.path);
+    if (known === undefined || changedLines([file]) > changedLines([known]))
+      byPath.set(file.path, file);
+  }
+  return [...byPath.values()];
+}
+
+/** The kind a build runs as, its plan and the files its diff changed. */
+export interface KindDiff extends KindPlan {
+  files: ChangedFile[];
+}
+
+/** `kind-raised` when the diff is over the limits of the kind, with the review of the kind it fits. */
+export function assertKindFits(input: KindDiff): void {
+  const { kind, plan, files } = input;
+  const fitting = kindForDiff({ kind, files });
+  if (fitting === kind) return;
+  const { lenses } = reviewOf({ kind: fitting, lenses: plan?.lenses ?? [], tier: UNGROUPED_TIER });
+  const reviews = KIND_PRESETS[fitting].reviews;
+  const diff = { files: files.length, lines: changedLines(files) };
+  throw kindRaisedError({ from: kind, kind: fitting, lenses, reviews, diff });
 }

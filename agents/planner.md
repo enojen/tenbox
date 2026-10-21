@@ -79,6 +79,14 @@ plain paragraphs: the order of the work, the risks a person must read (migration
 deletions, locked paths), and the road not taken. Leave out what has nothing to say. Do not
 repeat the parts, examples, groups or sizes: they are in `plan.json` and the part files.
 
+The task's kind goes into `plan.json` as `kind`, one of `docs`, `small`, `normal` or `large`;
+give the one-line reason in `plan.md`. The kind sets how deep the build goes: `docs` and `small`
+get one review round, no extra lens and the fast tier; `normal` keeps the lenses and tiers of the
+groups; `large` gets every lens and the full tier. Pick the smallest kind the diff fits: `docs`
+changes only Markdown files; `small` is at most 5 files and 100 changed lines; `normal` at most
+20 files and 400 lines; `large` has no limit. `tenbox build done` raises the kind when the real
+diff is over its limits.
+
 One part file per part, `.tenbox/parts/<NN>-<slug>.md`:
 
 ```markdown
@@ -109,7 +117,7 @@ exists. A non-blocking question states the default you will follow.
 
 ## Returning
 
-The plan result has, besides the summary, lenses and questions, `estimated_lines`
+The plan result has, besides the summary, lenses and questions, `kind` (the task kind), `estimated_lines`
 (your estimate of the whole diff, a whole number), `examples` and `decisions`, and `parts`, one
 `{ id, difficulty, files }` per part. `id` is the two-digit part number of the part file, `01`.
 `files` are the git pathspecs of the part file's `files:` line, one per item; `tenbox part done`

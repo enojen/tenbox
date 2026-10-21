@@ -83,6 +83,7 @@ describe("costComment", () => {
 
 test("countPlan lists each part's difficulty in order and the estimated lines", () => {
   const plan = countPlan({
+    kind: "normal",
     summary: "s",
     estimated_lines: 120,
     parts: [

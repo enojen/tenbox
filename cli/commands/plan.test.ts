@@ -16,6 +16,7 @@ let planJson: string;
 let planMd: string;
 
 const valid = {
+  kind: "small",
   summary: "s",
   estimated_lines: 120,
   parts: [

@@ -61,7 +61,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
-| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, examples, plan decisions, lenses, questions, groups (`PlanResult`). |
+| kind | A task's flow depth, `docs`, `small`, `normal` or `large`: a preset of review lenses, check tier, review rounds and diff limits; `normal` when a plan names none (`TaskKind`, `KIND_PRESETS`). |
+| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: kind, summary, estimated lines, parts `{ id, difficulty }`, examples, plan decisions, lenses, questions, groups (`PlanResult`). |
 | example | One before and after of a part in `plan.json`: `{ part, title, before, after }`; `title` names the worker test that proves it. |
 | plan decision | One real choice in `plan.json`: `{ title, options, taken, reason }`, `taken` counted from 1; `tenbox decide` with `{ decision, taken }` overrides it (`PlanDecision`). Not a decision card. |
 | group | One or more parts that become one PR; has a name, `needs` (smaller group ids) and a recipe (`Group`). |

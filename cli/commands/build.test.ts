@@ -52,7 +52,9 @@ async function approve(plan: object = planResult()): Promise<void> {
   await run("approve", "T-1");
 }
 
-const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", parts: PARTS, lenses: ["contract"] })}`;
+/** The args of a normal plan: its own lenses, three review rounds. */
+const ARGS = { task: "T-1", kind: "normal", reviews: 3, parts: PARTS, lenses: ["contract"] };
+const SENT = `/tenbox-build ${JSON.stringify(ARGS)}`;
 
 /** The prompts of the `claude --bg` calls: the last argument of each. */
 async function bgPrompts(): Promise<string[]> {
@@ -82,7 +84,18 @@ describe("tenbox build", () => {
     await setup();
     await approve(planResult(GROUPS));
     const built = await run("build", "T-1");
-    const args = { task: "T-1", parts: PARTS, lenses: ["contract"], groups: GROUPS };
+    const args = { ...ARGS, groups: GROUPS };
+    expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
+  });
+
+  test("sends the kind, its review rounds and the lenses and recipes the kind gives", async () => {
+    await setup();
+    const recipe = { ...RECIPE, lenses: ["contract"], tier: "full" };
+    const group = { ...GROUPS[0], recipe };
+    await approve({ ...planResult([group]), kind: "small" });
+    const built = await run("build", "T-1");
+    const applied = { ...group, recipe: { ...recipe, lenses: [], tier: "fast" } };
+    const args = { ...ARGS, kind: "small", reviews: 1, lenses: [], groups: [applied] };
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
@@ -311,6 +324,52 @@ describe("tenbox build done", () => {
       expect([run.code, run.json.ok, full]).toEqual([0, true, false]);
     });
 
+    /** A `small` plan of one group whose recipe has the given tier. */
+    async function smallPlan(tier: string): Promise<void> {
+      const recipe = { model: "opus", effort: "high", lenses: [], tier };
+      const group = { id: 1, name: "feat: a", parts: ["01"], needs: [], recipe };
+      const plan = { ...planResult([group]), kind: "small" };
+      await files.writeJson(path.join(path.dirname(buildJson), "plan.json"), plan);
+    }
+
+    const lines = (count: number): string => "x\n".repeat(count);
+
+    test("a small plan whose recipe says tier full runs no full tier and keeps kind small", async () => {
+      await smallPlan("full");
+      await checkedTask({ "full.txt": " FAIL  full one\n" });
+      const run = await buildDone(...readyJson);
+      const full = await files.exists(fullChecksJson());
+      const written = await readJson(buildJson);
+      expect([run.code, run.json.ok, full, written.kind]).toEqual([0, true, false, "small"]);
+    });
+
+    test("a diff over the small limits is kind-raised and writes nothing; kind normal is accepted", async () => {
+      await smallPlan("fast");
+      await checkedTask({ "big.txt": lines(101) });
+      const raised = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([raised.code, raised.json.code, written]).toEqual([1, "kind-raised", false]);
+      expect(raised.json.details).toEqual({ kind: "normal", lenses: ["contract"], reviews: 3 });
+      const accepted = await buildDone("--json", JSON.stringify({ ...ready, kind: "normal" }));
+      const saved = await readJson(buildJson);
+      expect([accepted.code, saved.kind]).toEqual([0, "normal"]);
+    });
+
+    test("a small plan with a diff inside its limits is accepted", async () => {
+      await smallPlan("fast");
+      await checkedTask({ "b.txt": lines(100) });
+      const run = await buildDone(...readyJson);
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+    });
+
+    test("generated files do not count against the limits of the kind", async () => {
+      await smallPlan("fast");
+      const attributes = "big.txt linguist-generated\n";
+      await checkedTask({ ".gitattributes": attributes, "big.txt": lines(500) });
+      const run = await buildDone(...readyJson);
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+    });
+
     test("an accepted result writes build.json and opens a draft PR", async () => {
       await checkedTask();
       const run = await buildDone(...readyJson);
@@ -386,7 +445,7 @@ describe("tenbox build done", () => {
     expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", file: buildJson }]);
     const written = await readJson(buildJson);
     const recorded = await readJson(proofsJson);
-    expect(written).toEqual(valid);
+    expect(written).toEqual({ ...valid, kind: "normal" });
     expect(recorded).toEqual([proof("first")]);
   });
 
@@ -418,6 +477,7 @@ describe("tenbox build done", () => {
     const recorded = await readJson(proofsJson);
     expect(written).toEqual({
       ...second,
+      kind: "normal",
       unproven: [
         { part: "01", reason: "r1" },
         { part: "02", reason: "r2" },

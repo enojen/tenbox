@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { BUILD_STATUS, type BuildResult, type Unproven } from "./build.ts";
+import type { ChangedFile } from "./changedFile.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
@@ -56,13 +57,6 @@ export interface StatsRound {
   number: number;
   /** Null when `checks.json` is missing or unreadable. */
   checks_passed: boolean | null;
-}
-
-/** One file of a diff; a binary file counts 0 lines. */
-export interface ChangedFile {
-  added: number;
-  removed: number;
-  path: string;
 }
 
 export interface StatsCode {

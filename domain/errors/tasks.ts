@@ -1,3 +1,4 @@
+import type { KindReview, TaskKind } from "../kind.ts";
 import { TenboxError } from "./index.ts";
 
 export function noWorktreeError(id: string): TenboxError {
@@ -222,4 +223,30 @@ export function ciFailedError(result: unknown): TenboxError {
 
 export function ciTimeoutError(result: unknown): TenboxError {
   return new TenboxError("the CI checks of a PR did not finish in time", "ci-timeout", result);
+}
+
+/** The size of a diff: files and changed lines. */
+interface DiffSize {
+  files: number;
+  lines: number;
+}
+
+export interface KindRaised {
+  /** The kind the build ran as. */
+  from: TaskKind;
+  /** The smallest kind whose limits the diff fits, and its review. */
+  kind: TaskKind;
+  lenses: KindReview["lenses"];
+  reviews: number;
+  diff: DiffSize;
+}
+
+/** `details` is what the next build round runs: the new kind, its lenses and review rounds. */
+export function kindRaisedError(input: KindRaised): TenboxError {
+  const { from, kind, lenses, reviews, diff } = input;
+  return new TenboxError(
+    `the diff (${diff.files} files, ${diff.lines} changed lines) is over the limits of kind ${from}; it is ${kind} now`,
+    "kind-raised",
+    { kind, lenses, reviews },
+  );
 }

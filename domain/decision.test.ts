@@ -88,6 +88,7 @@ const card = (title: string) => ({
   reason: "r",
 });
 const plan: PlanResult = {
+  kind: "normal",
   summary: "s",
   estimated_lines: 1,
   parts: [{ id: "01", difficulty: "easy" }],

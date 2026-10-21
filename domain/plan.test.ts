@@ -16,6 +16,7 @@ const decision = {
   reason: "it must survive a restart",
 };
 const valid: PlanResult = {
+  kind: "normal",
   summary: "s",
   estimated_lines: 120,
   parts: [
@@ -214,4 +215,18 @@ test("parts accept files or none", () => {
   const without: PlanResult = { ...valid, parts: [{ id: "02", difficulty: "easy" }], examples: [] };
   expect(parsePlan(JSON.stringify(withFiles)).parts).toEqual(withFiles.parts);
   expect(parsePlan(JSON.stringify(without)).parts).toEqual(without.parts);
+});
+
+test("parsePlan keeps the kind of the plan", () => {
+  expect(parsePlan(json({ kind: "small" })).kind).toBe("small");
+});
+
+test("parsePlan refuses an unknown kind with bad-plan", () => {
+  expect(() => parsePlan(json({ kind: "tiny" }))).toThrow(
+    expect.objectContaining({ code: "bad-plan" }),
+  );
+});
+
+test("a plan without a kind is normal", () => {
+  expect(parsePlan(json({})).kind).toBe("normal");
 });
