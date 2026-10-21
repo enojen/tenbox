@@ -20,6 +20,7 @@ import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { decide } from "./commands/decide.ts";
+import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
@@ -59,6 +60,7 @@ const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
   "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
 const ATTACH_USAGE = "tenbox attach <id>";
+const HOOK_USAGE = "tenbox hook blocked <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
@@ -198,6 +200,15 @@ const COMMANDS: Record<string, Command> = {
     usage: ATTACH_USAGE,
     options: {},
     run: (positionals) => attachTask(idArg(positionals, ATTACH_USAGE)),
+  },
+  hook: {
+    usage: HOOK_USAGE,
+    options: {},
+    run: (positionals) => {
+      const [name, ...rest] = positionals;
+      if (name !== "blocked") throw usageError(`usage: ${HOOK_USAGE}`);
+      return blockedHook(idArg(rest, HOOK_USAGE));
+    },
   },
   wait: {
     usage: WAIT_USAGE,

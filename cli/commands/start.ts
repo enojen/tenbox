@@ -43,6 +43,7 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   const claude = await sessions.ensure({
     target: { id, taskWorktree },
     start: {
+      id,
       model: manifest.model,
       addDir: dir,
       name: sessionName(manifest.names, id),

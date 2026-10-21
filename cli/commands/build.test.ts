@@ -8,6 +8,7 @@ import {
   type FakeClaude,
   type FakeSession,
   makeFakeClaude,
+  notificationHooks,
   tenbox,
 } from "../test/cli.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
@@ -109,6 +110,18 @@ describe("tenbox build", () => {
       "--",
       SENT,
     ]);
+  });
+
+  test("starts claude with the Notification hook that runs hook blocked T-1", async () => {
+    await setup();
+    await approve();
+    await run("build", "T-1");
+    const calls = await fake.calls();
+    const hooks = notificationHooks(calls.at(-1)?.args ?? []);
+    expect(hooks?.Notification.map((entry) => entry.matcher)).toEqual(["permission_prompt"]);
+    const commands = hooks?.Notification.flatMap((entry) => entry.hooks.map((h) => h.command));
+    expect(commands).toHaveLength(1);
+    expect(commands?.[0]?.endsWith(" hook blocked T-1")).toBe(true);
   });
 
   const session = (cwd: string, state: string): FakeSession => ({

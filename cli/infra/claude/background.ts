@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { claudeError } from "../../../domain/errors/tools.ts";
+import type { TaskId } from "../../../domain/ids.ts";
 import { parseJson } from "../../../domain/utils.ts";
 import { processes } from "../processes.ts";
 import type { ResumableRun } from "./sessionFiles.ts";
 
 /** What a task's background `claude` session starts with. */
 export interface ClaudeStart {
+  /** The task whose `tenbox hook blocked` the session runs when it waits on a permission prompt. */
+  id: TaskId;
   model: string;
   /** A dir outside the worktree that `claude` may read and write: the task dir. */
   addDir: string;
@@ -28,6 +31,22 @@ export interface BackgroundSession {
 export interface ClaudeRun {
   claude: string;
   cwd: string;
+}
+
+const SAFE_SHELL_WORD = /^[\w@%+=:,./-]+$/;
+
+/** One word of a shell command line, in single quotes unless it has only safe characters. */
+function shellWord(word: string): string {
+  return SAFE_SHELL_WORD.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+}
+
+/** The `--settings` JSON with a `Notification` hook for permission prompts that runs `tenbox hook blocked <id>`. */
+function blockedHookSettings(id: TaskId): string {
+  const command = processes.selfCommand(["hook", "blocked", id]).map(shellWord).join(" ");
+  const hooks = {
+    Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command }] }],
+  };
+  return JSON.stringify({ hooks });
 }
 
 /** The background session commands of the `claude` CLI. */
@@ -75,15 +94,27 @@ function find(): string | null {
 /**
  * `--bg` returns once the session runs. `--add-dir` and `--allowedTools` take several values, so
  * `--` keeps the prompt out of them. `Workflow` is allowed so the slash command runs unattended.
+ * `--settings` adds the hook that tells a person when the session waits on a permission prompt.
  */
 async function startBackground(run: ClaudeRun, start: ClaudeStart): Promise<void> {
-  const args = ["--bg", "--model", start.model, "--add-dir", start.addDir, "-n", start.name];
-  await runChecked(run, [...args, "--allowedTools", "Workflow", "--", start.prompt]);
+  const settings = blockedHookSettings(start.id);
+  const args = ["--bg", "--model", start.model, "--add-dir", start.addDir];
+  await runChecked(run, [
+    ...args,
+    "--settings",
+    settings,
+    "-n",
+    start.name,
+    "--allowedTools",
+    "Workflow",
+    "--",
+    start.prompt,
+  ]);
 }
 
 /**
- * Wakes the same session with its saved options; any other flag makes claude start a copy
- * under a new id instead, so none is passed.
+ * Wakes the same session with its saved options, its `--settings` hook among them; any other
+ * flag makes claude start a copy under a new id instead, so none is passed.
  */
 async function resumeBackground(run: ClaudeRun, resume: ClaudeResume): Promise<void> {
   await runChecked(run, ["--bg", "--resume", resume.session, "--", resume.prompt]);

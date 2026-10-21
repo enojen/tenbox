@@ -32,6 +32,7 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const { parts, lenses, groups } = await plans.get(taskDir);
   const sent = `/tenbox-build ${JSON.stringify({ task: id, parts, lenses, ...(groups && { groups }) })}`;
   const start = {
+    id,
     model: manifest.model,
     addDir: taskDir,
     name: sessionName(manifest.names, id),

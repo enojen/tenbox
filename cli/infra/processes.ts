@@ -32,7 +32,7 @@ const ENOENT = "ENOENT";
 const running = new Set<number>();
 
 /** Runs a program without a shell: Tenbox starts only git, gh, docker, claude and itself. */
-export const processes = { run, runInTerminal, runSelf, stopAll, which };
+export const processes = { run, runInTerminal, runSelf, selfCommand, stopAll, which };
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
@@ -77,11 +77,16 @@ async function runInTerminal(cmd: string[], options: ProcessOptions = {}): Promi
   return code;
 }
 
+/** The command line that runs `tenbox <args>` with the same runtime and entry file as this run. */
+function selfCommand(args: string[]): string[] {
+  return [process.execPath, Bun.main, ...args];
+}
+
 /** Starts `tenbox <args>` in its own process group and does not wait: it outlives this run. */
 function runSelf(self: SelfRun): void {
   const log = openSync(self.logFile, "a");
   try {
-    const proc = Bun.spawn([process.execPath, Bun.main, ...self.args], {
+    const proc = Bun.spawn(selfCommand(self.args), {
       cwd: self.cwd,
       env: process.env,
       stdio: ["ignore", log, log],

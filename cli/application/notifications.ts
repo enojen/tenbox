@@ -17,17 +17,19 @@ interface NotificationSend {
 /** One line per event a person must act on, sent to the ntfy topic of the manifest. */
 export const notifications = { send };
 
-/** Sends nothing without `notify.ntfy`. A failed send is one stderr line, never an error. */
-async function send(input: NotificationSend): Promise<void> {
+/** True when the line was posted. Sends nothing without `notify.ntfy`. A failed send is one stderr line, never an error. */
+async function send(input: NotificationSend): Promise<boolean> {
   const { taskWorktree, notification } = input;
   const { project } = await projects.get(taskWorktree);
   const { notify: config } = await manifests.get(project.mainDir, taskWorktree);
-  if (config.ntfy === undefined) return;
+  if (config.ntfy === undefined) return false;
   const line = notificationLine({ ...notification, project: project.name });
   try {
     const click = await sessionLinks.find(taskWorktree);
     await notify.send({ url: config.ntfy, line, ...(click === null ? {} : { click }) });
+    return true;
   } catch (e) {
     log(`notification not sent: ${errorMessage(e)}`);
+    return false;
   }
 }

@@ -1,6 +1,7 @@
 import { setDefaultTimeout } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { parseObject } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
@@ -21,15 +22,30 @@ export interface CliRun {
   json: Json;
 }
 
+/** One run of the CLI: its arguments, working directory, extra env and what it reads on stdin. */
+interface CliInput {
+  args: string[];
+  cwd: string;
+  env?: Record<string, string>;
+  stdin?: string;
+}
+
 /** Runs `tenbox <args>` with bun by full path, so tests may change `PATH`. */
-export async function tenbox(
+export function tenbox(
   args: string[],
   cwd: string,
   extraEnv: Record<string, string> = {},
 ): Promise<CliRun> {
+  return tenboxInput({ args, cwd, env: extraEnv });
+}
+
+/** Like `tenbox`, with text on stdin, as a Claude Code hook gets it. */
+export async function tenboxInput(input: CliInput): Promise<CliRun> {
+  const { args, cwd, env = {}, stdin = "" } = input;
   const proc = Bun.spawn([process.execPath, "run", MAIN_TS, ...args], {
     cwd,
-    env: { ...process.env, ...extraEnv },
+    env: { ...process.env, ...env },
+    stdin: new Blob([stdin]),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -97,6 +113,24 @@ export async function makeFakeClaude(root: string): Promise<FakeClaude> {
     setSessions: (sessions) => files.write(sessionsFile, JSON.stringify(sessions)),
     failWith: (stderr) => files.write(failFile, stderr),
   };
+}
+
+const HookSettings = z.object({
+  hooks: z.object({
+    Notification: z.array(
+      z.object({
+        matcher: z.string(),
+        hooks: z.array(z.object({ type: z.string(), command: z.string() })),
+      }),
+    ),
+  }),
+});
+
+/** The `Notification` hooks in the `--settings` JSON of a `claude` call; null without a valid one. */
+export function notificationHooks(args: string[]): z.infer<typeof HookSettings>["hooks"] | null {
+  const at = args.indexOf("--settings");
+  const parsed = HookSettings.safeParse(parseObject(args[at + 1] ?? ""));
+  return parsed.success ? parsed.data.hooks : null;
 }
 
 async function readCalls(file: string): Promise<ClaudeCall[]> {

@@ -79,11 +79,12 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
 | token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
-| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready (`Notification`). |
+| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready, blocked (`Notification`). |
 | ready-for-you | The notification state of `tenbox build done` with status ready-for-you; the detail is `round N, attention A, nice-to-have B, unproven C`, counted from `build.json`. |
 | check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
+| blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | machine | A short-lived cloud server of one task, started and stopped by `machine.yml` (`machines`). |
 | machine run | One `machine.yml` workflow run that executes a tenbox command of a task on its machine; `tenbox machine run` starts it, `tenbox machine ls` lists them (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |

@@ -6,7 +6,7 @@ import { taskDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type FakeClaude, makeFakeClaude } from "../test/cli.ts";
+import { type FakeClaude, makeFakeClaude, notificationHooks } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { type StartInput, startTask } from "./start.ts";
 
@@ -123,22 +123,30 @@ test("starts claude --bg with the plan in the task worktree", async () => {
   const real = await files.realPath(taskWorktree);
   const calls = await fake.calls();
   expect(r.claude).toEqual({ session: "tenbox-T-1", state: "started" });
-  expect(calls.at(-1)).toEqual({
-    cwd: real,
-    args: [
-      "--bg",
-      "--model",
-      "sonnet",
-      "--add-dir",
-      dir,
-      "-n",
-      "tenbox-T-1",
-      "--allowedTools",
-      "Workflow",
-      "--",
-      "/tenbox-plan T-1",
-    ],
-  });
+  const args = calls.at(-1)?.args ?? [];
+  const at = args.indexOf("--settings");
+  expect(calls.at(-1)?.cwd).toBe(real);
+  expect(args.slice(0, at)).toEqual(["--bg", "--model", "sonnet", "--add-dir", dir]);
+  expect(args.slice(at + 2)).toEqual([
+    "-n",
+    "tenbox-T-1",
+    "--allowedTools",
+    "Workflow",
+    "--",
+    "/tenbox-plan T-1",
+  ]);
+});
+
+test("starts claude with a Notification hook for permission prompts that runs hook blocked", async () => {
+  await setup("project: demo\n");
+  const fake = await useFakeClaude();
+  await startTask(input({ claude: true, setup: false }));
+  const calls = await fake.calls();
+  const hooks = notificationHooks(calls.at(-1)?.args ?? []);
+  expect(hooks?.Notification.map((entry) => entry.matcher)).toEqual(["permission_prompt"]);
+  const [entry] = hooks?.Notification ?? [];
+  expect(entry?.hooks.map((hook) => hook.type)).toEqual(["command"]);
+  expect(entry?.hooks[0]?.command.endsWith(" hook blocked T-1")).toBe(true);
 });
 
 test("a background session in the task worktree is kept: exists, no second claude --bg", async () => {

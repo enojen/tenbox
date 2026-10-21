@@ -1,7 +1,8 @@
 import { BUILD_STATUS, type BuildStatus } from "./build.ts";
 import type { TaskId } from "./ids.ts";
+import { parseObject } from "./utils.ts";
 
-/** What a person must act on: three build statuses and three events. */
+/** What a person must act on: three build statuses and four events. */
 export const NOTIFICATION_STATE = {
   needsYou: BUILD_STATUS.needsYou,
   readyForYou: BUILD_STATUS.readyForYou,
@@ -9,6 +10,7 @@ export const NOTIFICATION_STATE = {
   checkFailed: "check-failed",
   prOpened: "pr-opened",
   planReady: "plan-ready",
+  blocked: "blocked",
 } as const;
 
 export type NotificationState = (typeof NOTIFICATION_STATE)[keyof typeof NOTIFICATION_STATE];
@@ -35,6 +37,7 @@ const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => st
   [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox attach ${n.id}`,
   [NOTIFICATION_STATE.prOpened]: (n) => `tenbox close ${n.id}`,
   [NOTIFICATION_STATE.planReady]: (n) => `tenbox approve ${n.id}`,
+  [NOTIFICATION_STATE.blocked]: (n) => `tenbox attach ${n.id}`,
 };
 
 /** The state of a build end status a person must act on; null for `not-approved`. */
@@ -47,4 +50,15 @@ export function notificationLine(notification: Notification): string {
   const { project, id, state, detail } = notification;
   const parts = [project, id, state, ...(detail === undefined ? [] : [detail])];
   return `${parts.join(SEPARATOR)} → ${NEXT_COMMAND[state](notification)}`;
+}
+
+/** The detail of a `blocked` line when the hook input has no `message`. */
+const PERMISSION_PROMPT = "permission prompt";
+
+/** The detail of a `blocked` line from the JSON a Notification hook reads on stdin; null when that is not a JSON object. */
+export function blockedDetail(stdin: string): string | null {
+  const input = parseObject(stdin);
+  if (input === null) return null;
+  const { message } = input;
+  return typeof message === "string" && message.trim() !== "" ? message.trim() : PERMISSION_PROMPT;
 }

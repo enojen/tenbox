@@ -134,6 +134,13 @@ export interface AttachResult {
   session: string;
 }
 
+/** `tenbox hook blocked`: `sent` is false when no line went out; the exit code stays 0. */
+export interface HookResult {
+  ok: true;
+  task: string;
+  sent: boolean;
+}
+
 export interface PrInfo {
   number: number;
   url: string;
