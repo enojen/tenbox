@@ -1,0 +1,3 @@
+# The build context is machines/k8s; only the bundle goes in.
+*
+!.build/tenbox.bundle

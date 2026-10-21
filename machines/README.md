@@ -162,3 +162,30 @@ writing the state; `machine.sh down` runs it over ssh so a busy machine is not d
 machine never deletes itself, so the state in the bucket stays true. Log:
 `journalctl -u tenbox-watchdog`. The image carries a copy of the script; every boot
 overwrites it with the one from `watchdog/`, so a change needs no new image.
+
+## Box image: `k8s/` (TEN-460)
+
+The same box as a container image, for a Kubernetes pod. The `box` workflow
+(`.github/workflows/box.yml`) builds it on every push to main and pushes
+`ghcr.io/enojen/tenbox-box:<sha>` and `:latest`; a manual run from another branch pushes
+only `:<sha>` of that branch. It runs on `vars.BOX_RUNNER` (default `ubuntu-latest`) and logs
+out of GHCR at the end, because the runner is shared. The package is private: log in to
+pull, for example `gh auth token | docker login ghcr.io -u <user> --password-stdin`. The
+image holds the repo's git history at `/opt/tenbox`, so the package must stay private. The
+workflow is the only build script. `/etc/tenbox-image.json` in the image has `tenbox.ref`,
+the sha.
+
+To build by hand, from the repo root, with the committed work as a git bundle (so
+untracked files stay out and `/opt/tenbox` is a clean git repo):
+
+```
+mkdir -p machines/k8s/.build && git bundle create machines/k8s/.build/tenbox.bundle main
+docker build machines/k8s --build-arg TENBOX_BRANCH=main --build-arg TENBOX_REF=$(git rev-parse main) -t tenbox-box
+```
+
+The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TENBOX_PROJECT`,
+`TENBOX_REPO`, `TENBOX_CMD`) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
+`TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenzel`, then runs `TENBOX_CMD`
+in the foreground as `tenzel` in the project's main checkout. The container lives as long as
+the command and exits with its exit code. The output goes to stdout and to
+`/var/log/tenbox-run.log`.

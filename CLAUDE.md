@@ -165,7 +165,8 @@ rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, 
 machines/   packer/ (the image: template, build.sh, scripts/), tofu/task/ (volume + server per task,
             cloud-init, tenbox-boot.sh), machine.sh (one command of .github/workflows/machine.yml;
             local.sh runs it from your computer), login/ (the claude.ai login sync from your
-            computer to the bucket), watchdog/ (script, service, timer)
+            computer to the bucket), watchdog/ (script, service, timer), k8s/ (the box image:
+            Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR on every merge)
 docs/       design.md (the target design), flow page and mockups
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```

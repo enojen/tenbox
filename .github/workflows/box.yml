@@ -1,0 +1,46 @@
+name: box
+# Every merge to main builds the tenbox box image (machines/k8s) and pushes it to GHCR.
+# The package is private. BOX_RUNNER moves the build to a machine with docker.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: box
+jobs:
+  box:
+    runs-on: ${{ vars.BOX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/enojen/tenbox-box
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The checked-out branch is the only local branch, so bundle that one; a manual run
+      # from another branch builds that branch as :<sha> and leaves :latest to main.
+      - name: Bundle the commit
+        run: |
+          mkdir -p machines/k8s/.build
+          git bundle create machines/k8s/.build/tenbox.bundle "refs/heads/$GITHUB_REF_NAME"
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push
+        run: |
+          docker build machines/k8s \
+            --build-arg TENBOX_BRANCH="$GITHUB_REF_NAME" --build-arg TENBOX_REF="$GITHUB_SHA" \
+            -t "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:$GITHUB_SHA"
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            docker tag "$IMAGE:$GITHUB_SHA" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
+      # The runner is shared with other jobs: do not leave the token in ~/.docker/config.json.
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

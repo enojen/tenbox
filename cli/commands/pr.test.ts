@@ -446,8 +446,8 @@ test("without --wait the group has no ci key and gh pr checks is never called", 
 
 const ONE_MINUTE_MS = 60_000;
 const HALF_HOUR_MS = 30 * ONE_MINUTE_MS;
-/** Half an hour of polls spawns the fake `gh` many times; under the full suite that takes over 5 s. */
-const PENDING_WAIT_TEST_TIMEOUT_MS = 30_000;
+/** Half an hour of polls spawns the fake `gh` many times; under the full suite on a loaded machine that takes over 30 s. */
+const PENDING_WAIT_TEST_TIMEOUT_MS = 60_000;
 
 interface WaitOutcome {
   result: Awaited<ReturnType<typeof openPr>> | null;

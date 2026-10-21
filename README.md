@@ -352,7 +352,7 @@ close or down, which runs `machines/machine.sh` with the state in a bucket; and 
 that asks that workflow for `down` after five idle minutes; and the login sync, which keeps a
 copy of your claude.ai login in the bucket for the machines. Start a run with `gh workflow run
 machine.yml -f task=TEN-301 -f cmd=build`, or `tenbox machine run TEN-301 -- tenbox build
-TEN-301`, which first checks that your claude.ai login has not expired; `tenbox machine ls` lists the runs. See
+TEN-301`, which first checks that your claude.ai login has not expired; `tenbox machine ls` lists the runs. `machines/k8s/` is the box image for containers: the `box` workflow pushes it to the private `ghcr.io/enojen/tenbox-box` (`:latest` and `:<sha>`) on every merge to main. See
 [`machines/README.md`](machines/README.md).
 
 ## Roadmap
