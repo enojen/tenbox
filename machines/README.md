@@ -148,7 +148,7 @@ env, else `~/.kube/tenyard.yaml`; the API is open from the home IP only):
 `claude-credentials` key `credentials.json` from `~/.claude/.credentials.json`, `github-token`
 key `token` from `~/.config/tenbox/github-token`, `tracker` key `api_key` from `tracker.api_key`
 and `ntfy` key `url` from `notify.ntfy` of `tenbox.local.yaml` of this repository (the last two
-are skipped when empty). It tries the bucket and the Secrets both, names the one that failed and
+are skipped when empty, and when the file is missing one stderr line says so). It tries the bucket and the Secrets both, names the one that failed and
 exits 1 when any failed. A change of the token or `tenbox.local.yaml` needs
 `systemctl --user start tenbox-login-sync.service`; the path unit watches only the login. Every `start`, `build` and
 `close` reads the copy of the moment and gives it to the machine in user data; when its

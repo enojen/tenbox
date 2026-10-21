@@ -27,6 +27,8 @@ YAML
 #!/usr/bin/env bash
 echo "kubectl $*" >> "$STUB_DIR/argv.log"
 [ -z "${KUBECTL_FAIL:-}" ] || exit 1
+# KUBECTL_KILL: a stop of the service, SIGTERM to the script while kubectl runs.
+[ -z "${KUBECTL_KILL:-}" ] || { kill -TERM "$PPID"; sleep 1; exit 1; }
 if [ "$3" = create ]; then
   name="$6"
   for a in "$@"; do
@@ -43,7 +45,7 @@ STUB
   chmod +x "$root/bin/kubectl" "$root/bin/curl"
   export STUB_DIR="$root" PATH="$root/bin:$PATH"
   : > "$root/argv.log"; : > "$root/secrets.log"
-  unset KUBECTL_FAIL CURL_FAIL
+  unset KUBECTL_FAIL CURL_FAIL KUBECTL_KILL
 }
 run() { bash "$root/repo/machines/login/tenbox-login-sync.sh" > "$root/out.log" 2>&1; }
 
@@ -70,4 +72,11 @@ check "upload failure: Secrets still written" '[ "$(wc -l < "$root/secrets.log")
 setup; KUBECTL_FAIL=1 run; code=$?
 check "kubectl failure: exit 1" '[ "$code" = 1 ]'
 
+
+setup; mkdir "$root/tmp"; TMPDIR="$root/tmp" KUBECTL_KILL=1 run
+check "SIGTERM during kubectl: no temp file left" '[ -z "$(ls -A "$root/tmp")" ]'
+
+setup; rm "$root/repo/tenbox.local.yaml"; run; code=$?
+check "no manifest: exit 0" '[ "$code" = 0 ]'
+check "no manifest: a line says tracker and ntfy are skipped" 'grep -q "no tenbox.local.yaml at .*: tracker and ntfy skipped" "$root/out.log"'
 exit "$fails"

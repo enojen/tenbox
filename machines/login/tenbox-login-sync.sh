@@ -30,14 +30,11 @@ upload_bucket() {
 
 write_secrets() {
   [ -s "$config/github-token" ] || { echo "no token at $config/github-token" >&2; return 1; }
-  local tmp
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
   apply_secret claude-credentials --from-file=credentials.json="$file" || return 1
   echo "secret claude-credentials written"
   apply_secret github-token --from-file=token="$config/github-token" || return 1
   echo "secret github-token written"
-  [ -s "$manifest" ] || return 0
+  [ -s "$manifest" ] || { echo "no tenbox.local.yaml at $manifest: tracker and ntfy skipped" >&2; return 0; }
   manifest_value api_key > "$tmp/api_key"
   manifest_value ntfy > "$tmp/url"
   if [ -s "$tmp/api_key" ]; then
@@ -52,6 +49,10 @@ write_secrets() {
 
 umask 077
 [ -s "$file" ] || { echo "no login at $file" >&2; exit 1; }
+# The temp dir holds the tracker key and the ntfy URL: gone on exit, also on a stop of the service.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 1' TERM INT
 failed=0
 upload_bucket || { echo "bucket upload failed" >&2; failed=1; }
 write_secrets || { echo "Secrets write failed" >&2; failed=1; }
