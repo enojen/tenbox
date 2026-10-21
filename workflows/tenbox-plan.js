@@ -44,7 +44,12 @@ const PLAN = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { id: { type: 'string' }, difficulty: { enum: ['easy', 'hard'] } },
+        properties: {
+          id: { type: 'string' },
+          difficulty: { enum: ['easy', 'hard'] },
+          // git pathspecs of the part's files, the part file's `files:` line
+          files: { type: 'array', items: { type: 'string' } },
+        },
         required: ['id', 'difficulty'],
       },
     },

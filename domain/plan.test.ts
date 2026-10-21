@@ -109,3 +109,13 @@ test.each([
 test("the bad-plan message names the part that is in no group", () => {
   expect(() => parsePlan(json({ groups: [group(1, ["01"], [])] }))).toThrow("02");
 });
+
+test("parts accept files or none", () => {
+  const withFiles: PlanResult = {
+    ...valid,
+    parts: [{ id: "01", difficulty: "easy", files: ["a.ts"] }],
+  };
+  const without: PlanResult = { ...valid, parts: [{ id: "02", difficulty: "easy" }] };
+  expect(parsePlan(JSON.stringify(withFiles)).parts).toEqual(withFiles.parts);
+  expect(parsePlan(JSON.stringify(without)).parts).toEqual(without.parts);
+});

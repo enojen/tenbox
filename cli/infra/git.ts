@@ -49,6 +49,8 @@ export const git = {
   rebaseOnto,
   ensureExcludes,
   hasFileChanges,
+  listChangedPaths,
+  listDirtyPaths,
 };
 
 const GIT_LOCALE = "C";
@@ -58,6 +60,8 @@ const GENERATED_ATTR = "linguist-generated";
 const GENERATED_VALUES = ["set", "true"];
 /** `check-attr -z` prints path, attribute and value, each ended by NUL. */
 const ATTR_FIELDS = 3;
+/** `XY ` before the path in `status --porcelain`. */
+const STATUS_PREFIX = 3;
 const NOT_A_REPOSITORY = "not a git repository";
 
 /** Decides from a failed git result whether it is the expected "not found" answer. */
@@ -305,4 +309,23 @@ async function ensureExcludes(commonDir: string, patterns: readonly string[]): P
 async function hasFileChanges(dir: string, file: string): Promise<boolean> {
   const status = await run(["status", "--porcelain", "--", file], dir);
   return status !== "";
+}
+
+/** The paths of `paths` that differ between the commits `from` and `to`. */
+async function listChangedPaths(
+  dir: string,
+  range: { from: string; to: string },
+  paths: string[],
+): Promise<string[]> {
+  const out = await run(["diff", "--name-only", range.from, range.to, "--", ...paths], dir);
+  return out === "" ? [] : out.split("\n");
+}
+
+/** The paths of `paths` with staged, unstaged or untracked changes. */
+async function listDirtyPaths(dir: string, paths: string[]): Promise<string[]> {
+  const args = ["status", "--porcelain", "--", ...paths];
+  const result = await runRaw(args, dir);
+  if (result.code !== 0) throw gitError(args, result);
+  const lines = result.stdout.split("\n").filter((line) => line !== "");
+  return lines.map((line) => line.slice(STATUS_PREFIX));
 }

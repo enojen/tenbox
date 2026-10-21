@@ -74,6 +74,12 @@ const CHECKS = {
   },
   required: ['ok'],
 }
+// `tenbox part done`: `commit` comes only from the CLI; without it the command did not run.
+const PART_DONE = {
+  type: 'object',
+  properties: { ok: { type: 'boolean' }, commit: { type: 'string' }, error: { type: 'string' } },
+  required: ['ok'],
+}
 const NON_BLANK = { type: 'string', pattern: '\\S' }
 const BUILT = {
   type: 'object',
@@ -101,7 +107,8 @@ const BUILT = {
         required: ['file', 'test', 'failure'],
       },
     },
-    // The JSON of the worker's last `tenbox check`.
+    // The JSON of the worker's `tenbox part done` and of its last `tenbox check`.
+    partDone: PART_DONE,
     checks: CHECKS,
   },
   required: ['status', 'proofs'],
@@ -225,40 +232,54 @@ const buildRounds = async (scope, start) => {
   const checkCommand = (checkRound) => `tenbox check ${task}${scope.checkFlag}${checkRound ? ` --round ${checkRound}` : ''}`
   // A plan part has no goal: the worker reads its part file.
   const partLine = (part) => `Task ${task}, part ${part.id}${part.goal ? `: ${part.goal}` : ''}.`
-  // A worker builds one part and runs its check; a fix attempt carries the red check summary and reopens the part file.
-  const buildPart = async (round, part, { attempt, summary, checkRound }) => {
+  // The checks commit of the scope's last green part: `tenbox part done` accepts only a newer commit.
+  let lastChecksCommit = null
+  const partDoneCommand = (part) => `tenbox part done ${task} --part ${part.id} --commit <hash of your last commit>${lastChecksCommit ? ` --since ${lastChecksCommit}` : ''}${scope.checkFlag}`
+  // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed and reopens the part file.
+  const buildPart = async (round, part, { attempt, failure, checkRound }) => {
     const fix = attempt === 'fix'
     const prompt = fix
-      ? `${partLine(part)} The check of this part failed: ${summary}\nSet \`status: todo\` in your part file first, then fix it.`
+      ? `${partLine(part)} ${failure.what}: ${failure.why}\nSet \`status: todo\` in your part file first, then fix it.`
       : `${partLine(part)} Round feedback: ${feedback}${answerLine(round, part.id)}`
-    const checkLine = `\nAfter your commit, run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
-    const built = await agent(prompt + checkLine + worktreeLine(scope),
+    const commandLine = `\nAfter your last commit, run \`${partDoneCommand(part)}\` and return its JSON as partDone, then run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
+    const built = await agent(prompt + commandLine + worktreeLine(scope),
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${scope.tag}${part.id}${fix ? ' fix' : ''}`, ...workerModel(scope, part) })
     proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (built && built.status !== WORKER_STATUS.blocked) return { checks: built.checks ?? null }
+    if (built && built.status !== WORKER_STATUS.blocked) return { partDone: built.partDone ?? null, checks: built.checks ?? null }
     return { end: { status: BUILD_STATUS.needsYou, round, part: part.id, ...(built?.decision && { decision: built.decision }) } }
+  }
+  // Why a worker's attempt is not done, or null; a refused commit is reported before a red check.
+  const partFailure = (built) => {
+    if (!partDoneOk(built.partDone)) return { what: 'The commit of this part was refused', why: built.partDone?.error ?? 'tenbox part done did not run' }
+    if (!checksGreen(built.checks)) return { what: 'The check of this part failed', why: checksSummary(built.checks) }
+    return null
   }
   for (let round = start.round; round <= maxRounds; round++) {
     phase('Build')
     const { parts, lenses } = round === start.round && start.listing ? start.listing : await listParts(scope, round, feedback)
     // One after another: the parts of one scope share one worktree.
-    // A red check of a worker gives it one fix in the same round.
+    // A refused commit or a red check gives the worker one fix in the same round.
     let checkRound = null
     let checks = null
     let redFeedback = null
     for (const part of parts) {
-      const first = await buildPart(round, part, { attempt: 'build', summary: null, checkRound })
+      const first = await buildPart(round, part, { attempt: 'build', failure: null, checkRound })
       if (first.end) return first.end
       checks = first.checks
       checkRound = checks?.round ?? checkRound
-      if (checksGreen(checks)) continue
-      const fixed = await buildPart(round, part, { attempt: 'fix', summary: checksSummary(checks), checkRound })
-      if (fixed.end) return fixed.end
-      checks = fixed.checks
-      checkRound = checks?.round ?? checkRound
-      if (checksGreen(checks)) continue
-      redFeedback = `part ${part.id}: ${checksSummary(checks)}`
-      break
+      let failure = partFailure(first)
+      if (failure) {
+        const fixed = await buildPart(round, part, { attempt: 'fix', failure, checkRound })
+        if (fixed.end) return fixed.end
+        checks = fixed.checks
+        checkRound = checks?.round ?? checkRound
+        failure = partFailure(fixed)
+      }
+      if (failure) {
+        redFeedback = `part ${part.id}: ${failure.why}`
+        break
+      }
+      lastChecksCommit = checks.commit
     }
     if (redFeedback) {
       feedback = redFeedback
@@ -337,6 +358,7 @@ const buildGroups = async (groups) => {
   return groupsEnd(groups, await Promise.all(groups.map((group) => runs.get(group.id))))
 }
 
+const partDoneOk = (partDone) => Boolean(partDone?.ok && partDone.commit)
 const checksGreen = (checks) => Boolean(checks?.ok && checks.commit && checks.file)
 const checksSummary = (checks) => checks?.summary ?? checks?.error ?? 'tenbox check did not run'
 const groups = input.groups ?? []

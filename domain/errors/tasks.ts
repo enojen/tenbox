@@ -60,6 +60,10 @@ export function unknownPartError(part: string): TenboxError {
   return new TenboxError(`no part file ${part}-*.md in .tenbox/parts`, "unknown-part");
 }
 
+export function partNotCommittedError(part: string, reason: string): TenboxError {
+  return new TenboxError(`part ${part} is not committed: ${reason}`, "part-not-committed");
+}
+
 export function badProofsError(file: string, problem: string): TenboxError {
   return new TenboxError(`${file} ${problem}`, "bad-proofs");
 }

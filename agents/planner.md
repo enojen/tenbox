@@ -144,8 +144,10 @@ exists. A non-blocking question states the default you will follow.
 ## Returning
 
 The plan result has, besides the summary, criteria, lenses and questions, `estimated_lines`
-(your estimate of the whole diff, a whole number) and `parts`, one `{ id, difficulty }` per
-part. `id` is the two-digit part number of the part file, `01`. `difficulty` is `easy` or
+(your estimate of the whole diff, a whole number) and `parts`, one `{ id, difficulty, files }` per
+part. `id` is the two-digit part number of the part file, `01`. `files` are the git pathspecs of
+the part file's `files:` line, one per item; `tenbox part done` checks the worker's commit
+against them. `difficulty` is `easy` or
 `hard`: `hard` only for concurrency, tricky logic or wide refactors. It also has `groups`,
 one `{ id, name, parts, needs, recipe }` per group. `id` counts 1, 2, 3 in list order. `parts`
 are part ids; every part is in exactly one group. `needs` are smaller group ids. `recipe` is

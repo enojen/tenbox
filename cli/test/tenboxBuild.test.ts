@@ -61,6 +61,7 @@ const planArgs = (parts: string[] = ["01"], lenses: string[] = [], extra: object
   ...extra,
 });
 
+const accepted = (commit = "sha") => ({ ok: true, commit });
 const green = (commit = "c", round = 1) => ({ ok: true, commit, file: "f", round });
 const redChecks = { ok: false, summary: "lint: 1 new failure", commit: "c", file: "f", round: 1 };
 const roundOf = (label: string): number => Number(label.match(ROUND_PREFIX)?.[1] ?? 0);
@@ -80,7 +81,7 @@ interface Replies {
 function scripted(replies: Replies): ScriptedAgent {
   const defaults: Required<Replies> = {
     planner: async () => ({ parts: [{ id: "01", goal: "g", difficulty: "easy" }], lenses: [] }),
-    worker: async () => ({ status: "done", proofs: [], checks: green() }),
+    worker: async () => ({ status: "done", proofs: [], partDone: accepted(), checks: green() }),
     reviewer: async () => cleanReply,
     runner: async () => ({ ok: true, file: "f" }),
   };
@@ -157,7 +158,7 @@ test("needs-you returns the unproven items found so far", async () => {
   const agent = scripted({
     worker: async () => {
       workers += 1;
-      if (workers === 1) return { status: "done", checks: green() };
+      if (workers === 1) return { status: "done", partDone: accepted(), checks: green() };
       return { status: "blocked", questions: ["q"] };
     },
     reviewer: async () => unprovenReply("01", "r", ["a"]),
@@ -192,7 +193,7 @@ async function runWithProofs(
       workers += 1;
       const status = workers === maxRounds ? lastWorkerStatus : "done";
       const proofs = [{ ...proofFor(`test ${workers}`), ...extraProofFields }];
-      return { status, proofs, checks: green() };
+      return { status, proofs, partDone: accepted(), checks: green() };
     },
     reviewer: async (prompt) => {
       reviewerPrompts.push(prompt);
@@ -250,6 +251,11 @@ test("the worker schema requires proofs of non-blank strings and takes the check
   expect(Object.keys(worker?.properties?.checks?.properties ?? {})).toEqual(
     expect.arrayContaining(["ok", "commit", "round", "file", "summary"]),
   );
+  expect(Object.keys(worker?.properties?.partDone?.properties ?? {})).toEqual([
+    "ok",
+    "commit",
+    "error",
+  ]);
 });
 
 /** Runs two rounds: the worker's checks commit is `c<round>`; round 1 review has must_fix, round 2 is clean. */
@@ -259,7 +265,12 @@ async function runTwoReviewedRounds(round1: ReviewReply) {
   const agent = scripted({
     worker: async (_prompt, options) => {
       const round = roundOf(options.label);
-      return { status: "done", proofs: [], checks: green(`c${round}`, round) };
+      return {
+        status: "done",
+        proofs: [],
+        partDone: accepted(),
+        checks: green(`c${round}`, round),
+      };
     },
     reviewer: async (prompt, options) => {
       if (options.label === MERGE_LABEL) return null;
@@ -381,7 +392,12 @@ async function runPartChecks(
       workers += 1;
       order.push(options.label, prompt.match(CHECK_COMMAND)?.[1] ?? "");
       const checks = checkReplies[workers - 1] ?? green("c", 1);
-      return { status: workers === blockedWorker ? "blocked" : "done", proofs: [], checks };
+      return {
+        status: workers === blockedWorker ? "blocked" : "done",
+        proofs: [],
+        partDone: accepted(),
+        checks,
+      };
     },
     runner: async (prompt) => {
       if (!prompt.includes("tenbox check")) return { ok: true, file: "f" };
@@ -456,7 +472,12 @@ test("a second red check ends the round with no review and feeds the next round"
   const scriptedAgent = scripted({
     worker: async () => {
       workers += 1;
-      return { status: "done", proofs: [], checks: workers <= 2 ? redChecks : green("c", 2) };
+      return {
+        status: "done",
+        proofs: [],
+        partDone: accepted(),
+        checks: workers <= 2 ? redChecks : green("c", 2),
+      };
     },
   });
   await runWorkflow(planArgs(["01", "02"], [], { maxRounds: 2 }), async (prompt, options) => {
@@ -618,7 +639,7 @@ const workerReply = (options: GroupRunOptions, label: string): unknown => {
     return { status: "blocked", proofs: [], decision: decisionCard };
   }
   const red = groupOf(label) === options.redGroup;
-  return { status: "done", proofs: [], checks: red ? redChecks : green() };
+  return { status: "done", proofs: [], partDone: accepted(), checks: red ? redChecks : green() };
 };
 
 const runnerReply = (prompt: string, label: string): unknown => {
@@ -812,4 +833,96 @@ test("no attention items run no merge agent and give attention []", async () => 
 test("a null merge reply leaves attention as the raw item texts", async () => {
   const { result } = await runAttentionBuild([["one"], ["two"]], null);
   expect(result.attention).toEqual(["one", "two"]);
+});
+
+interface CommitRun {
+  result: Awaited<ReturnType<typeof runWorkflow>>;
+  order: string[];
+  prompts: Record<string, string>;
+}
+
+/** One part per id, green checks `chk<N>`; `partDoneReplies` are the workers' `partDone` in order (a missing one is accepted). */
+async function runCommitSteps(
+  partDoneReplies: (object | undefined)[],
+  options: { parts?: string[]; maxRounds?: number; groups?: Group[] } = {},
+): Promise<CommitRun> {
+  const order: string[] = [];
+  const prompts: Record<string, string> = {};
+  let workers = 0;
+  const agent: ScriptedAgent = async (prompt, agentOptions) => {
+    order.push(agentOptions.label);
+    prompts[agentOptions.label] = prompt;
+    if (agentOptions.agentType === "worker") {
+      workers += 1;
+      const partDone =
+        workers <= partDoneReplies.length ? partDoneReplies[workers - 1] : accepted();
+      return { status: "done", proofs: [], partDone, checks: green(`chk${workers}`, 1) };
+    }
+    if (agentOptions.agentType === "planner")
+      return { parts: (options.parts ?? ["01"]).map(planPart), lenses: [] };
+    if (prompt.includes("tenbox worktree")) return { ok: true, worktree: "/wt/TB-1-2" };
+    if (agentOptions.agentType === "runner") return { ok: true, file: "f" };
+    return cleanReply;
+  };
+  const args = planArgs(options.parts ?? ["01"], [], {
+    maxRounds: options.maxRounds ?? 1,
+    ...(options.groups && { groups: options.groups }),
+  });
+  const result = await runWorkflow(args, agent);
+  return { result, order, prompts };
+}
+
+const workerLabels = (order: string[]): string[] =>
+  order.filter((label) => /: (g\d+ )?\d\d( fix)?$/.test(label));
+
+test("the worker prompt names tenbox part done with its commit, then the check", async () => {
+  const { prompts } = await runCommitSteps([]);
+  expect(prompts["round 1: 01"]).toContain(
+    "run `tenbox part done TB-1 --part 01 --commit <hash of your last commit>` and return its JSON as partDone, then run `tenbox check TB-1` and return its JSON as checks.",
+  );
+});
+
+test("the next part's command passes the last green checks commit as --since", async () => {
+  const { prompts } = await runCommitSteps([], { parts: ["01", "02"] });
+  expect(prompts["round 1: 01"]).not.toContain("--since");
+  expect(prompts["round 1: 02"]).toContain(
+    "--part 02 --commit <hash of your last commit> --since chk1`",
+  );
+});
+
+test("a group's command carries --group N", async () => {
+  const { prompts } = await runCommitSteps([], { groups: [groupFor(2, ["01"])] });
+  expect(prompts["round 1: g2 01"]).toContain("--commit <hash of your last commit> --group 2`");
+});
+
+test("a refused commit reruns the worker once with the error, then the build goes on", async () => {
+  const refused = { ok: false, error: "no commit" };
+  const { order, prompts, result } = await runCommitSteps([refused]);
+  expect(workerLabels(order)).toEqual(["round 1: 01", "round 1: 01 fix"]);
+  expect(prompts["round 1: 01 fix"]).toContain("The commit of this part was refused: no commit");
+  expect(prompts["round 1: 01 fix"]).toContain("status: todo");
+  expect(result.status).toBe("ready-for-you");
+});
+
+test("a second refused commit ends the round with no review and the build ends failed", async () => {
+  const refused = { ok: false, error: "no commit" };
+  const { order, prompts, result } = await runCommitSteps([refused, refused, refused, refused], {
+    maxRounds: 2,
+  });
+  expect(order.filter((label) => label.endsWith("base"))).toEqual([]);
+  expect(prompts["round 2: parts"]).toContain("part 01: no commit");
+  expect(result).toMatchObject({ status: "failed", round: 2, feedback: "part 01: no commit" });
+});
+
+test("a partDone with no commit from the CLI counts as refused", async () => {
+  const { order, prompts } = await runCommitSteps([undefined, accepted(), { ok: true }], {
+    parts: ["01", "02"],
+  });
+  expect(workerLabels(order)).toEqual([
+    "round 1: 01",
+    "round 1: 01 fix",
+    "round 1: 02",
+    "round 1: 02 fix",
+  ]);
+  expect(prompts["round 1: 01 fix"]).toContain("tenbox part done did not run");
 });

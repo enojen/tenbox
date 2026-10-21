@@ -24,6 +24,7 @@ import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
+import { partDone } from "./commands/part.ts";
 import { planDone } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
@@ -47,6 +48,7 @@ const WORKTREE_USAGE = "tenbox worktree <id> --group N";
 const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready] [--force] [--wait]";
+const PART_USAGE = "tenbox part done <id> --part NN [--commit <sha>] [--since <sha>] [--group N]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
@@ -147,6 +149,27 @@ const COMMANDS: Record<string, Command> = {
         force: flagValue(values, "force"),
         wait: flagValue(values, "wait"),
       }),
+  },
+  part: {
+    usage: PART_USAGE,
+    options: {
+      part: { type: "string" },
+      commit: { type: "string" },
+      since: { type: "string" },
+      group: { type: "string" },
+    },
+    run: (positionals, values) => {
+      const [action, ...rest] = positionals;
+      const part = stringValue(values, "part");
+      if (action !== "done" || !part) throw usageError(`usage: ${PART_USAGE}`);
+      return partDone({
+        id: idArg(rest, PART_USAGE),
+        part,
+        commit: stringValue(values, "commit"),
+        since: stringValue(values, "since"),
+        group: intValue(values, "group"),
+      });
+    },
   },
   proof: {
     usage: PROOF_USAGE,

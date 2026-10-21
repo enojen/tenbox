@@ -330,3 +330,10 @@ export interface MachineLsResult {
   ok: true;
   runs: WorkflowRunRow[];
 }
+
+export interface PartDoneResult {
+  ok: true;
+  task: string;
+  part: string;
+  commit: string;
+}

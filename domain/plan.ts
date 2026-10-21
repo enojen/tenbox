@@ -17,7 +17,12 @@ const criterion = z.string().superRefine((c, ctx) => {
 export const planFile = (dir: string): string => path.join(dir, "plan.json");
 
 /** `id` is the two-digit part number of the part file, `01`. */
-export const PlanPartSchema = z.object({ id: text, difficulty: z.enum(["easy", "hard"]) });
+export const PlanPartSchema = z.object({
+  id: text,
+  difficulty: z.enum(["easy", "hard"]),
+  /** Git pathspecs of the part's files; without them the whole worktree counts. */
+  files: z.array(text).optional(),
+});
 
 const QuestionSchema = z.object({
   kind: z.enum(["technical", "product", "contract", "risk"]),
