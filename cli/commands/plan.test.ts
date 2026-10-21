@@ -181,6 +181,22 @@ describe("tenbox plan done", () => {
     expect(written).toBe(false);
   });
 
+  test("the kind of tenbox start --kind wins over the planner's", async () => {
+    await project.remove();
+    project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
+    planJson = path.join(project.wtRoot, "demo", "T-1", ".tenbox", "plan.json");
+    planMd = path.join(path.dirname(planJson), "plan.md");
+    await tenbox(
+      ["start", "T-1", "--title", "x", "--kind", "small", "--no-claude"],
+      project.mainDir,
+    );
+    await files.write(planMd, "# plan\n");
+    const run = await planDone(...withJson({ kind: "large" }));
+    expect(run.code).toBe(0);
+    const text = await files.read(planJson);
+    expect(JSON.parse(text ?? "null").kind).toBe("small");
+  });
+
   test("a missing --json is a usage error", async () => {
     const run = await planDone();
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);

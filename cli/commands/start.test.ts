@@ -6,7 +6,7 @@ import { taskDir } from "../../domain/project.ts";
 import { manifests } from "../application/manifests.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { type FakeClaude, makeFakeClaude, notificationHooks } from "../test/cli.ts";
+import { type FakeClaude, makeFakeClaude, notificationHooks, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { type StartInput, startTask } from "./start.ts";
 
@@ -21,6 +21,7 @@ const input = (extra: Partial<StartInput> = {}): StartInput => ({
   base: undefined,
   claude: false,
   setup: true,
+  kind: undefined,
   ...extra,
 });
 const taskMdPath = (): string => path.join(taskWorktree, ".tenbox", "task.md");
@@ -412,4 +413,43 @@ test("a tracker task without comments, or started with a title, has no Comments 
   await startTask(input({ setup: false }));
   const withTitle = await files.read(taskMdPath());
   expect([withoutComments, withTitle].join("")).not.toContain("## Comments");
+});
+
+test("--kind tiny is a usage error and makes no worktree", async () => {
+  await setup("project: demo\n");
+  const run = await tenbox(
+    ["start", "T-1", "--title", "x", "--kind", "tiny", "--no-claude", "--no-setup"],
+    project.mainDir,
+  );
+  const made = await files.exists(taskWorktree);
+  expect([run.code, run.json.code, made]).toEqual([2, "usage", false]);
+});
+
+test("--kind small is saved in task.json", async () => {
+  await setup("project: demo\n");
+  await startTask(input({ kind: "small" }));
+  const text = await files.read(path.join(taskWorktree, ".tenbox", "task.json"));
+  expect(JSON.parse(text ?? "null")).toMatchObject({ id: "T-1", kind: "small" });
+});
+
+test("--kind docs writes the plan and starts no session", async () => {
+  await setup("project: demo\n");
+  const r = await startTask(input({ kind: "docs", claude: true, title: "Fix typo" }));
+  const dir = path.join(taskWorktree, ".tenbox");
+  const planText = await files.read(path.join(dir, "plan.json"));
+  const plan = JSON.parse(planText ?? "null");
+  const planMd = await files.read(path.join(dir, "plan.md"));
+  const hasPart = await files.exists(path.join(dir, "parts", "01-docs.md"));
+  expect(r.claude.state).toBe("skipped");
+  expect(plan).toMatchObject({
+    kind: "docs",
+    parts: [{ id: "01", difficulty: "easy" }],
+    examples: [],
+    decisions: [],
+    questions: [],
+  });
+  expect(planMd).toContain("# T-1 · Fix typo");
+  expect(hasPart).toBe(true);
+  const approved = await tenbox(["approve", "T-1"], project.mainDir);
+  expect([approved.code, approved.json.ok]).toEqual([0, true]);
 });

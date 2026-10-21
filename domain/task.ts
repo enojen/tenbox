@@ -1,7 +1,9 @@
 import path from "node:path";
 import { z } from "zod";
 import type { TaskId } from "./ids.ts";
+import { type TaskKind, TaskKindSchema } from "./kind.ts";
 import { type TrackerKind, TrackerKindSchema } from "./manifest.ts";
+import type { PlanResult } from "./plan.ts";
 import type { TrackerComment } from "./tracker.ts";
 import { parseObject } from "./utils.ts";
 
@@ -88,18 +90,49 @@ const TaskFileSchema = z.object({
   status: z.string(),
   tracker: TrackerKindSchema,
   url: z.string().nullable(),
+  /** Set by `tenbox start --kind`; it wins over the planner's kind. */
+  kind: TaskKindSchema.optional(),
 });
 
 export type TaskFile = z.infer<typeof TaskFileSchema>;
 
 /** The task without its description; a task with no url gets null. */
-export function taskFileOf(t: Task): TaskFile {
-  return {
+export function taskFileOf(t: Task, kind: TaskKind | undefined): TaskFile {
+  const file = {
     id: t.id,
     title: t.title,
     status: TASK_STATE.started,
     tracker: t.tracker,
     url: t.url || null,
+  };
+  return kind === undefined ? file : { ...file, kind };
+}
+
+/** The part id and file name of the one part of a `docs` task. */
+const DOCS_PART_ID = "01";
+export const DOCS_PART_FILE = "01-docs.md";
+
+/** `plan.md` of a `docs` task: the title and the task text. */
+export function renderDocsPlanMd(t: Task): string {
+  return `# ${t.id} · ${t.title}\n\n${t.description.trim() || t.title}\n`;
+}
+
+/** The part file of a `docs` task. */
+export function renderDocsPart(): string {
+  return `# ${DOCS_PART_ID} · docs\nstatus: todo\nfiles: the documentation files the task names\nacceptance:\n- the change the task text asks for is in the docs\nresult:\n`;
+}
+
+/** The plan result of a `docs` task: one easy part, no examples, no decisions, no questions. */
+export function docsPlanOf(t: Task): PlanResult {
+  return {
+    kind: "docs",
+    summary: t.title,
+    estimated_lines: 0,
+    parts: [{ id: DOCS_PART_ID, difficulty: "easy" }],
+    examples: [],
+    decisions: [],
+    lenses: [],
+    questions: [],
   };
 }
 

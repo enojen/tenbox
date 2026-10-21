@@ -38,14 +38,14 @@ test("taskFileOf keeps the title and gives a task without url a null url", () =>
     tracker: "none",
     comments: [],
   };
-  expect(taskFileOf(task)).toEqual({
+  expect(taskFileOf(task, undefined)).toEqual({
     id: "T-1",
     title: "Cancel",
     status: "started",
     tracker: "none",
     url: null,
   });
-  expect(taskFileOf({ ...task, url: "https://x/T-1" }).url).toBe("https://x/T-1");
+  expect(taskFileOf({ ...task, url: "https://x/T-1" }, undefined).url).toBe("https://x/T-1");
 });
 
 test("readTaskFile reads task.json and gives null for anything else", () => {

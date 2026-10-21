@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
+import { TASK_KINDS, type TaskKind } from "../domain/kind.ts";
 import { errorMessage, isDigits, MS_PER_SECOND } from "../domain/utils.ts";
 import {
   type ArgSpec,
@@ -43,7 +44,7 @@ interface Command extends ArgSpec {
 }
 
 const START_USAGE =
-  'tenbox start <id> [--title "..."] [--base <branch>] [--no-setup] [--no-claude]';
+  'tenbox start <id> [--title "..."] [--base <branch>] [--kind docs|small|normal|large] [--no-setup] [--no-claude]';
 const CHECK_USAGE =
   "tenbox check <id> [--group N] [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
 const WORKTREE_USAGE = "tenbox worktree <id> --group N";
@@ -86,6 +87,7 @@ const COMMANDS: Record<string, Command> = {
     options: {
       title: { type: "string" },
       base: { type: "string" },
+      kind: { type: "string" },
       setup: { type: "boolean", default: true },
       claude: { type: "boolean", default: true },
     },
@@ -94,6 +96,7 @@ const COMMANDS: Record<string, Command> = {
         id: idArg(positionals, START_USAGE),
         title: stringValue(values, "title"),
         base: stringValue(values, "base"),
+        kind: kindValue(values),
         setup: flagValue(values, "setup"),
         claude: flagValue(values, "claude"),
       }),
@@ -357,6 +360,15 @@ function printStack(e: unknown): void {
   if (!(e instanceof Error)) return;
   if (e instanceof TenboxError && !env().debug) return;
   log(e.stack ?? e.message);
+}
+
+/** `--kind`: undefined when missing. */
+function kindValue(values: Values): TaskKind | undefined {
+  const value = stringValue(values, "kind");
+  if (value === undefined) return undefined;
+  const kind = TASK_KINDS.find((candidate) => candidate === value);
+  if (kind === undefined) throw usageError(`--kind must be ${TASK_KINDS.join(", ")}`);
+  return kind;
 }
 
 function exitOnStop(): void {

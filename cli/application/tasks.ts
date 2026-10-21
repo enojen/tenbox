@@ -1,4 +1,5 @@
 import type { TaskId } from "../../domain/ids.ts";
+import type { TaskKind } from "../../domain/kind.ts";
 import { TRACKER_KIND } from "../../domain/manifest.ts";
 import {
   partsDir,
@@ -59,7 +60,11 @@ async function find(dir: string): Promise<TaskFile | null> {
 }
 
 /** Makes the task files through `.tenbox` and returns the path of `task.md`; existing ones are kept. */
-async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
+async function ensureFiles(
+  taskWorktree: string,
+  task: Task,
+  kind: TaskKind | undefined,
+): Promise<string> {
   const dir = tenboxDir(taskWorktree);
   await files.mkdir(partsDir(dir));
   await files.mkdir(roundsDir(dir));
@@ -68,7 +73,7 @@ async function ensureFiles(taskWorktree: string, task: Task): Promise<string> {
   if (!kept) await files.write(taskMd, renderTaskMd(task));
   const taskJson = taskFile(dir);
   const jsonKept = await files.exists(taskJson);
-  if (!jsonKept) await files.writeJson(taskJson, taskFileOf(task));
+  if (!jsonKept) await files.writeJson(taskJson, taskFileOf(task, kind));
   return taskMd;
 }
 
