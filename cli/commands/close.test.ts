@@ -335,6 +335,28 @@ describe("tenbox close", () => {
       expect(heads).toContain("feat/T-1");
     });
 
+    test("a merge commit whose head is in origin/main closes like a squash merge", async () => {
+      await setup();
+      const { origin, bin } = await mergedOnGithub(2);
+      await git.run(["merge", "--no-ff", "-q", "-m", "merge", "feat/T-1"], project.mainDir);
+      await git.run(["push", "-q", "origin", "main"], project.mainDir);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const heads = await remoteHeads(origin);
+      expect(run.json).toMatchObject({ ok: true, remote_branch: { state: "deleted" } });
+      const worktreeIsDir = await files.isDir(taskWorktree);
+      expect(worktreeIsDir).toBe(false);
+      expect(heads).not.toContain("feat/T-1");
+    });
+
+    test("a merge commit whose head is not in origin/main is refused with the reason", async () => {
+      await setup();
+      const { bin } = await mergedOnGithub(2);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      expect(run.json).toMatchObject({ code: "merge-commit" });
+      expect(String(run.json.error)).toContain("not in origin/main");
+    });
+
     test("a parent count that is not a number is the error gh and nothing changes", async () => {
       await setup();
       await commitOn(taskWorktree, "b.txt");

@@ -84,9 +84,17 @@ export function waitTimeoutError(file: string, seconds: number): TenboxError {
   return new TenboxError(`${file} did not appear within ${seconds} seconds`, "wait-timeout");
 }
 
-export function mergeCommitError(branch: string): TenboxError {
+export interface MergeCommitInput {
+  branch: string;
+  base: string;
+  /** Why the head is not known to be in the base: it is missing, or the fetch failed. */
+  reason: string;
+}
+
+export function mergeCommitError(input: MergeCommitInput): TenboxError {
+  const { branch, base, reason } = input;
   return new TenboxError(
-    `${branch} was merged as a merge commit; squash merge it, or close it with --force`,
+    `${branch} was merged as a merge commit and ${reason}; push the work to ${base} or fix the fetch, then close again (--force skips every check)`,
     "merge-commit",
   );
 }

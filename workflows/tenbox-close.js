@@ -1,7 +1,7 @@
 export const meta = {
   name: 'tenbox-close',
   description: 'Close one Tenbox task after its PR is merged on GitHub',
-  whenToUse: 'In the main checkout, after you squash merged the PR. args: the task id.',
+  whenToUse: 'In the main checkout, after you merged the PR on GitHub (squash, rebase, or a merge commit whose head is in origin/<base>). args: the task id.',
   phases: [{ title: 'Close' }],
 }
 

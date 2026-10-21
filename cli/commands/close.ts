@@ -11,7 +11,7 @@ import { type Project, taskDir, taskWorktreeDir } from "../../domain/project.ts"
 import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
-import { failedState } from "../../domain/utils.ts";
+import { errorMessage, failedState } from "../../domain/utils.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
@@ -222,11 +222,32 @@ async function assertMerged(target: CloseTarget, label: string): Promise<TaskSaf
   return { mergedOnGithub: true, pr: merge.pr };
 }
 
-/** A squash or rebase merge has one parent. */
+/** A squash or rebase merge has one parent; a merge commit counts when the head is in the base. */
 async function assertNotMergeCommit(target: CloseTarget, sha: string | null) {
   if (sha === null) return;
   const parents = await gh.countParents(target.mainDir, sha);
-  if (parents > 1) throw mergeCommitError(target.branch);
+  if (parents <= 1) return;
+  const { mainDir, branch, base } = target;
+  const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
+  const remote = `origin/${base}`;
+  const reason = await headNotInBase(mainDir, head, remote);
+  if (reason !== null) throw mergeCommitError({ branch, base: remote, reason });
+}
+
+/** Fetches `origin`; null when `head` is in `remote`, else why it is not known to be. */
+async function headNotInBase(
+  mainDir: string,
+  head: string | null,
+  remote: string,
+): Promise<string | null> {
+  try {
+    await git.fetch(mainDir);
+  } catch (e) {
+    return `git fetch origin failed (${errorMessage(e)})`;
+  }
+  if (head === null) return `its branch head is not known, so it is not in ${remote}`;
+  const inBase = await git.isAncestor(mainDir, head, remote);
+  return inBase ? null : `its branch head is not in ${remote}`;
 }
 
 interface Merge {

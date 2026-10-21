@@ -36,6 +36,7 @@ export const git = {
   deleteBranch,
   hasChanges,
   isMerged,
+  isAncestor,
   push,
   forcePush,
   pull,
@@ -214,6 +215,12 @@ async function isMerged(dir: string, base: string, branch: string): Promise<bool
   if (mergedTree === null) return false;
   const baseTree = await run(["rev-parse", `${base}^{tree}`], dir);
   return mergedTree.split("\n")[0] === baseTree;
+}
+
+/** True when `commit` is reachable from `ref`; exit 1 of `merge-base --is-ancestor` means no. */
+async function isAncestor(dir: string, commit: string, ref: string): Promise<boolean> {
+  const found = await find(["merge-base", "--is-ancestor", commit, ref], dir, exitedWithOne);
+  return found !== null;
 }
 
 /** Pushes the branch to `origin` and sets it as the upstream. A rejected push throws. */
