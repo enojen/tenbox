@@ -8,9 +8,12 @@ import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
+const PLAN_MD_LINES = 5;
+const PLAN_MD_LIMIT = 60;
 
 let project: TempProject;
 let planJson: string;
+let planMd: string;
 
 const valid = {
   summary: "s",
@@ -19,15 +22,20 @@ const valid = {
     { id: "01", difficulty: "easy" },
     { id: "02", difficulty: "hard" },
   ],
-  criteria: ["c"],
+  examples: [{ part: "01", title: "lists the tasks", before: "GET /tasks", after: "200 []" }],
+  decisions: [
+    { title: "Where the list lives", options: ["in memory", "in sqlite"], taken: 2, reason: "r" },
+  ],
   lenses: [],
-  questions: [],
+  questions: [{ kind: "product", text: "Sorted by date?", blocking: true }],
 };
 
 beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
   planJson = path.join(project.wtRoot, "demo", "T-1", ".tenbox", "plan.json");
+  planMd = path.join(path.dirname(planJson), "plan.md");
   await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
+  await files.write(planMd, "# plan\n".repeat(PLAN_MD_LINES));
 });
 
 afterEach(async () => {
@@ -39,6 +47,9 @@ const withJson = (change: Record<string, unknown>) => [
   "--json",
   JSON.stringify({ ...valid, ...change }),
 ];
+const { examples: _examples, ...withoutExamples } = valid;
+const [example] = valid.examples;
+const [decision] = valid.decisions;
 
 describe("tenbox plan done", () => {
   test("a valid result is written to plan.json", async () => {
@@ -63,11 +74,36 @@ describe("tenbox plan done", () => {
     ["a difficulty of medium", withJson({ parts: [{ id: "01", difficulty: "medium" }] })],
     ["a part without an id", withJson({ parts: [{ difficulty: "easy" }] })],
     ["text that is not JSON", ["--json", "not json"]],
-    ["a criterion with grep", withJson({ criteria: ["run grep -r foo src"] })],
-    ["a criterion with GREP in upper case", withJson({ criteria: ["GREP finds nothing"] })],
+    [
+      "criteria and no examples",
+      ["--json", JSON.stringify({ ...withoutExamples, criteria: ["c"] })],
+    ],
+    ["a taken option above the options", withJson({ decisions: [{ ...decision, taken: 3 }] })],
+    ["an example of an unknown part", withJson({ examples: [{ ...example, part: "09" }] })],
+    ["an example with grep", withJson({ examples: [{ ...example, after: "grep -r foo src" }] })],
   ])("%s is bad-plan and writes nothing", async (_name, args) => {
     const run = await planDone(...args);
     expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    const written = await files.exists(planJson);
+    expect(written).toBe(false);
+  });
+
+  test("a plan.md over the limit is bad-plan, names plan.md and the limit, and writes nothing", async () => {
+    await files.write(planMd, "# plan\n".repeat(PLAN_MD_LIMIT + 1));
+    const run = await planDone(...withJson({}));
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect(run.json.error).toContain(
+      `plan.md has ${PLAN_MD_LIMIT + 1} lines; the limit is ${PLAN_MD_LIMIT}`,
+    );
+    const written = await files.exists(planJson);
+    expect(written).toBe(false);
+  });
+
+  test("a missing plan.md is no-plan and writes nothing", async () => {
+    await files.remove(planMd);
+    const run = await planDone(...withJson({}));
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "no-plan"]);
+    expect(run.json.error).toContain("plan.md");
     const written = await files.exists(planJson);
     expect(written).toBe(false);
   });
@@ -153,5 +189,51 @@ describe("tenbox plan done", () => {
   test("another sub-command is a usage error", async () => {
     const run = await tenbox(["plan", "foo", "T-1", ...withJson({})], project.mainDir);
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+  });
+});
+
+describe("tenbox plan show", () => {
+  const show = (...args: string[]) => tenbox(["plan", "show", ...args], project.mainDir);
+
+  test("prints the plan of plan.json on stdout and as lines on stderr", async () => {
+    await planDone(...withJson({}));
+    const run = await show("T-1");
+    expect([run.code, run.json]).toEqual([
+      0,
+      {
+        ok: true,
+        task: "T-1",
+        file: planJson,
+        parts: valid.parts,
+        examples: valid.examples,
+        decisions: valid.decisions,
+        questions: valid.questions,
+      },
+    ]);
+    const lines = run.err.split("\n");
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        "  01 (easy)",
+        "  02 (hard)",
+        "  01 · lists the tasks",
+        "    before: GET /tasks",
+        "    after: 200 []",
+        "  Where the list lives",
+        "      1. in memory",
+        "    * 2. in sqlite (taken)",
+        "  [product] (blocking) Sorted by date?",
+      ]),
+    );
+  });
+
+  test("without plan.json it is no-plan", async () => {
+    const run = await show("T-1");
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "no-plan"]);
+  });
+
+  test("no id is a usage error", async () => {
+    const run = await show();
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+    expect(run.json.error).toContain("tenbox plan show <id>");
   });
 });

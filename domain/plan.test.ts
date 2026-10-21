@@ -1,6 +1,20 @@
 import { expect, test } from "bun:test";
-import { type PlanResult, parsePlan, readPlan } from "./plan.ts";
+import {
+  PLAN_MD_MAX_LINES,
+  type PlanResult,
+  parsePlan,
+  planLines,
+  readPlan,
+  validatePlan,
+} from "./plan.ts";
 
+const example = { part: "01", title: "lists the tasks", before: "GET /tasks", after: "200 []" };
+const decision = {
+  title: "Where the list lives",
+  options: ["in memory", "in sqlite"],
+  taken: 2,
+  reason: "it must survive a restart",
+};
 const valid: PlanResult = {
   summary: "s",
   estimated_lines: 120,
@@ -8,11 +22,13 @@ const valid: PlanResult = {
     { id: "01", difficulty: "easy" },
     { id: "02", difficulty: "hard" },
   ],
-  criteria: ["c"],
+  examples: [example],
+  decisions: [decision],
   lenses: ["contract"],
   questions: [{ kind: "product", text: "q", blocking: false }],
 };
 const json = (change: Record<string, unknown>): string => JSON.stringify({ ...valid, ...change });
+const { examples: _examples, ...withoutExamples } = valid;
 
 test("parsePlan returns the plan result", () => {
   expect(parsePlan(json({}))).toEqual(valid);
@@ -29,25 +45,105 @@ test.each([
   ["a part without an id", json({ parts: [{ difficulty: "easy" }] })],
   ["text that is not JSON", "not json"],
   ["JSON that is not an object", "[1]"],
-  ["a criterion with grep", json({ criteria: ["ok", "run grep -r foo src"] })],
-  ["a criterion with GREP in upper case", json({ criteria: ["GREP finds nothing"] })],
+  ["criteria and no examples", JSON.stringify({ ...withoutExamples, criteria: ["c"] })],
+  ["no decisions", JSON.stringify({ ...valid, decisions: undefined })],
+  [
+    "an example of a part that is not in the plan",
+    json({ examples: [{ ...example, part: "09" }] }),
+  ],
+  ["an example without an after", json({ examples: [{ ...example, after: "" }] })],
+  ["an example with grep", json({ examples: [{ ...example, after: "run grep -r foo src" }] })],
+  ["an example title with GREP", json({ examples: [{ ...example, title: "GREP finds it" }] })],
+  ["a taken option above the options", json({ decisions: [{ ...decision, taken: 3 }] })],
+  ["a taken option of 0", json({ decisions: [{ ...decision, taken: 0 }] })],
+  ["a decision with one option", json({ decisions: [{ ...decision, options: ["a"], taken: 1 }] })],
+  ["a decision without a reason", json({ decisions: [{ ...decision, reason: "" }] })],
 ])("parsePlan refuses %s with bad-plan", (_name, text) => {
   expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-plan" }));
   expect(readPlan(text)).toBeNull();
 });
 
-test("the bad-plan message names the grep criterion", () => {
-  expect(() => parsePlan(json({ criteria: ["run grep -r foo src"] }))).toThrow(
-    "run grep -r foo src",
-  );
+test("the bad-plan message names the grep example", () => {
+  const examples = [{ ...example, before: "run grep -r foo src" }];
+  expect(() => parsePlan(json({ examples }))).toThrow("run grep -r foo src");
+});
+
+test("the bad-plan message names the unknown part of an example", () => {
+  expect(() => parsePlan(json({ examples: [{ ...example, part: "09" }] }))).toThrow("09");
 });
 
 test("a word that only contains grep is allowed", () => {
-  expect(parsePlan(json({ criteria: ["fingrepair works"] })).criteria).toEqual([
-    "fingrepair works",
+  const examples = [{ ...example, after: "fingrepair works" }];
+  expect(parsePlan(json({ examples })).examples).toEqual(examples);
+});
+
+const planMd = (lines: number): string => "line\n".repeat(lines);
+
+test("validatePlan returns the plan result when plan.md is at the limit", () => {
+  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: planMd(PLAN_MD_MAX_LINES) };
+  expect(PLAN_MD_MAX_LINES).toBe(60);
+  expect(validatePlan(texts)).toEqual(valid);
+});
+
+test("validatePlan refuses a plan.md over the limit with bad-plan naming plan.md and the limit", () => {
+  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: planMd(PLAN_MD_MAX_LINES + 1) };
+  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "bad-plan" }));
+  expect(() => validatePlan(texts)).toThrow("plan.md has 61 lines; the limit is 60");
+});
+
+test("validatePlan counts a last line without a newline", () => {
+  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: `${planMd(60)}last` };
+  expect(() => validatePlan(texts)).toThrow("plan.md has 61 lines");
+});
+
+test("validatePlan refuses a missing plan.md with no-plan", () => {
+  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: null };
+  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "no-plan" }));
+});
+
+test("validatePlan refuses a plan that breaks the schema with bad-plan", () => {
+  const texts = { dir: "/t/.tenbox", plan: json({ examples: "x" }), planMd: planMd(1) };
+  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "bad-plan" }));
+});
+
+test("planLines lists the parts, the examples, the decisions with the taken option and the questions", () => {
+  const question: PlanResult["questions"][number] = { kind: "risk", text: "q?", blocking: true };
+  const plan = { ...valid, questions: [question] };
+  expect(planLines(plan)).toEqual([
+    "Parts",
+    "  01 (easy)",
+    "  02 (hard)",
+    "Examples",
+    "  01 · lists the tasks",
+    "    before: GET /tasks",
+    "    after: 200 []",
+    "Decisions",
+    "  Where the list lives",
+    "      1. in memory",
+    "    * 2. in sqlite (taken)",
+    "    reason: it must survive a restart",
+    "Questions",
+    "  [risk] (blocking) q?",
   ]);
 });
 
+test("planLines indents every line of a before or after with more lines", () => {
+  const plan = { ...valid, examples: [{ ...example, after: "200\n[]" }] };
+  expect(planLines(plan)).toContain("           []");
+  expect(planLines(plan)).toContain("    after: 200");
+});
+
+test("planLines says none for an empty list", () => {
+  const plan = { ...valid, examples: [], decisions: [], questions: [] };
+  expect(planLines(plan).slice(3)).toEqual([
+    "Examples",
+    "  none",
+    "Decisions",
+    "  none",
+    "Questions",
+    "  none",
+  ]);
+});
 const recipe: NonNullable<PlanResult["groups"]>[number]["recipe"] = {
   model: "sonnet",
   effort: "medium",
@@ -115,7 +211,7 @@ test("parts accept files or none", () => {
     ...valid,
     parts: [{ id: "01", difficulty: "easy", files: ["a.ts"] }],
   };
-  const without: PlanResult = { ...valid, parts: [{ id: "02", difficulty: "easy" }] };
+  const without: PlanResult = { ...valid, parts: [{ id: "02", difficulty: "easy" }], examples: [] };
   expect(parsePlan(JSON.stringify(withFiles)).parts).toEqual(withFiles.parts);
   expect(parsePlan(JSON.stringify(without)).parts).toEqual(without.parts);
 });

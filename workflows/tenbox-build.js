@@ -22,7 +22,7 @@ const answerLine = (round, partId) => answer && answer.round === round && answer
 const STRONG_MODEL = 'opus'
 const strongModelIf = (needed) => (needed ? { model: STRONG_MODEL } : {})
 
-// The base lens always runs; the planner adds the others per task in plan.md.
+// The base lens always runs; the planner adds the others per task in plan.json.
 const LENSES = {
   base: { text: 'correctness, fit to the plan and the spec, the project glossary, repeated code' },
   security: { text: 'security and data safety', strong: true },

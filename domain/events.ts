@@ -24,7 +24,7 @@ const count = z.number().int().nonnegative();
 const nullableText = text.nullable();
 const nullableCount = count.nullable();
 const dateTime = z.iso.datetime();
-/** The SHA-256 of `plan.md` in hex: when `plan.done` and `plan.approved` differ, the plan was changed by hand. */
+/** The SHA-256 of `plan.json` in hex: when `plan.done` and `plan.approved` differ, the plan was changed by hand. */
 const planSha = z.string().regex(/^[0-9a-f]{64}$/);
 
 const base = z.object({
@@ -75,7 +75,7 @@ export const EventSchema = z.discriminatedUnion("event", [
     plan_sha: planSha,
     estimated_lines: count,
     parts: z.array(PlanPartSchema),
-    criteria: count,
+    examples: count,
     questions: z.object({ total: count, blocking: count }),
     lenses: z.array(z.enum(["security", "contract"])),
   }),

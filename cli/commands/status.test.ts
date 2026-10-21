@@ -7,6 +7,15 @@ import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const EXECUTABLE = 0o755;
 
+const PLAN = {
+  summary: "s",
+  estimated_lines: 1,
+  parts: [{ id: "01", difficulty: "easy" }],
+  examples: [],
+  decisions: [],
+  lenses: [],
+  questions: [],
+};
 let project: TempProject;
 let fake: FakeClaude;
 let tenboxDir: string;
@@ -79,6 +88,7 @@ describe("tenbox status", () => {
 
   test("the status follows task.json: approved, then the build result", async () => {
     await files.write(path.join(tenboxDir, "plan.md"), "# plan\n");
+    await files.writeJson(path.join(tenboxDir, "plan.json"), PLAN);
     await tenbox(["approve", "T-1"], project.mainDir);
     const approved = await status();
     const card = {

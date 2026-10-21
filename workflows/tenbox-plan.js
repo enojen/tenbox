@@ -1,6 +1,6 @@
 export const meta = {
   name: 'tenbox-plan',
-  description: 'Plan one Tenbox task: plan.md with parts, criteria and questions',
+  description: 'Plan one Tenbox task: plan.md, parts, examples, decisions and questions',
   whenToUse: 'In a task worktree after `tenbox start`. args: the task id, or { task, deep: true } for a hard task.',
 }
 
@@ -53,7 +53,34 @@ const PLAN = {
         required: ['id', 'difficulty'],
       },
     },
-    criteria: { type: 'array', items: { type: 'string' } },
+    // One before and after per behaviour; part is a plan part id, title names the worker test.
+    examples: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          part: { type: 'string' },
+          title: { type: 'string' },
+          before: { type: 'string' },
+          after: { type: 'string' },
+        },
+        required: ['part', 'title', 'before', 'after'],
+      },
+    },
+    // One card per real choice; taken counts from 1.
+    decisions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          options: { type: 'array', items: { type: 'string' }, minItems: 2 },
+          taken: { type: 'integer', minimum: 1 },
+          reason: { type: 'string' },
+        },
+        required: ['title', 'options', 'taken', 'reason'],
+      },
+    },
     lenses: { type: 'array', items: { enum: LENSES } },
     groups: { type: 'array', items: GROUP },
     questions: {
@@ -69,7 +96,7 @@ const PLAN = {
       },
     },
   },
-  required: ['summary', 'estimated_lines', 'parts', 'criteria', 'lenses', 'questions'],
+  required: ['summary', 'estimated_lines', 'parts', 'examples', 'decisions', 'lenses', 'questions'],
 }
 
 // `file` comes only from the CLI; `code` and `error` say why plan.json was not written.

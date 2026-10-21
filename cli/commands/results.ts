@@ -3,6 +3,7 @@ import type { Approval } from "../../domain/approval.ts";
 import type { DecisionCard, RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
+import type { PlanResult } from "../../domain/plan.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
@@ -225,6 +226,11 @@ export interface TaskFileResult {
   task: string;
   file: string;
 }
+
+/** `tenbox plan show`: what `plan.json` holds for a person to read. */
+export interface PlanShowResult
+  extends TaskFileResult,
+    Pick<PlanResult, "parts" | "examples" | "decisions" | "questions"> {}
 
 /** `tenbox wait --for round`: the status of the round that changed. */
 export interface WaitRoundResult {

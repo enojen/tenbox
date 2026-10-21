@@ -1,11 +1,13 @@
 import type { TaskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
+import { planFile, planLines } from "../../domain/plan.ts";
 import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
 import { notifications } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
-import type { TaskFileResult } from "./results.ts";
+import { log } from "../infra/env.ts";
+import type { PlanShowResult, TaskFileResult } from "./results.ts";
 
 export interface PlanDoneInput {
   id: TaskId;
@@ -24,4 +26,14 @@ export async function planDone(input: PlanDoneInput): Promise<TaskFileResult> {
   const notification = { id: input.id, state: NOTIFICATION_STATE.planReady, detail };
   await notifications.send({ taskWorktree, notification });
   return { ok: true, task: input.id, file };
+}
+
+/** Prints the plan of `plan.json`: as JSON on stdout, as lines on stderr. */
+export async function planShow(id: TaskId): Promise<PlanShowResult> {
+  const taskWorktree = await worktrees.get(id);
+  const dir = tenboxDir(taskWorktree);
+  const plan = await plans.get(dir);
+  log(planLines(plan).join("\n"));
+  const { parts, examples, decisions, questions } = plan;
+  return { ok: true, task: id, file: planFile(dir), parts, examples, decisions, questions };
 }

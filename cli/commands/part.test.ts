@@ -16,7 +16,8 @@ const plan = {
     { id: "02", difficulty: "easy", files: ["b.txt"] },
     { id: "03", difficulty: "easy" },
   ],
-  criteria: [],
+  examples: [],
+  decisions: [],
   lenses: [],
   questions: [],
 };

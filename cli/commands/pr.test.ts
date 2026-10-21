@@ -145,7 +145,8 @@ async function writeGroupPlan(): Promise<void> {
       { id: "01", difficulty: "easy" },
       { id: "02", difficulty: "easy" },
     ],
-    criteria: [],
+    examples: [],
+    decisions: [],
     lenses: [],
     questions: [],
     groups: [

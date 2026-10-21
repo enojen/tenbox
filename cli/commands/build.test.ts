@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
+import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import {
@@ -38,15 +39,16 @@ const planResult = (groups?: object[]) => ({
   summary: "s",
   estimated_lines: 10,
   parts: PARTS,
-  criteria: [],
+  examples: [],
+  decisions: [],
   lenses: ["contract"],
   questions: [],
   ...(groups && { groups }),
 });
 
-async function approve(plan: object | null = planResult()): Promise<void> {
+async function approve(plan: object = planResult()): Promise<void> {
   await files.write(planFile(), "# plan\n");
-  if (plan !== null) await files.writeJson(planJsonFile(), plan);
+  await files.writeJson(planJsonFile(), plan);
   await run("approve", "T-1");
 }
 
@@ -68,7 +70,7 @@ describe("tenbox build", () => {
     await setup();
     const unapproved = await run("build", "T-1");
     await approve();
-    await files.write(planFile(), "# changed\n");
+    await files.writeJson(planJsonFile(), { ...planResult(), summary: "changed" });
     const changed = await run("build", "T-1");
     expect([unapproved.code, unapproved.json.code]).toEqual([1, "not-approved"]);
     expect([changed.code, changed.json.code]).toEqual([1, "plan-changed"]);
@@ -84,9 +86,12 @@ describe("tenbox build", () => {
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
-  test("an approved plan without plan.json is no-plan and starts nothing", async () => {
+  test("an approved plan.json that is no longer valid is no-plan and starts nothing", async () => {
     await setup();
-    await approve(null);
+    const old = JSON.stringify({ ...planResult(), examples: undefined, criteria: [] });
+    await files.write(planJsonFile(), old);
+    const approvedJson = path.join(path.dirname(planJsonFile()), "approved.json");
+    await files.writeJson(approvedJson, { at: new Date().toISOString(), plan_sha: sha256Hex(old) });
     const built = await run("build", "T-1");
     const prompts = await bgPrompts();
     expect([built.code, built.json.code]).toEqual([1, "no-plan"]);

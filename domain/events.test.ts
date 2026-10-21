@@ -37,7 +37,7 @@ const EXAMPLES: Record<EventName, EventFields> = {
       { id: "p01", difficulty: "easy" },
       { id: "p02", difficulty: "hard" },
     ],
-    criteria: 4,
+    examples: 4,
     questions: { total: 2, blocking: 1 },
     lenses: ["security"],
   },

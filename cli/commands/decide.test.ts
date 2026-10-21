@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
+import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -32,14 +33,23 @@ const PLAN = {
   summary: "s",
   estimated_lines: 1,
   parts: [{ id: "01", difficulty: "easy" }],
-  criteria: [],
+  examples: [],
+  decisions: [
+    { title: "Where the list lives", options: ["in memory", "in sqlite"], taken: 1, reason: "r" },
+    { title: "How the list is sorted", options: ["by date", "by name"], taken: 1, reason: "r" },
+  ],
   lenses: [],
   questions: [],
 };
+const TAKE = [{ decision: "Where the list", taken: 2 }];
 const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", parts: PLAN.parts, lenses: [] })}`;
-const approve = async () => {
+const planJsonFile = () => path.join(path.dirname(decisionsFile), "plan.json");
+const writePlan = async () => {
   await files.write(path.join(path.dirname(decisionsFile), "plan.md"), "# plan\n");
-  await files.writeJson(path.join(path.dirname(decisionsFile), "plan.json"), PLAN);
+  await files.writeJson(planJsonFile(), PLAN);
+};
+const approve = async () => {
+  await writePlan();
   await tenbox(["approve", "T-1"], project.mainDir, fake.env);
 };
 const bgCalls = async () => {
@@ -157,5 +167,74 @@ describe("tenbox decide", () => {
     await decide();
     const started = await bgCalls();
     expect(started).toEqual([]);
+  });
+});
+
+describe("tenbox decide with a plan decision", () => {
+  test("takes the option: plan show shows it taken and decisions.md has the note", async () => {
+    await writePlan();
+    const run = await withJson(TAKE);
+    expect([run.code, run.json.ok, run.json.added]).toEqual([0, true, 1]);
+    const shown = await tenbox(["plan", "show", "T-1"], project.mainDir, fake.env);
+    const [first, second] = PLAN.decisions;
+    expect(shown.json.decisions).toEqual([{ ...first, taken: 2 }, second]);
+    expect(shown.err).toContain("    * 2. in sqlite (taken)");
+    const written = await files.read(decisionsFile);
+    expect(written).toBe("- Where the list lives: in sqlite\n");
+  });
+
+  test.each([
+    ["no card", "Nothing like it"],
+    ["two cards", "the list"],
+  ])("a decision that fits %s is unknown-decision and writes nothing", async (_name, text) => {
+    await writePlan();
+    const before = await files.read(planJsonFile());
+    const run = await withJson([{ answer: "fine" }, { decision: text, taken: 1 }]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "unknown-decision"]);
+    expect(run.json.error).toContain(text);
+    const after = await files.read(planJsonFile());
+    const written = await files.exists(decisionsFile);
+    expect([after, written]).toEqual([before, false]);
+  });
+
+  test("a taken outside the options is bad-decisions and writes nothing", async () => {
+    await writePlan();
+    const before = await files.read(planJsonFile());
+    const run = await withJson([{ decision: "Where the list", taken: 3 }]);
+    expect([run.code, run.json.code]).toEqual([1, "bad-decisions"]);
+    const after = await files.read(planJsonFile());
+    const written = await files.exists(decisionsFile);
+    expect([after, written]).toEqual([before, false]);
+  });
+
+  test("an unknown question writes no plan.json change either", async () => {
+    await writePlan();
+    const before = await files.read(planJsonFile());
+    const run = await withJson([...TAKE, { question: "Nothing like it", answer: "x" }]);
+    expect([run.code, run.json.code]).toEqual([1, "unknown-question"]);
+    const after = await files.read(planJsonFile());
+    expect(after).toBe(before);
+  });
+
+  test("an approved plan stays approved, with the sha of the new plan.json", async () => {
+    await approve();
+    await withJson(TAKE);
+    const run = await tenbox(["approved", "T-1"], project.mainDir, fake.env);
+    const text = await files.read(planJsonFile());
+    expect([run.code, run.json.plan_sha]).toEqual([0, sha256Hex(text ?? "")]);
+  });
+
+  test("a plan that was not approved gets no approved.json", async () => {
+    await writePlan();
+    await withJson(TAKE);
+    const approved = await files.exists(path.join(path.dirname(decisionsFile), "approved.json"));
+    expect(approved).toBe(false);
+  });
+
+  test("without plan.json it is no-plan and writes nothing", async () => {
+    const run = await withJson(TAKE);
+    expect([run.code, run.json.code]).toEqual([1, "no-plan"]);
+    const written = await files.exists(decisionsFile);
+    expect(written).toBe(false);
   });
 });

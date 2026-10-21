@@ -57,11 +57,13 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | new failure | A failure line not in the baseline; the only thing that fails a check. |
 | flaky | A new failure line of a check's first run that its rerun does not repeat; listed under `flaky`, it does not fail the check. |
 | fixed | A baseline failure line that no longer appears. |
-| approval | `approved.json` in the task dir, written by `tenbox approve`: the time and the sha of `plan.md` (`Approval`). |
+| approval | `approved.json` in the task dir, written by `tenbox approve` after it checks the plan as `tenbox plan done` does: the time and the sha of `plan.json` (`Approval`). |
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
-| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, criteria, lenses, questions, groups (`PlanResult`). |
+| plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: summary, estimated lines, parts `{ id, difficulty }`, examples, plan decisions, lenses, questions, groups (`PlanResult`). |
+| example | One before and after of a part in `plan.json`: `{ part, title, before, after }`; `title` names the worker test that proves it. |
+| plan decision | One real choice in `plan.json`: `{ title, options, taken, reason }`, `taken` counted from 1; `tenbox decide` with `{ decision, taken }` overrides it (`PlanDecision`). Not a decision card. |
 | group | One or more parts that become one PR; has a name, `needs` (smaller group ids) and a recipe (`Group`). |
 | group worktree | The worktree of a group above 1, `~/wt/<project>/<id>-<N>` on `<task branch>-<N>`; group 1 is the task worktree (`groupWorktreeDir`). |
 | PR | The GitHub pull request of one group; its body starts with the group line `tenbox: <id> group <N>` (`groupLine`, `GroupPr`). |
@@ -72,7 +74,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It is recorded in `.tenbox/proofs.json` by `tenbox build done` or by hand (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`Unproven`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
-| decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide` or `tenbox answer`; a question answer also ticks its line in `questions.md` (`Decision`). |
+| decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide` or `tenbox answer`; a plan decision override adds the note `<title>: <option text>`; a question answer also ticks its line in `questions.md` (`Decision`). |
 | decision card | What a blocked worker returns: `{ title, options, recommended, reason, auto, kind }`; `kind` is one of eight, six of them never auto-answered; `build.json` keeps it with `deadline` and, after `tenbox answer`, `answered` (`DecisionCard`). |
 | auto answer | The recommended option of an `auto` card, taken by `tenbox answer --auto` when its deadline passes with no answer (`autoAnswers`). |
 | organization | A group of users on the server; found by name (`organizations`). |

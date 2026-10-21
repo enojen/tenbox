@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { applyDecisions, parseDecisions } from "./decision.ts";
+import { applyDecisions, parseDecisions, takeOptions } from "./decision.ts";
+import type { PlanResult } from "./plan.ts";
 
 const QUESTIONS = "## product\n- [ ] (blocking) Can a shipped order be cancelled?\n- [ ] Other?\n";
 const texts = { decisions: "", questions: QUESTIONS };
@@ -63,4 +64,59 @@ test("parseDecisions returns the items", () => {
     { question: "q", answer: "a" },
     { answer: "n" },
   ]);
+});
+
+test("parseDecisions returns an item that takes an option of a plan decision", () => {
+  expect(parseDecisions('[{"decision":"Where","taken":2},{"answer":"n"}]')).toEqual([
+    { decision: "Where", taken: 2 },
+    { answer: "n" },
+  ]);
+});
+
+test.each([
+  ["a taken of 0", '[{"decision":"Where","taken":0}]'],
+  ["a taken that is text", '[{"decision":"Where","taken":"2"}]'],
+  ["a blank decision", '[{"decision":" ","taken":1}]'],
+])("parseDecisions refuses %s with bad-decisions", (_name, text) => {
+  expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-decisions" }));
+});
+
+const card = (title: string) => ({
+  title,
+  options: ["in memory", "in sqlite"],
+  taken: 1,
+  reason: "r",
+});
+const plan: PlanResult = {
+  summary: "s",
+  estimated_lines: 1,
+  parts: [{ id: "01", difficulty: "easy" }],
+  examples: [],
+  decisions: [card("Where the list lives"), card("How the list is sorted")],
+  lenses: [],
+  questions: [],
+};
+
+test("takeOptions sets taken on the one card the text fits and gives its note", () => {
+  const taken = takeOptions(plan, [{ decision: "Where the list", taken: 2 }]);
+  expect(taken.plan.decisions.map((decision) => decision.taken)).toEqual([2, 1]);
+  expect(taken.notes).toEqual([{ answer: "Where the list lives: in sqlite" }]);
+  expect(plan.decisions[0]?.taken).toBe(1);
+});
+
+test.each([
+  ["no card", "Nothing like it"],
+  ["two cards", "the list"],
+])("a decision that fits %s is unknown-decision", (_name, text) => {
+  expect(() => takeOptions(plan, [{ decision: text, taken: 1 }])).toThrow(
+    expect.objectContaining({ code: "unknown-decision" }),
+  );
+});
+
+test("a taken outside the options is bad-decisions and names the card", () => {
+  const items = [{ decision: "Where", taken: 3 }];
+  expect(() => takeOptions(plan, items)).toThrow(
+    expect.objectContaining({ code: "bad-decisions" }),
+  );
+  expect(() => takeOptions(plan, items)).toThrow("Where the list lives");
 });

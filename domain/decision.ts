@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
-import { badDecisionsError, unknownQuestionError } from "./errors/tasks.ts";
+import { badDecisionsError, unknownDecisionError, unknownQuestionError } from "./errors/tasks.ts";
+import type { PlanDecision, PlanResult } from "./plan.ts";
 import { isFilled, issueLines, parseJson } from "./utils.ts";
 
 const filled = z.string().refine(isFilled, "must not be blank");
@@ -16,11 +17,53 @@ export const questionsFile = (dir: string): string => path.join(dir, "questions.
 const DecisionSchema = z.object({ question: oneLine.optional(), answer: oneLine });
 export type Decision = z.infer<typeof DecisionSchema>;
 
-/** The decisions in the text; `bad-decisions` unless it is a JSON array of valid decisions. */
-export function parseDecisions(text: string): Decision[] {
-  const parsed = z.array(DecisionSchema).safeParse(parseJson(text));
+/** The option, counted from 1, to take on the one plan decision whose title contains `decision`. */
+const DecisionTakenSchema = z.object({ decision: oneLine, taken: z.number().int().min(1) });
+export type DecisionTaken = z.infer<typeof DecisionTakenSchema>;
+
+/** One item of `tenbox decide`. */
+export type DecideItem = Decision | DecisionTaken;
+
+export const isDecisionTaken = (item: DecideItem): item is DecisionTaken => "decision" in item;
+
+/** The items in the text; `bad-decisions` unless it is a JSON array of valid items. */
+export function parseDecisions(text: string): DecideItem[] {
+  const item = z.union([DecisionSchema, DecisionTakenSchema]);
+  const parsed = z.array(item).safeParse(parseJson(text));
   if (!parsed.success) throw badDecisionsError(issueLines(parsed.error));
   return parsed.data;
+}
+
+/** The plan with the options taken, and one note `<title>: <option text>` per item. */
+export interface OptionsTaken {
+  plan: PlanResult;
+  notes: Decision[];
+}
+
+/**
+ * Sets `taken` on the plan decision of each item. Throws `unknown-decision` when the text fits
+ * other than one title, `bad-decisions` when `taken` is not one of its options.
+ */
+export function takeOptions(plan: PlanResult, items: DecisionTaken[]): OptionsTaken {
+  const changed = structuredClone(plan);
+  const notes = items.map((item) => {
+    const card = findPlanDecision(changed.decisions, item.decision.trim());
+    const option = card.options[item.taken - 1];
+    if (option === undefined) {
+      const count = card.options.length;
+      throw badDecisionsError([`"${card.title}" has ${count} options; ${item.taken} is not one`]);
+    }
+    card.taken = item.taken;
+    return { answer: `${card.title}: ${option}` };
+  });
+  return { plan: changed, notes };
+}
+
+function findPlanDecision(cards: PlanDecision[], text: string): PlanDecision {
+  const found = cards.filter((card) => card.title.includes(text));
+  const [only] = found;
+  if (found.length !== 1 || only === undefined) throw unknownDecisionError(text, found.length);
+  return only;
 }
 
 /** The text of the two files, `""` when a file is missing. */

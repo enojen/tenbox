@@ -7,13 +7,13 @@ import type { DecideResult } from "./results.ts";
 
 export interface DecideInput {
   id: TaskId;
-  /** The decisions as JSON text: `[{ question?, answer }]`. */
+  /** The decisions as JSON text: `[{ question?, answer } | { decision, taken }]`. */
   json: string;
   /** Send `/tenbox-build <id>` after the answers are written. */
   build: boolean;
 }
 
-/** Appends the answers to `.tenbox/decisions.md`, ticks their questions, then sends the build. */
+/** Appends the answers to `.tenbox/decisions.md`, ticks their questions, takes the plan options, then sends the build. */
 export async function decide(input: DecideInput): Promise<DecideResult> {
   const items = parseDecisions(input.json);
   const taskWorktree = await worktrees.get(input.id);

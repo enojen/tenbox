@@ -23,7 +23,8 @@ const PLAN_RESULT = JSON.stringify({
     { id: "01", difficulty: "easy" },
     { id: "02", difficulty: "hard" },
   ],
-  criteria: [],
+  examples: [],
+  decisions: [],
   lenses: [],
   questions: [],
 });
@@ -713,7 +714,8 @@ describe("tenbox close a task with groups", () => {
       { id: "01", difficulty: "easy" },
       { id: "02", difficulty: "easy" },
     ],
-    criteria: [],
+    examples: [],
+    decisions: [],
     lenses: [],
     questions: [],
     groups: [

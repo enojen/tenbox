@@ -26,7 +26,7 @@ import { listTasks } from "./commands/list.ts";
 import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { partDone } from "./commands/part.ts";
-import { planDone } from "./commands/plan.ts";
+import { planDone, planShow } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
 import type { Failure } from "./commands/results.ts";
@@ -52,8 +52,10 @@ const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready] [--force] [--wait]";
 const PART_USAGE = "tenbox part done <id> --part NN [--commit <sha>] [--since <sha>] [--group N]";
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
-const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]' [--no-build]";
+const DECIDE_USAGE =
+  "tenbox decide <id> --json '[{ question?, answer } | { decision, taken }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
+const PLAN_SHOW_USAGE = "tenbox plan show <id>";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
 const WAIT_USAGE = "tenbox wait <id> --for plan|build|round|decision|any [--timeout 600]";
 const ANSWER_USAGE = "tenbox answer <id> <n> | --auto";
@@ -203,10 +205,11 @@ const COMMANDS: Record<string, Command> = {
     },
   },
   plan: {
-    usage: PLAN_USAGE,
+    usage: `${PLAN_USAGE} | ${PLAN_SHOW_USAGE}`,
     options: { json: { type: "string" } },
     run: (positionals, values) => {
       const [action, ...rest] = positionals;
+      if (action === "show") return planShow(idArg(rest, PLAN_SHOW_USAGE));
       const json = stringValue(values, "json");
       if (action !== "done" || !json) throw usageError(`usage: ${PLAN_USAGE}`);
       return planDone({ id: idArg(rest, PLAN_USAGE), json });

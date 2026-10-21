@@ -18,7 +18,7 @@ export function notApprovedError(id: string): TenboxError {
 
 export function planChangedError(id: string): TenboxError {
   return new TenboxError(
-    `plan.md changed after the approval; run: tenbox approve ${id}`,
+    `plan.json changed after the approval; run: tenbox approve ${id}`,
     "plan-changed",
   );
 }
@@ -123,6 +123,14 @@ export function unknownQuestionError(question: string, count: number): TenboxErr
   return new TenboxError(
     `"${question}" fits ${found} of questions.md; it must fit exactly one`,
     "unknown-question",
+  );
+}
+
+export function unknownDecisionError(decision: string, count: number): TenboxError {
+  const found = count === 0 ? "no decision" : `${count} decisions`;
+  return new TenboxError(
+    `"${decision}" fits ${found} of plan.json; it must fit exactly one title`,
+    "unknown-decision",
   );
 }
 
