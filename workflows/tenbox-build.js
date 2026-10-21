@@ -1,7 +1,7 @@
 export const meta = {
   name: 'tenbox-build',
   description: 'Build, check and review one Tenbox task, round after round, until it passes or needs you',
-  whenToUse: 'In a task worktree after the plan is approved; `tenbox build <id>` starts it. args: { task, parts, lenses, groups, feedback, maxRounds, answer }, or that object as JSON text.',
+  whenToUse: 'In a task worktree after the plan is approved; `tenbox build <id>` starts it. args: { task, kind, reviews, parts, lenses, groups, feedback, maxRounds, answer }, or that object as JSON text.',
   phases: [{ title: 'Build' }, { title: 'Checks' }, { title: 'Review' }],
 }
 
@@ -12,6 +12,8 @@ if (!task || !Array.isArray(input.parts)) {
   throw new Error(`args: the parts and lenses of plan.json are missing; start it with \`tenbox build ${task ?? '<id>'}\``)
 }
 const maxRounds = input.maxRounds ?? 3
+// The review rounds of each scope, as the task kind gives them; a raised kind gives more.
+let reviewCap = input.reviews ?? maxRounds
 // `tenbox answer` resumes the run with { round, part, option, text }. Only that worker's prompt
 // changes, so every earlier agent returns from the resume cache.
 const answer = input.answer
@@ -147,13 +149,25 @@ const RECORDED = {
     file: { type: 'string' },
     error: { type: 'string' },
     code: { type: 'string' },
-    details: { type: 'object', properties: { group: { type: 'integer' }, tier: { type: 'string' } } },
+    // `kind-raised` has the new kind, its lenses and its review rounds in `details`.
+    details: {
+      type: 'object',
+      properties: {
+        group: { type: 'integer' },
+        tier: { type: 'string' },
+        kind: { type: 'string' },
+        lenses: LENS_LIST,
+        reviews: { type: 'integer' },
+      },
+    },
     pr: PR,
   },
   required: ['ok'],
 }
 // Every reviewed round's attention items, each with where it came from; `record` merges them.
 const attentionItems = []
+// Rounds that ran a review, over every scope: one round's items need no merge.
+let reviewedRounds = 0
 const ATTENTION = {
   type: 'object',
   properties: { attention: { type: 'array', items: { type: 'string' } } },
@@ -162,7 +176,7 @@ const ATTENTION = {
 const attentionLine = (item) => `- round ${item.round}, lens ${item.lens}, worktree ${item.worktree ?? 'task worktree'}: ${item.text}`
 // One item per hunk: a null reply keeps the raw texts.
 const mergeAttention = async () => {
-  if (!attentionItems.length) return []
+  if (!attentionItems.length || reviewedRounds < 2) return attentionItems.map((item) => item.text)
   const merged = await agent(
     `Merge the attention items below of task ${task} into one item per hunk.\n${attentionItems.map(attentionLine).join('\n')}\n`
     + 'Merge items of the same file and topic into one item that names its lenses. '
@@ -175,12 +189,18 @@ const mergeAttention = async () => {
 const recordBuild = (result) => agent(
   `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(result)}\nEOF\n)"`,
   { agentType: 'runner', schema: RECORDED, phase: 'Build', label: 'record build' })
+// The kind `tenbox build done` raised the build to, and its refusal texts as attention lines.
+let raisedKind = null
+const raisedAttention = []
 const record = async (end) => {
-  const result = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...end, ...collected(), attention: await mergeAttention() }
+  const attention = [...await mergeAttention(), ...raisedAttention]
+  const result = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...end, ...collected(), attention, ...(raisedKind && { kind: raisedKind }) }
   return { ...result, recorded: await recordBuild(result) }
 }
-// `tenbox build done` checks a ready build: a red full tier is one more round of its group.
+// `tenbox build done` checks a ready build: a red full tier is one more round of its group,
+// and a diff over the limits of its kind is one more round of every scope with the new review.
 const redFullTier = (done) => done.recorded?.code === 'check-failed' && done.recorded.details?.tier === 'full'
+const kindRaised = (done) => done.recorded?.code === 'kind-raised'
 // Any other refusal of a ready build is recorded as failed, with the refusal as feedback.
 const finish = async (done) => {
   if (done.status !== BUILD_STATUS.readyForYou || done.recorded?.ok) return done
@@ -199,8 +219,9 @@ const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.te
 const collected = () => ({ nice_to_have: niceToHave, unproven, proofs })
 
 // `reviewedCommit` is the checks commit of the last round that ran a review; a feedback round reviews only the lines after it.
-const TASK_SCOPE = { group: null, worktree: null, tag: '', checkFlag: '', reviewedCommit: null }
-const groupScope = (group, worktree) => ({ group, worktree, tag: `g${group.id} `, checkFlag: ` --group ${group.id}`, reviewedCommit: null })
+// `reviews` counts the scope's reviewed rounds.
+const TASK_SCOPE = { group: null, worktree: null, tag: '', checkFlag: '', reviewedCommit: null, reviews: 0 }
+const groupScope = (group, worktree) => ({ group, worktree, tag: `g${group.id} `, checkFlag: ` --group ${group.id}`, reviewedCommit: null, reviews: 0 })
 const worktreeLine = (scope) => scope.worktree
   ? `\nWork in the group worktree ${scope.worktree}: run every command and edit every file there.`
   : ''
@@ -222,9 +243,14 @@ const listParts = async (scope, round, feedback) => {
   return { parts, lenses: scope.group.recipe.lenses }
 }
 
+// A must_fix round needs no planner: one worker fixes every item of the round feedback.
+const FIX_GOAL = 'fix every must_fix item of the round feedback. It has no part file: stay inside the files of the parts the items name'
+const fixListing = (lenses) => ({ parts: [{ id: 'fix', goal: FIX_GOAL, difficulty: 'easy' }], lenses })
+
 // `start` is the first round, its feedback, and its listing of parts and lenses when the args give one.
 const buildRounds = async (scope, start) => {
   let feedback = start.feedback
+  let listing = start.listing
   const scopeLine = () => scope.reviewedCommit
     ? `\nThis is a feedback round: review only the lines changed since ${scope.reviewedCommit}: \`git diff ${scope.reviewedCommit}..HEAD\`.`
     : ''
@@ -256,7 +282,8 @@ const buildRounds = async (scope, start) => {
   }
   for (let round = start.round; round <= maxRounds; round++) {
     phase('Build')
-    const { parts, lenses } = round === start.round && start.listing ? start.listing : await listParts(scope, round, feedback)
+    const { parts, lenses } = listing ?? await listParts(scope, round, feedback)
+    listing = null
     // One after another: the parts of one scope share one worktree.
     // A refused commit or a red check gives the worker one fix in the same round.
     let checkRound = null
@@ -293,6 +320,8 @@ const buildRounds = async (scope, start) => {
       feedback = checksSummary(checks)
       continue
     }
+    // After the last allowed review, a must_fix round ends with its green checks.
+    if (scope.reviews >= reviewCap) return { status: BUILD_STATUS.readyForYou, round }
 
     phase('Review')
     const reviews = (await parallel(['base', ...lenses].map((key) => async () => {
@@ -308,11 +337,14 @@ const buildRounds = async (scope, start) => {
       unproven.push(item)
     }
     scope.reviewedCommit = checks.commit
+    scope.reviews += 1
+    reviewedRounds += 1
     for (const r of reviews) attentionItems.push(...r.attention.map((text) => ({ round, lens: r.lens, worktree: scope.worktree, text })))
     niceToHave.push(...reviews.flatMap((r) => r.nice_to_have))
     const mustFix = reviews.flatMap((r) => r.must_fix)
     if (mustFix.length) {
       feedback = mustFix.join('\n')
+      listing = fixListing(lenses)
       continue
     }
     return { status: BUILD_STATUS.readyForYou, round }
@@ -365,9 +397,26 @@ const groups = input.groups ?? []
 const end = groups.length
   ? await buildGroups(groups)
   : await buildRounds(TASK_SCOPE, firstStart({ parts: input.parts, lenses: input.lenses ?? [] }))
-let done = await record(end)
-while (redFullTier(done)) {
+const fullTierRound = (done) => {
   const scope = scopes.get(done.recorded.details.group) ?? TASK_SCOPE
-  done = await record(await buildRounds(scope, { round: done.round + 1, feedback: done.recorded.error, listing: null }))
+  return buildRounds(scope, { round: done.round + 1, feedback: done.recorded.error, listing: null })
+}
+// The new lenses never saw the diff: each scope reviews all of it again, with no parts to build.
+const raiseKind = async (done) => {
+  const { error, details } = done.recorded
+  raisedKind = details.kind
+  reviewCap = details.reviews
+  raisedAttention.push(error)
+  const start = { round: done.round + 1, feedback: error, listing: { parts: [], lenses: details.lenses } }
+  const rerun = (scope) => {
+    scope.reviewedCommit = null
+    return buildRounds(scope, start)
+  }
+  if (!groups.length) return rerun(TASK_SCOPE)
+  return groupsEnd(groups, await Promise.all(groups.map((group) => rerun(scopes.get(group.id)))))
+}
+let done = await record(end)
+while (redFullTier(done) || kindRaised(done)) {
+  done = await record(await (redFullTier(done) ? fullTierRound(done) : raiseKind(done)))
 }
 return finish(done)

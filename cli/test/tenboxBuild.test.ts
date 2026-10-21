@@ -209,7 +209,7 @@ test("the workflow adds the part id to worker proofs and keeps every round's pro
   expect(result.status).toBe("failed");
   expect(result.proofs).toEqual([
     { part: "01", ...proofFor("test 1") },
-    { part: "01", ...proofFor("test 2") },
+    { part: "fix", ...proofFor("test 2") },
   ]);
 });
 
@@ -218,7 +218,7 @@ test("needs-you returns the proofs found so far", async () => {
   expect(result.status).toBe("needs-you");
   expect(result.proofs).toEqual([
     { part: "01", ...proofFor("test 1") },
-    { part: "01", ...proofFor("test 2") },
+    { part: "fix", ...proofFor("test 2") },
   ]);
 });
 
@@ -643,6 +643,7 @@ const workerReply = (options: GroupRunOptions, label: string): unknown => {
 };
 
 const runnerReply = (prompt: string, label: string): unknown => {
+  if (prompt.includes("tenbox check")) return green();
   if (!prompt.includes("tenbox worktree")) return { ok: true, file: "f" };
   const id = groupOf(label);
   return { ok: true, worktree: `/wt/TB-1-${id}`, branch: `feat/TB-1-${id}` };
@@ -782,8 +783,8 @@ test("a red full tier of group 2 gives group 2 the next round in its worktree", 
   expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
 });
 
-/** One clean-checks round whose two lenses flag attention items; `merge` answers the merge agent. */
-async function runAttentionBuild(attention: string[][], merge: unknown) {
+/** Clean-checks rounds whose two lenses flag attention items in round 1; `merge` answers the merge agent. */
+async function runAttentionBuild(attention: string[][], merge: unknown, reviewedRounds = 1) {
   const merges: { prompt: string; schema: unknown }[] = [];
   const agent = scripted({
     reviewer: async (prompt, options) => {
@@ -791,8 +792,9 @@ async function runAttentionBuild(attention: string[][], merge: unknown) {
         merges.push({ prompt, schema: options.schema });
         return merge;
       }
-      const items = attention[options.label.endsWith("base") ? 0 : 1] ?? [];
-      return { ...cleanReply, attention: items };
+      const round = roundOf(options.label);
+      const items = round === 1 ? (attention[options.label.endsWith("base") ? 0 : 1] ?? []) : [];
+      return { ...cleanReply, attention: items, must_fix: round < reviewedRounds ? ["again"] : [] };
     },
   });
   const result = await runWorkflow(planArgs(["01"], ["security"]), agent);
@@ -803,6 +805,7 @@ test("two lenses flagging one hunk end with the one item the merge agent returns
   const { result, merges } = await runAttentionBuild(
     [["a.ts: guard missing"], ["a.ts: missing guard"]],
     { attention: ["a.ts: guard missing (base, security)"] },
+    2,
   );
   expect(result.attention).toEqual(["a.ts: guard missing (base, security)"]);
   expect(merges).toHaveLength(1);
@@ -816,7 +819,7 @@ test("two lenses flagging one hunk end with the one item the merge agent returns
 });
 
 test("the merge schema is { attention: string[] }", async () => {
-  const { merges } = await runAttentionBuild([["x"], []], { attention: ["x"] });
+  const { merges } = await runAttentionBuild([["x"], []], { attention: ["x"] }, 2);
   expect(merges[0]?.schema).toEqual({
     type: "object",
     properties: { attention: { type: "array", items: { type: "string" } } },
@@ -824,14 +827,21 @@ test("the merge schema is { attention: string[] }", async () => {
   });
 });
 
+test("one reviewed round runs no merge agent and keeps the raw attention items", async () => {
+  const { result, merges } = await runAttentionBuild([["one"], ["two"]], { attention: ["never"] });
+  expect(merges).toHaveLength(0);
+  expect(result.attention).toEqual(["one", "two"]);
+});
+
 test("no attention items run no merge agent and give attention []", async () => {
-  const { result, merges } = await runAttentionBuild([[], []], { attention: ["never"] });
+  const { result, merges } = await runAttentionBuild([[], []], { attention: ["never"] }, 2);
   expect(merges).toHaveLength(0);
   expect(result.attention).toEqual([]);
 });
 
 test("a null merge reply leaves attention as the raw item texts", async () => {
-  const { result } = await runAttentionBuild([["one"], ["two"]], null);
+  const { result, merges } = await runAttentionBuild([["one"], ["two"]], null, 2);
+  expect(merges).toHaveLength(1);
   expect(result.attention).toEqual(["one", "two"]);
 });
 
@@ -925,4 +935,101 @@ test("a partDone with no commit from the CLI counts as refused", async () => {
     "round 1: 02 fix",
   ]);
   expect(prompts["round 1: 01 fix"]).toContain("tenbox part done did not run");
+});
+
+/** A run whose round 1 reviewers give must_fix items: base `fix base`, security `fix security`. */
+async function runMustFix(extra: object) {
+  const { calls, recorder } = recording(
+    scripted({
+      reviewer: async (_prompt, options) => {
+        if (options.label === MERGE_LABEL || roundOf(options.label) > 1) return cleanReply;
+        const lens = options.label.split(" ").at(-1);
+        return { ...cleanReply, must_fix: [`fix ${lens}`] };
+      },
+    }),
+  );
+  const result = await runWorkflow(planArgs(["01"], ["security"], extra), recorder);
+  const ofType = (type: string) => calls.filter((call) => call.agentType === type);
+  const round2 = calls.filter((call) => roundOf(call.label) === 2);
+  return { result, calls, ofType, round2 };
+}
+
+test("a small task with one review: the must_fix round builds and checks with no second review", async () => {
+  const { result, calls, ofType, round2 } = await runMustFix({ kind: "small", reviews: 1 });
+  const reviews = ofType("reviewer").filter((call) => call.label !== MERGE_LABEL);
+  expect(reviews.map((call) => call.label)).toEqual(["round 1: base", "round 1: security"]);
+  expect(round2.map((call) => call.label)).toEqual(["round 2: fix"]);
+  expect(round2[0]?.prompt).toContain("fix base");
+  expect(ofType("planner")).toEqual([]);
+  expect(calls.filter((call) => call.prompt.includes("full"))).toEqual([]);
+  expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
+});
+
+test("a must_fix round runs one fix worker with every must_fix item and no planner", async () => {
+  const { result, ofType, round2 } = await runMustFix({ kind: "normal", reviews: 3 });
+  const workers = round2.filter((call) => call.agentType === "worker");
+  expect(workers.map((call) => call.label)).toEqual(["round 2: fix"]);
+  expect(workers[0]?.prompt).toContain("fix base\nfix security");
+  expect(ofType("planner")).toEqual([]);
+  expect(round2.map((call) => call.label)).toContain("round 2: security");
+  expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
+});
+
+const raised = {
+  ok: false,
+  error: "the diff (9 files, 300 changed lines) is over the limits of kind small; it is normal now",
+  code: "kind-raised",
+  details: { kind: "normal", lenses: ["security"], reviews: 3 },
+};
+
+/** A run whose first `build done` answers `kind-raised`; `groups` are the plan groups. */
+async function runKindRaised(groups: Group[] = []) {
+  let records = 0;
+  const { calls, recorder } = recording(
+    scripted({
+      runner: async (prompt, options) => {
+        if (options.label !== RECORD_LABEL) return runnerReply(prompt, options.label);
+        records += 1;
+        return records === 1 ? raised : { ok: true, file: "f" };
+      },
+    }),
+  );
+  const parts = groups.length ? groups.flatMap((group) => group.parts) : ["01"];
+  const args = planArgs(parts, [], { kind: "small", reviews: 1, groups });
+  const result = await runWorkflow(args, recorder);
+  const round2 = calls.filter((call) => roundOf(call.label) === 2);
+  const records2 = calls.filter((call) => call.label === RECORD_LABEL).map((call) => call.prompt);
+  return { result, round2, records: records2 };
+}
+
+test("kind-raised gives one more round with no parts, the new lenses and the new kind", async () => {
+  const { result, round2, records } = await runKindRaised();
+  expect(round2.map((call) => call.label)).toEqual([
+    "round 2: checks",
+    "round 2: base",
+    "round 2: security",
+  ]);
+  for (const call of round2) expect(call.prompt).not.toContain("git diff");
+  expect(records).toHaveLength(2);
+  expect(records[0]).not.toContain('"kind"');
+  expect(records[1]).toContain('"kind":"normal"');
+  expect(records[1]).toContain(raised.error);
+  expect(result).toMatchObject({ status: "ready-for-you", round: 2, kind: "normal" });
+  expect(result.attention).toEqual([raised.error]);
+});
+
+test("kind-raised gives every group one more round in its own worktree", async () => {
+  const groups = [groupFor(1, ["01"]), groupFor(2, ["02"])];
+  const { result, round2 } = await runKindRaised(groups);
+  expect(round2.map((call) => call.label).sort()).toEqual([
+    "round 2: g1 base",
+    "round 2: g1 checks",
+    "round 2: g1 security",
+    "round 2: g2 base",
+    "round 2: g2 checks",
+    "round 2: g2 security",
+  ]);
+  const checks2 = round2.find((call) => call.label === "round 2: g2 checks");
+  expect(checks2?.prompt).toContain("tenbox check TB-1 --group 2");
+  expect(result).toMatchObject({ status: "ready-for-you", kind: "normal" });
 });
