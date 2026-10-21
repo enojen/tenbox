@@ -367,7 +367,7 @@ today: the image they boot from, built with Packer after every merge to main (th
 volume and server; the control plane, `.github/workflows/machine.yml` with `cmd` start, build,
 close or down, which runs `machines/machine.sh` with the state in a bucket; and the watchdog
 that asks that workflow for `down` after five idle minutes; and the login sync, which keeps a
-copy of your claude.ai login in the bucket for the machines. Start a run with `gh workflow run
+copy of your claude.ai login in the bucket for the machines and writes the Secrets of the box in namespace `tenbox`: `claude-credentials` (`credentials.json`, from `~/.claude/.credentials.json`), `github-token` (`token`, from `~/.config/tenbox/github-token`), `tracker` (`api_key`) and `ntfy` (`url`), the last two from `tracker.api_key` and `notify.ntfy` of `tenbox.local.yaml`. Start a run with `gh workflow run
 machine.yml -f task=TEN-301 -f cmd=build`, or `tenbox machine run TEN-301 -- tenbox build
 TEN-301`, which first checks that your claude.ai login has not expired; `tenbox machine ls` lists the runs. `machines/k8s/` is the box image for containers: the `box` workflow pushes it to the private `ghcr.io/enojen/tenbox-box` (`:latest` and `:<sha>`) on every merge to main. The line between the two repositories: what is inside the box (this image) belongs to Tenbox; where and how the box runs (the cluster, the Job, the volume) belongs to [Tenyard](https://github.com/enojen/tenyard). See
 [`machines/README.md`](machines/README.md).

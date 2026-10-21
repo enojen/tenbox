@@ -1,5 +1,5 @@
 [Unit]
-Description=Upload the claude.ai login to the tenbox bucket when it changes
+Description=Send the claude.ai login to the bucket and the Secrets when it changes
 
 [Path]
 PathModified=%h/.claude/.credentials.json

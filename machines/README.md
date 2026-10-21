@@ -141,8 +141,16 @@ machines/local.sh DEMO-3 close --force
 Remote Control needs a claude.ai login; `claude setup-token` runs the model but Remote
 Control refuses it, and a copy of `~/.claude/.credentials.json` works. The copy lives in the
 bucket as `login/credentials.json`. `machines/login/install.sh` installs a systemd user path
-unit on your computer that uploads the file whenever it changes, and uploads it once right
-away; `/login` on your computer is all a new account needs. Every `start`, `build` and
+unit on your computer that sends the file whenever it changes, and sends it once right
+away; `/login` on your computer is all a new account needs. The same script also writes four
+Secrets in namespace `tenbox` of the cluster, for the pods of the box (`KUBECONFIG` from the
+env, else `~/.kube/tenyard.yaml`; the API is open from the home IP only):
+`claude-credentials` key `credentials.json` from `~/.claude/.credentials.json`, `github-token`
+key `token` from `~/.config/tenbox/github-token`, `tracker` key `api_key` from `tracker.api_key`
+and `ntfy` key `url` from `notify.ntfy` of `tenbox.local.yaml` of this repository (the last two
+are skipped when empty). It tries the bucket and the Secrets both, names the one that failed and
+exits 1 when any failed. A change of the token or `tenbox.local.yaml` needs
+`systemctl --user start tenbox-login-sync.service`; the path unit watches only the login. Every `start`, `build` and
 `close` reads the copy of the moment and gives it to the machine in user data; when its
 refresh token has expired, `machine.sh` stops before any server with "run /login on your
 computer". The access token lives hours and the refresh token days; whether a refresh on a
