@@ -9,7 +9,7 @@ import { type TaskId, taskBranch } from "../../domain/ids.ts";
 import { TRACKER_KIND } from "../../domain/manifest.ts";
 import { type Project, taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { errorMessage, failedState } from "../../domain/utils.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
@@ -114,6 +114,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const session = await stopSessions({ id, taskWorktree });
   const removedGroups = await removeGroupCheckouts(project, groupTargets);
   const removed = await worktrees.remove({ project, taskWorktree, branch });
+  if (dir !== null) await tasks.saveStatus(dir, TASK_STATE.closed);
   const status = await tasks.updateStatus({ id, title: undefined }, tracker, TASK_STATUS.done);
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
   const closedGroups = await removeGroupRemotes(closeTarget, removedGroups);

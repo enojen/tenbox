@@ -215,8 +215,10 @@ symlink to it, excluded from git (pattern `.tenbox`, no slash, so it matches a l
 
 ```
 .tenbox/
-├ task.md          tenbox start: id, title, status, tracker, url, description
+├ task.md          tenbox start: id, title, tracker, url, description
 ├ task.json        tenbox start: id, title, status, tracker, url (null without one)
+│                  `status`: started (tenbox start), plan-ready (plan done), approved (approve), building (approved,
+│                  answer), the build.json status (build done), closed (close; the task dir stays). A failing command keeps it
 ├ plan.md          planner: summary, approach, parts, acceptance criteria, risks, size
 ├ plan.json        tenbox plan done: the validated planner result, read by close. Its optional
 │                  `groups` key lists the groups: `{ id, name, parts, needs, recipe }`. The ids
@@ -355,7 +357,7 @@ close or down, which runs `machines/machine.sh` with the state in a bucket; and 
 that asks that workflow for `down` after five idle minutes; and the login sync, which keeps a
 copy of your claude.ai login in the bucket for the machines. Start a run with `gh workflow run
 machine.yml -f task=TEN-301 -f cmd=build`, or `tenbox machine run TEN-301 -- tenbox build
-TEN-301`, which first checks that your claude.ai login has not expired; `tenbox machine ls` lists the runs. `machines/k8s/` is the box image for containers: the `box` workflow pushes it to the private `ghcr.io/enojen/tenbox-box` (`:latest` and `:<sha>`) on every merge to main. See
+TEN-301`, which first checks that your claude.ai login has not expired; `tenbox machine ls` lists the runs. `machines/k8s/` is the box image for containers: the `box` workflow pushes it to the private `ghcr.io/enojen/tenbox-box` (`:latest` and `:<sha>`) on every merge to main. The line between the two repositories: what is inside the box (this image) belongs to Tenbox; where and how the box runs (the cluster, the Job, the volume) belongs to [Tenyard](https://github.com/enojen/tenyard). See
 [`machines/README.md`](machines/README.md).
 
 ## Roadmap

@@ -4,6 +4,7 @@ import path from "node:path";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
 import { startFakeNtfy } from "../test/ntfy.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -45,6 +46,16 @@ describe("tenbox plan done", () => {
     expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", file: planJson }]);
     const text = await files.read(planJson);
     expect(JSON.parse(text ?? "null")).toEqual(valid);
+  });
+
+  test("a valid result sets the status plan-ready, a bad one leaves it", async () => {
+    const taskJson = path.join(project.wtRoot, "demo", "T-1", ".tenbox", "task.json");
+    const status = () => readStatus(taskJson);
+    await planDone("--json", "not json");
+    const before = await status();
+    await planDone(...withJson({}));
+    const after = await status();
+    expect([before, after]).toEqual(["started", "plan-ready"]);
   });
 
   test.each([

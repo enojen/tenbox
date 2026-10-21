@@ -14,6 +14,7 @@ import { notifications, type TaskNotification } from "../application/notificatio
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
+import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { runChecks } from "./check.ts";
@@ -74,6 +75,7 @@ export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult>
   const ready = parseBuild(input.json).status === BUILD_STATUS.readyForYou;
   if (ready) await assertChecksPass(id, taskWorktree);
   const file = await builds.save(taskWorktree, input.json);
+  await saveBuildStatus(taskWorktree);
   await notifyEnd(id, taskWorktree);
   await autoAnswers.run({ id, taskWorktree });
   if (!ready) return { ok: true, task: id, file };
@@ -131,6 +133,13 @@ async function openDraftPr(id: TaskId): Promise<PrResult | PrError> {
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+/** The status of the saved build result becomes the task state. */
+async function saveBuildStatus(taskWorktree: string): Promise<void> {
+  const dir = tenboxDir(taskWorktree);
+  const result = await builds.find(dir);
+  if (result !== null) await tasks.saveStatus(dir, result.status);
 }
 
 /** One line for an end status a person must act on; `not-approved` sends none. */

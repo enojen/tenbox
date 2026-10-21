@@ -58,8 +58,17 @@ export const roundDir = (dir: string, round: number): string =>
 /** `.tenbox/task.md`: what the planner reads after `decisions.md`. */
 export function renderTaskMd(t: Task): string {
   const body = t.description.trim() || "(no description)";
-  return `# ${t.id} · ${t.title}\n\nstatus: ${t.status}\ntracker: ${t.tracker}\nurl: ${t.url || "-"}\n\n${body}\n`;
+  return `# ${t.id} · ${t.title}\n\ntracker: ${t.tracker}\nurl: ${t.url || "-"}\n\n${body}\n`;
 }
+
+/** The states `task.json` `status` holds besides the `build.json` end statuses. */
+export const TASK_STATE = {
+  started: "started",
+  planReady: "plan-ready",
+  approved: "approved",
+  building: "building",
+  closed: "closed",
+} as const;
 
 /** `task.json` in a `.tenbox/` folder: the task as `tenbox start` saw it. */
 export const taskFile = (dir: string): string => path.join(dir, "task.json");
@@ -76,7 +85,13 @@ export type TaskFile = z.infer<typeof TaskFileSchema>;
 
 /** The task without its description; a task with no url gets null. */
 export function taskFileOf(t: Task): TaskFile {
-  return { id: t.id, title: t.title, status: t.status, tracker: t.tracker, url: t.url || null };
+  return {
+    id: t.id,
+    title: t.title,
+    status: TASK_STATE.started,
+    tracker: t.tracker,
+    url: t.url || null,
+  };
 }
 
 /** The task in `task.json` text; null when it is not a JSON object or does not match. */

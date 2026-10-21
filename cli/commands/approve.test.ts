@@ -3,6 +3,7 @@ import path from "node:path";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -50,6 +51,17 @@ describe("tenbox approve", () => {
     const approved = await readApproved();
     expect(approved).toEqual({ at: run.json.at, plan_sha: sha256Hex("# plan\n") });
     expect(Number.isNaN(Date.parse(String(run.json.at)))).toBe(false);
+  });
+
+  test("it sets the status approved, and no plan leaves it", async () => {
+    const taskJson = path.join(path.dirname(planFile), "task.json");
+    const status = () => readStatus(taskJson);
+    await approve("T-1");
+    const before = await status();
+    await files.write(planFile, "# plan\n");
+    await approve("T-1");
+    const after = await status();
+    expect([before, after]).toEqual(["started", "approved"]);
   });
 
   test("a second run overwrites approved.json", async () => {

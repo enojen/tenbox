@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
-import {
-  type CommentRequest,
-  type StatusChange,
-  type TaskStatus,
-  type Tracker,
-  type TrackerTask,
+import type {
+  CommentRequest,
+  StatusChange,
+  TaskStatus,
+  Tracker,
+  TrackerTask,
 } from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
 

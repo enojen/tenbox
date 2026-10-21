@@ -32,7 +32,7 @@ const STATUS_SKIPPED = "skipped";
 export type StatusUpdate = string;
 
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
-export const tasks = { get, find, ensureFiles, updateStatus };
+export const tasks = { get, find, ensureFiles, updateStatus, saveStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
@@ -82,4 +82,11 @@ async function updateStatus(
   } catch (e) {
     return failedState(e);
   }
+}
+
+/** Writes the state into `task.json` of `dir`; a missing or invalid file is left alone. */
+async function saveStatus(dir: string, status: string): Promise<void> {
+  const task = await find(dir);
+  if (task === null) return;
+  await files.writeJson(taskFile(dir), { ...task, status });
 }

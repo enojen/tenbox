@@ -9,6 +9,7 @@ import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const MS_PER_MINUTE = 60_000;
@@ -83,6 +84,18 @@ describe("tenbox close", () => {
     expect(worktreeExists).toBe(false);
     expect(worktreeList).not.toContain("T-1");
     expect(branches).toBe("");
+  });
+
+  test("close sets the status closed and keeps task.json; a refused close leaves it", async () => {
+    await setup();
+    const taskJson = path.join(kept, "task.json");
+    const status = () => readStatus(taskJson);
+    await files.write(path.join(taskWorktree, "dirty.txt"), "x\n");
+    await closeT1();
+    const refused = await status();
+    await closeT1("--force");
+    const closed = await status();
+    expect([refused, closed]).toEqual(["started", "closed"]);
   });
 
   test("a worktree folder deleted by hand still closes and the branch is deleted", async () => {

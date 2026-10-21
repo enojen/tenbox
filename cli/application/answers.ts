@@ -2,13 +2,14 @@ import { answerNote, argsWithAnswer } from "../../domain/answers.ts";
 import { getOpenCard, getOption } from "../../domain/build.ts";
 import { noRunError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
 import { resumePrompt } from "../infra/claude/background.ts";
 import { claudeSessions } from "../infra/claude/sessionFiles.ts";
 import { files } from "../infra/files.ts";
 import { builds } from "./builds.ts";
 import { decisions } from "./decisions.ts";
 import { sessions } from "./sessions.ts";
+import { tasks } from "./tasks.ts";
 
 /** Answers: the option chosen on a decision card, and the build run resumed with it. */
 export const answers = { save };
@@ -62,5 +63,6 @@ async function save(input: AnswerInput): Promise<AnswerSaved> {
     await builds.update(taskWorktree, open.result);
     throw error;
   }
+  await tasks.saveStatus(tenboxDir(taskWorktree), TASK_STATE.building);
   return { option, run: run.runId, session: run.session };
 }

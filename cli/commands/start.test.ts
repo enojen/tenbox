@@ -309,6 +309,13 @@ test("a second start keeps the link and an edited task.md", async () => {
   expect([target, taskMd]).toEqual([taskDirPath(), "# T-1 · Edited\n"]);
 });
 
+test("task.md has no status line", async () => {
+  await setup(ID_MANIFEST);
+  await startTask(input({ setup: false }));
+  const taskMd = await files.read(taskMdPath());
+  expect(taskMd).not.toContain("status:");
+});
+
 test("task.json holds the task, and a second start keeps an edited one", async () => {
   await setup(ID_MANIFEST);
   await startTask(input({ setup: false }));
@@ -317,7 +324,7 @@ test("task.json holds the task, and a second start keeps an edited one", async (
   expect(JSON.parse(first ?? "null")).toEqual({
     id: "T-1",
     title: "Cancel",
-    status: "todo",
+    status: "started",
     tracker: "none",
     url: null,
   });

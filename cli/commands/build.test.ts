@@ -12,6 +12,7 @@ import {
   tenbox,
 } from "../test/cli.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
@@ -364,6 +365,16 @@ describe("tenbox build done", () => {
     const text = await files.read(file);
     return JSON.parse(text ?? "null");
   };
+
+  test("the status of task.json becomes the saved build status, a bad result leaves it", async () => {
+    const taskJson = path.join(path.dirname(buildJson), "task.json");
+    const status = () => readStatus(taskJson);
+    await buildDone("--json", "not json");
+    const before = await status();
+    await buildDone(...withJson({ status: "failed" }));
+    const after = await status();
+    expect([before, after]).toEqual(["started", "failed"]);
+  });
 
   test("a valid result is written to build.json and its proofs to proofs.json", async () => {
     const run = await buildDone(...withJson({}));

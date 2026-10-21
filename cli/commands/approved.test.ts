@@ -3,6 +3,7 @@ import path from "node:path";
 import { sha256Hex } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -44,6 +45,18 @@ describe("tenbox approved", () => {
       at: approve.json.at,
       plan_sha: sha256Hex("# plan\n"),
     });
+  });
+
+  test("it sets the status building, and a failing run leaves it", async () => {
+    const taskJson = path.join(path.dirname(planFile), "task.json");
+    const status = () => readStatus(taskJson);
+    await approved("T-1");
+    const before = await status();
+    await files.write(planFile, "# plan\n");
+    await tenbox(["approve", "T-1"], project.mainDir);
+    await approved("T-1");
+    const after = await status();
+    expect([before, after]).toEqual(["started", "building"]);
   });
 
   test("a plan.md edited after the approval is plan-changed", async () => {

@@ -1,7 +1,9 @@
 import type { TaskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
+import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
 import { notifications } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
+import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import type { TaskFileResult } from "./results.ts";
 
@@ -15,6 +17,7 @@ export interface PlanDoneInput {
 export async function planDone(input: PlanDoneInput): Promise<TaskFileResult> {
   const taskWorktree = await worktrees.get(input.id);
   const { file, plan } = await plans.save(taskWorktree, input.json);
+  await tasks.saveStatus(tenboxDir(taskWorktree), TASK_STATE.planReady);
   const { parts, questions } = plan;
   const blocking = questions.filter((question) => question.blocking).length;
   const detail = `parts ${parts.length}, open questions ${questions.length} (${blocking} blocking)`;

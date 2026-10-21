@@ -5,6 +5,7 @@ import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { type CliRun, type FakeClaude, type Json, makeFakeClaude, tenbox } from "../test/cli.ts";
+import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -124,6 +125,25 @@ describe("tenbox answer", () => {
     expect(prompt).toContain(scriptPath());
     const answer = { round: 2, part: "03", option: 2, text: "sqlite" };
     expect(prompt).toContain(JSON.stringify({ task: "T-1", answer }));
+  });
+
+  test("a card answered by hand or with --auto sets the status building", async () => {
+    await setup();
+    await writeBuildRun();
+    const taskJson = path.join(tenboxDir(), "task.json");
+    const status = () => readStatus(taskJson);
+    const before = await status();
+    await run("answer", "T-1", "2");
+    const after = await status();
+    expect([before, after]).toEqual(["needs-you", "building"]);
+  });
+
+  test("a failed answer leaves the status", async () => {
+    await setup();
+    const taskJson = path.join(tenboxDir(), "task.json");
+    const failed = await run("answer", "T-1", "2");
+    const text = await files.read(taskJson);
+    expect([failed.json.code, JSON.parse(text ?? "null").status]).toEqual(["no-run", "needs-you"]);
   });
 
   test("a run started with JSON args resumes with that object plus the answer", async () => {

@@ -19,7 +19,7 @@ test("renderTaskMd", () => {
     status: "todo",
     tracker: "none",
   });
-  expect(md).toBe("# T-1 · Cancel\n\nstatus: todo\ntracker: none\nurl: -\n\n(no description)\n");
+  expect(md).toBe("# T-1 · Cancel\n\ntracker: none\nurl: -\n\n(no description)\n");
 });
 
 test("nextRound", () => {
@@ -39,7 +39,7 @@ test("taskFileOf keeps the title and gives a task without url a null url", () =>
   expect(taskFileOf(task)).toEqual({
     id: "T-1",
     title: "Cancel",
-    status: "todo",
+    status: "started",
     tracker: "none",
     url: null,
   });
