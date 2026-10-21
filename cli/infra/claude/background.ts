@@ -25,6 +25,8 @@ export interface BackgroundSession {
   startedAt: number;
   /** True while the session works or waits for a person. */
   busy: boolean;
+  /** The `state` of `claude agents`: working, blocked, done; `unknown` when it has none. */
+  state: string;
 }
 
 /** A command run in one directory with the `claude` binary found in `PATH`. */
@@ -81,6 +83,7 @@ const AgentListSchema = z.array(
 );
 
 const BACKGROUND = "background";
+const UNKNOWN_STATE = "unknown";
 
 /** The `state` values of a session that a second build must not disturb. A `blocked` session waits
  * for a person, as a planner does after its plan, so it is not busy. */
@@ -129,7 +132,8 @@ async function listBackground(run: ClaudeRun): Promise<BackgroundSession[]> {
   const sessions: BackgroundSession[] = [];
   for (const { id, cwd, kind, startedAt, state, pid } of parsed.data) {
     if (kind === BACKGROUND && id !== undefined && pid !== undefined && cwd === run.cwd) {
-      sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(state ?? "") });
+      const known = state ?? UNKNOWN_STATE;
+      sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(known), state: known });
     }
   }
   return sessions;

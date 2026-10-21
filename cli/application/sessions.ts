@@ -1,6 +1,7 @@
 import { noSessionError, sessionBusyError } from "../../domain/errors/tasks.ts";
 import { noCommandError } from "../../domain/errors/tools.ts";
 import type { TaskId } from "../../domain/ids.ts";
+import { failedState } from "../../domain/utils.ts";
 import {
   type BackgroundSession,
   type ClaudeResume,
@@ -44,7 +45,7 @@ interface SessionEnsureInput {
 }
 
 /** The task's background `claude` sessions, all started in its task worktree. */
-export const sessions = { ensure, run, resume, attach, stop };
+export const sessions = { ensure, run, resume, attach, stop, findState };
 
 /** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
@@ -120,4 +121,19 @@ function byStart(a: BackgroundSession, b: BackgroundSession): number {
 function logStart(session: string, state: SessionStartState, message: string): SessionStartInfo {
   log(`tenbox start: claude ${message}`);
   return { session, state };
+}
+
+/** What `tenbox status` shows when `claude` is missing, or the task has no background session. */
+const SESSION_STATE = { unavailable: "unavailable", none: "none" } as const;
+
+/** The `state` of the newest background session; `unavailable` without `claude`, `failed: <reason>` when it fails. */
+async function findState(target: SessionTarget): Promise<string> {
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) return SESSION_STATE.unavailable;
+  try {
+    const found = await claude.listBackground(claudeRun);
+    return [...found].sort(byStart).at(-1)?.state ?? SESSION_STATE.none;
+  } catch (e) {
+    return failedState(e);
+  }
 }

@@ -84,6 +84,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
+| status report | The state of one task read from its files, its background session and its PR: the `task.json` status, round, parts, session, PR, last check; `tenbox status` prints it (`StatusReport`). |
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | machine | A short-lived cloud server of one task, started and stopped by `machine.yml` (`machines`). |
 | machine run | One `machine.yml` workflow run that executes a tenbox command of a task on its machine; `tenbox machine run` starts it, `tenbox machine ls` lists them (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
@@ -146,7 +147,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
-    approvals  plans  groups  prs  checks  decisions  notifications  answers  autoAnswers  machines
+    approvals  plans  groups  prs  checks  decisions  notifications  answers  autoAnswers  machines  statusReports
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql; claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker

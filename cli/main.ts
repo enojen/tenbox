@@ -22,6 +22,7 @@ import { closeTask } from "./commands/close.ts";
 import { decide } from "./commands/decide.ts";
 import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
+import { listTasks } from "./commands/list.ts";
 import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { partDone } from "./commands/part.ts";
@@ -31,6 +32,7 @@ import { recordProof } from "./commands/proof.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
 import { showStats } from "./commands/stats.ts";
+import { showStatus } from "./commands/status.ts";
 import { isWaitKind, waitFor } from "./commands/wait.ts";
 import { ensureGroupWorktree } from "./commands/worktree.ts";
 import { env, log } from "./infra/env.ts";
@@ -53,11 +55,13 @@ const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE = "tenbox decide <id> --json '[{ question?, answer }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";
-const WAIT_USAGE = "tenbox wait <id> --for plan|build|round [--timeout 600]";
+const WAIT_USAGE = "tenbox wait <id> --for plan|build|round|decision|any [--timeout 600]";
 const ANSWER_USAGE = "tenbox answer <id> <n> | --auto";
 const APPROVE_USAGE = "tenbox approve <id>";
 const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
+const STATUS_USAGE = "tenbox status <id>";
+const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
   "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
@@ -275,6 +279,16 @@ const COMMANDS: Record<string, Command> = {
     usage: STATS_USAGE,
     options: {},
     run: (positionals) => showStats(idArg(positionals, STATS_USAGE)),
+  },
+  status: {
+    usage: STATUS_USAGE,
+    options: {},
+    run: (positionals) => showStatus(idArg(positionals, STATUS_USAGE)),
+  },
+  list: {
+    usage: LIST_USAGE,
+    options: {},
+    run: () => listTasks(),
   },
   machine: {
     usage: MACHINE_USAGE,

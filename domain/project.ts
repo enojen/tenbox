@@ -19,6 +19,19 @@ export function projectName(mainDir: string, manifestProject: string | undefined
   return base === MAIN_CHECKOUT_DIR ? path.basename(path.dirname(mainDir)) : base;
 }
 
+const GROUP_SUFFIX = /-\d+$/;
+
+/**
+ * The task worktree names among the directories of `~/wt/<project>`: not `main`, and not a
+ * group worktree `<id>-N` that sits next to the worktree `<id>`.
+ */
+export function taskWorktreeNames(names: string[]): string[] {
+  return names.filter((name) => {
+    if (name === MAIN_CHECKOUT_DIR) return false;
+    return !names.includes(name.replace(GROUP_SUFFIX, "")) || !GROUP_SUFFIX.test(name);
+  });
+}
+
 /** `~/wt/<project>/<id>`, next to `~/wt/<project>/main`. */
 export function taskWorktreeDir(wtRoot: string, projectName: string, id: TaskId): string {
   return path.join(wtRoot, projectName, id);

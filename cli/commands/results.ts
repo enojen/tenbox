@@ -1,11 +1,12 @@
 import type { AUTO_ANSWER_STATE } from "../../domain/answers.ts";
 import type { Approval } from "../../domain/approval.ts";
-import type { RoundStatus } from "../../domain/build.ts";
+import type { DecisionCard, RoundStatus } from "../../domain/build.ts";
 import type { BaselineSource } from "../../domain/failures.ts";
 import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
+import type { StatusReport } from "../../domain/statusReport.ts";
 import type { FailedState } from "../../domain/utils.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
@@ -17,6 +18,7 @@ import type { BranchRemoveState, WorktreeRemoveState } from "../application/work
 import type { PrBranch, WorkflowRunRow } from "../infra/gh.ts";
 import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
 import type { LINK_STATE } from "./install.ts";
+import type { WaitEvent } from "./wait.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
@@ -316,6 +318,26 @@ export interface Failure {
   error: string;
   code: string;
   details?: unknown;
+}
+
+/** `tenbox status`: the status report of one task. */
+export interface StatusResult extends StatusReport {
+  ok: true;
+}
+
+/** `tenbox list`: the status report of each task worktree of the project. */
+export interface ListResult {
+  ok: true;
+  tasks: StatusReport[];
+}
+
+/** `tenbox wait --for decision|any`: what ended the wait; `decision` is the open card, else null. */
+export interface WaitEventResult {
+  ok: true;
+  task: string;
+  event: WaitEvent;
+  file: string;
+  decision: DecisionCard | null;
 }
 
 export interface MachineRunResultJson {

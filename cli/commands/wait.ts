@@ -1,21 +1,39 @@
-import { buildFile, ROUND_RUNNING, readBuild } from "../../domain/build.ts";
+import {
+  BUILD_STATUS,
+  buildFile,
+  type DecisionCard,
+  ROUND_RUNNING,
+  readBuild,
+} from "../../domain/build.ts";
 import { waitTimeoutError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { planFile } from "../../domain/plan.ts";
 import { checksFile, roundDir, roundNumbers, roundsDir, tenboxDir } from "../../domain/task.ts";
 import { MS_PER_SECOND } from "../../domain/utils.ts";
+import { builds } from "../application/builds.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { pollUntil } from "../infra/poll.ts";
-import type { TaskFileResult, WaitRoundResult } from "./results.ts";
+import type { TaskFileResult, WaitEventResult, WaitRoundResult } from "./results.ts";
 
-/** The three things `tenbox wait` can wait for. */
-const WAIT_KIND = { plan: "plan", build: "build", round: "round" } as const;
+/** The things `tenbox wait` can wait for. */
+const WAIT_KIND = {
+  plan: "plan",
+  build: "build",
+  round: "round",
+  decision: "decision",
+  any: "any",
+} as const;
 
 type WaitFileKind = typeof WAIT_KIND.plan | typeof WAIT_KIND.build;
 export type WaitKind = (typeof WAIT_KIND)[keyof typeof WAIT_KIND];
 
 const WAIT_KINDS: string[] = Object.values(WAIT_KIND);
+
+/** What ended a `--for decision` or `--for any` wait. */
+const WAIT_EVENT = { decision: "decision", build: "build", plan: "plan" } as const;
+
+export type WaitEvent = (typeof WAIT_EVENT)[keyof typeof WAIT_EVENT];
 
 export interface WaitInput {
   id: TaskId;
@@ -23,7 +41,7 @@ export interface WaitInput {
   timeoutSeconds: number;
 }
 
-/** True for the three things `tenbox wait` can wait for. */
+/** True for the things `tenbox wait` can wait for. */
 export const isWaitKind = (value: string | undefined): value is WaitKind =>
   value !== undefined && WAIT_KINDS.includes(value);
 
@@ -48,9 +66,13 @@ async function pollOrTimeout<T>(poll: TimedPoll<T>): Promise<T> {
   return found;
 }
 
-/** `plan.json` or `build.json` of the task exists, or the next round change. */
-export function waitFor(input: WaitInput): Promise<TaskFileResult | WaitRoundResult> {
+/** `plan.json` or `build.json` of the task exists, the next round changes, or a decision waits. */
+export function waitFor(
+  input: WaitInput,
+): Promise<TaskFileResult | WaitRoundResult | WaitEventResult> {
   if (input.kind === WAIT_KIND.round) return waitForRound(input);
+  if (input.kind === WAIT_KIND.decision) return waitForDecision(input);
+  if (input.kind === WAIT_KIND.any) return waitForAny(input);
   return waitForFile({ ...input, kind: input.kind });
 }
 
@@ -111,4 +133,66 @@ async function findChange(input: RoundChangeInput): Promise<WaitRoundResult | nu
     if (changed) return { ok: true, task: id, round, status: ROUND_RUNNING, file };
   }
   return null;
+}
+
+/** The unanswered card of a `needs-you` `build.json`; null when there is none. */
+async function findOpenDecision(dir: string): Promise<DecisionCard | null> {
+  const build = await builds.find(dir);
+  if (build?.status !== BUILD_STATUS.needsYou || build.answered !== undefined) return null;
+  return build.decision ?? null;
+}
+
+/** Returns when `build.json` holds a `needs-you` card that no one has answered yet. */
+async function waitForDecision(input: WaitInput): Promise<WaitEventResult> {
+  const { id, timeoutSeconds } = input;
+  const taskWorktree = await worktrees.get(id);
+  const dir = tenboxDir(taskWorktree);
+  const check = async (): Promise<WaitEventResult | null> => {
+    const decision = await findOpenDecision(dir);
+    if (decision === null) return null;
+    return { ok: true, task: id, event: WAIT_EVENT.decision, file: buildFile(dir), decision };
+  };
+  return pollOrTimeout({ what: buildFile(dir), timeoutSeconds, check });
+}
+
+interface AnyInput {
+  id: TaskId;
+  dir: string;
+  since: number;
+}
+
+/** One thing that can end `--for any`: its event, its file and whether it happened. */
+interface Candidate {
+  event: WaitEvent;
+  file: string;
+  happened: boolean;
+}
+
+/**
+ * Returns at the first of: an unanswered decision, a `build.json` written after the process
+ * started, a `plan.json` written after it started. A file's modification time is the proof,
+ * as for `--for round`, so a `plan.json` of an earlier phase does not end the wait.
+ */
+async function waitForAny(input: WaitInput): Promise<WaitEventResult> {
+  const { id, timeoutSeconds } = input;
+  const since = processStartMs();
+  const taskWorktree = await worktrees.get(id);
+  const dir = tenboxDir(taskWorktree);
+  const check = () => findEvent({ id, dir, since });
+  return pollOrTimeout({ what: dir, timeoutSeconds, check });
+}
+
+async function findEvent(input: AnyInput): Promise<WaitEventResult | null> {
+  const { id, dir, since } = input;
+  const decision = await findOpenDecision(dir);
+  const buildChanged = await changedSince(buildFile(dir), since);
+  const planChanged = await changedSince(planFile(dir), since);
+  const candidates: Candidate[] = [
+    { event: WAIT_EVENT.decision, file: buildFile(dir), happened: decision !== null },
+    { event: WAIT_EVENT.build, file: buildFile(dir), happened: buildChanged },
+    { event: WAIT_EVENT.plan, file: planFile(dir), happened: planChanged },
+  ];
+  const first = candidates.find((candidate) => candidate.happened);
+  if (first === undefined) return null;
+  return { ok: true, task: id, event: first.event, file: first.file, decision };
 }

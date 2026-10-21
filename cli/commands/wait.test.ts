@@ -95,4 +95,84 @@ describe("tenbox wait", () => {
       expect([run.json.status, run.json.round]).toEqual(["ready-for-you", 2]);
     });
   });
+  describe("--for decision and --for any", () => {
+    const buildFile = (): string => path.join(tenboxDir, "build.json");
+    const planFile = (): string => path.join(tenboxDir, "plan.json");
+    const card = {
+      title: "Which way?",
+      options: ["a", "b"],
+      recommended: 1,
+      reason: "r",
+      auto: false,
+      kind: "scope",
+    };
+    const result = (extra: object) =>
+      JSON.stringify({
+        status: "needs-you",
+        round: 1,
+        proofs: [],
+        attention: [],
+        nice_to_have: [],
+        unproven: [],
+        part: "01",
+        decision: card,
+        ...extra,
+      });
+
+    test("decision returns at once for an unanswered needs-you card", async () => {
+      await files.write(buildFile(), result({}));
+      const run = await wait("--for", "decision", "--timeout", "10");
+      expect([run.code, run.json]).toEqual([
+        0,
+        { ok: true, task: "T-1", event: "decision", file: buildFile(), decision: card },
+      ]);
+    });
+
+    test("decision returns after a needs-you build.json is written", async () => {
+      setTimeout(() => files.write(buildFile(), result({})), WRITE_DELAY_MS);
+      const run = await wait("--for", "decision", "--timeout", "10");
+      expect([run.json.event, run.json.decision]).toEqual(["decision", card]);
+    });
+
+    test.each([
+      ["a ready-for-you build.json", { status: "ready-for-you", decision: undefined }],
+      [
+        "an answered card",
+        { answered: { option: 1, at: "2026-10-15T10:00:00.000Z", auto: false } },
+      ],
+    ])("decision does not return for %s", async (_name, extra) => {
+      await files.write(buildFile(), result(extra));
+      const run = await wait("--for", "decision", "--timeout", "1");
+      expect([run.code, run.json.code]).toEqual([1, "wait-timeout"]);
+    });
+
+    test("any returns the decision of an unanswered card at once", async () => {
+      await files.write(buildFile(), result({}));
+      const run = await wait("--for", "any", "--timeout", "10");
+      expect([run.json.event, run.json.file]).toEqual(["decision", buildFile()]);
+    });
+
+    test("any returns plan when plan.json is written after it started", async () => {
+      setTimeout(() => files.write(planFile(), "{}"), WRITE_DELAY_MS);
+      const run = await wait("--for", "any", "--timeout", "10");
+      expect([run.json.event, run.json.file, run.json.decision]).toEqual([
+        "plan",
+        planFile(),
+        null,
+      ]);
+    });
+
+    test("any returns build when a build.json that is not a decision is written", async () => {
+      const done = result({ status: "ready-for-you", decision: undefined });
+      setTimeout(() => files.write(buildFile(), done), WRITE_DELAY_MS);
+      const run = await wait("--for", "any", "--timeout", "10");
+      expect([run.json.event, run.json.file]).toEqual(["build", buildFile()]);
+    });
+
+    test("any ignores a plan.json that was written before it started", async () => {
+      await files.write(planFile(), "{}");
+      const run = await wait("--for", "any", "--timeout", "1");
+      expect([run.code, run.json.code]).toEqual([1, "wait-timeout"]);
+    });
+  });
 });
