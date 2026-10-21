@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
 import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
-import type {
-  CommentRequest,
-  StatusChange,
-  TaskStatus,
-  Tracker,
-  TrackerTask,
+import {
+  type CommentRequest,
+  oldestFirst,
+  type StatusChange,
+  type TaskStatus,
+  type Tracker,
+  type TrackerComment,
+  type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
 
@@ -21,6 +23,16 @@ const TaskSchema = z.object({
   url: z.string(),
   status: z.object({ status: z.string() }),
   list: z.object({ id: z.string() }),
+});
+
+const CommentListSchema = z.object({
+  comments: z.array(
+    z.object({
+      comment_text: z.string(),
+      user: z.object({ username: z.string() }),
+      date: z.string(),
+    }),
+  ),
 });
 
 const ClickupStatusSchema = z.object({
@@ -59,6 +71,7 @@ export function clickupTracker(config: TrackerConfig): Tracker {
     getTask: (id) => getTask(connection, id),
     updateStatus: (id, status) => setStatus(connection, { id, status }),
     comment: (request) => addComment(connection, request),
+    comments: (id) => getComments(connection, id),
   };
 }
 
@@ -118,6 +131,18 @@ async function addComment(connection: Connection, request: CommentRequest): Prom
     body: { comment_text: request.text },
     schema: z.unknown(),
   });
+}
+
+async function getComments(connection: Connection, id: string): Promise<TrackerComment[]> {
+  const path = `/task/${encodeURIComponent(id)}/comment`;
+  const list = await http.get({ endpoint: endpoint(connection, path), schema: CommentListSchema });
+  return oldestFirst(
+    list.comments.map((c) => ({
+      author: c.user.username,
+      date: new Date(Number(c.date)).toISOString(),
+      body: c.comment_text,
+    })),
+  );
 }
 
 /** The list status to set: the configured name, else the one named "in progress" or "done". */

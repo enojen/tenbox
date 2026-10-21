@@ -45,9 +45,11 @@ async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
       url: "",
       status: UNTRACKED_STATUS,
       tracker: TRACKER_KIND.none,
+      comments: [],
     };
   const found = await tracker.getTask(id);
-  return { ...found, id, tracker: tracker.kind };
+  const comments = await tracker.comments(id);
+  return { ...found, id, tracker: tracker.kind, comments };
 }
 
 /** The task in `task.json` of `dir`; null when it is missing or not valid. */

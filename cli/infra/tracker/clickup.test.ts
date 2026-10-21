@@ -114,3 +114,32 @@ describe("clickup updateStatus", () => {
     expect(name).toBe("In Progress");
   });
 });
+
+describe("clickup comments", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+  test("reads the comment endpoint, oldest first, ISO dates", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request) => {
+        urls.push(String(url));
+        return Response.json({
+          comments: [
+            { comment_text: "newer", user: { username: "bob" }, date: "1767312000000" },
+            { comment_text: "older", user: { username: "ann" }, date: "1767225600000" },
+          ],
+        });
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
+    const found = await tracker.comments("abc");
+    expect(urls).toEqual(["https://api.clickup.com/api/v2/task/abc/comment"]);
+    expect(found).toEqual([
+      { author: "ann", date: "2026-01-01T00:00:00.000Z", body: "older" },
+      { author: "bob", date: "2026-01-02T00:00:00.000Z", body: "newer" },
+    ]);
+  });
+});

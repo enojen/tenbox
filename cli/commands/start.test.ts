@@ -353,3 +353,63 @@ test("a real .tenbox directory is kept and not replaced by a link", async () => 
   const plan = await files.read(path.join(linkPath(), "plan.md"));
   expect([target, plan]).toEqual([null, "old"]);
 });
+
+/** A fake ClickUp API: the task, its list and the given comments. */
+function fakeClickup(comments: unknown[]): void {
+  const saved = globalThis.fetch;
+  globalThis.fetch = Object.assign(
+    async (url: string | URL | Request) => {
+      const path = String(url);
+      if (path.includes("/comment")) return Response.json({ comments });
+      if (path.includes("/list/")) return Response.json({ statuses: [] });
+      return Response.json({
+        id: "T-1",
+        name: "Cancel",
+        markdown_description: "body",
+        url: "u",
+        status: { status: "Open" },
+        list: { id: "9" },
+      });
+    },
+    { preconnect: saved.preconnect },
+  );
+}
+
+const CLICKUP_MANIFEST = "project: demo\ntracker: { kind: clickup, api_key: k }\n";
+
+test("a tracker task with comments gets a Comments section, oldest first", async () => {
+  const saved = globalThis.fetch;
+  await setup(CLICKUP_MANIFEST);
+  fakeClickup([
+    { comment_text: "newer", user: { username: "bob" }, date: "1767312000000" },
+    { comment_text: "older", user: { username: "ann" }, date: "1767225600000" },
+  ]);
+  try {
+    await startTask(input({ title: undefined, setup: false }));
+  } finally {
+    globalThis.fetch = saved;
+  }
+  const taskMd = await files.read(taskMdPath());
+  expect(taskMd).toEndWith(
+    "\n## Comments\n\n### ann · 2026-01-01T00:00:00.000Z\n\nolder\n" +
+      "\n### bob · 2026-01-02T00:00:00.000Z\n\nnewer\n",
+  );
+  const taskJson = await files.read(path.join(taskDirPath(), "task.json"));
+  expect(taskJson).not.toContain("comments");
+});
+
+test("a tracker task without comments, or started with a title, has no Comments section", async () => {
+  const saved = globalThis.fetch;
+  await setup(CLICKUP_MANIFEST);
+  fakeClickup([]);
+  try {
+    await startTask(input({ title: undefined, setup: false }));
+  } finally {
+    globalThis.fetch = saved;
+  }
+  const withoutComments = await files.read(taskMdPath());
+  await rm(taskDirPath(), { recursive: true, force: true });
+  await startTask(input({ setup: false }));
+  const withTitle = await files.read(taskMdPath());
+  expect([withoutComments, withTitle].join("")).not.toContain("## Comments");
+});

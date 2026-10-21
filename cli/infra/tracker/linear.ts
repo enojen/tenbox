@@ -3,10 +3,12 @@ import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts"
 import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
 import {
   type CommentRequest,
+  oldestFirst,
   type StatusChange,
   TASK_STATUS,
   type TaskStatus,
   type Tracker,
+  type TrackerComment,
   type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { graphqlQuery } from "../graphql.ts";
@@ -33,6 +35,22 @@ const IssueSchema = z.object({
 
 const IssueDataSchema = z.object({ issue: IssueSchema.nullable() });
 
+const CommentsDataSchema = z.object({
+  issue: z
+    .object({
+      comments: z.object({
+        nodes: z.array(
+          z.object({
+            body: z.string(),
+            createdAt: z.iso.datetime(),
+            user: z.object({ name: z.string() }).nullable(),
+          }),
+        ),
+      }),
+    })
+    .nullable(),
+});
+
 type State = z.infer<typeof StateSchema>;
 type Issue = z.infer<typeof IssueSchema>;
 
@@ -42,6 +60,13 @@ const ISSUE_QUERY = `
       id identifier title description url
       state { name type }
       team { id states { nodes { id name type position } } }
+    }
+  }`;
+
+const COMMENTS_QUERY = `
+  query($id: String!) {
+    issue(id: $id) {
+      comments(first: 250) { nodes { body createdAt user { name } } }
     }
   }`;
 
@@ -63,6 +88,7 @@ export function linearTracker(config: TrackerConfig): Tracker {
     getTask: (id) => fetchTask(endpoint, id),
     updateStatus: (id, status) => updateIssueStatus(endpoint, { id, status }),
     comment: (request) => commentOnIssue(endpoint, request),
+    comments: (id) => fetchComments(endpoint, id),
   };
 }
 
@@ -130,6 +156,20 @@ async function commentOnIssue(endpoint: Endpoint, comment: CommentRequest): Prom
     variables: { issueId: issue.id, body: comment.text },
     data: z.unknown(),
   });
+}
+
+async function fetchComments(endpoint: Endpoint, id: string): Promise<TrackerComment[]> {
+  const data = await graphqlQuery({
+    endpoint,
+    query: COMMENTS_QUERY,
+    variables: { id },
+    data: CommentsDataSchema,
+  });
+  if (!data.issue) throw trackerError(`Linear: issue ${id} not found`);
+  const nodes = data.issue.comments.nodes;
+  return oldestFirst(
+    nodes.map((n) => ({ author: n.user?.name ?? "unknown", date: n.createdAt, body: n.body })),
+  );
 }
 
 function pickState(states: State[], status: TaskStatus): State | undefined {

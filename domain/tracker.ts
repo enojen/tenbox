@@ -13,6 +13,14 @@ export interface TrackerTask {
   status: string;
 }
 
+/** One comment on a tracker task. */
+export interface TrackerComment {
+  author: string;
+  /** ISO 8601. */
+  date: string;
+  body: string;
+}
+
 /** One status change Tenbox asks of the tracker. */
 export interface StatusChange {
   id: string;
@@ -32,4 +40,10 @@ export interface Tracker {
   /** Sets the status and returns the name of the status the tracker now shows. */
   updateStatus(id: string, status: TaskStatus): Promise<string>;
   comment(request: CommentRequest): Promise<void>;
+  /** The comments of the task, oldest first. */
+  comments(id: string): Promise<TrackerComment[]>;
 }
+
+/** The comments sorted by date, oldest first. */
+export const oldestFirst = (comments: TrackerComment[]): TrackerComment[] =>
+  [...comments].sort((a, b) => a.date.localeCompare(b.date));

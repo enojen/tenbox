@@ -2,6 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { TaskId } from "./ids.ts";
 import { type TrackerKind, TrackerKindSchema } from "./manifest.ts";
+import type { TrackerComment } from "./tracker.ts";
 import { parseObject } from "./utils.ts";
 
 export interface Task {
@@ -11,6 +12,7 @@ export interface Task {
   url: string;
   status: string;
   tracker: TrackerKind;
+  comments: TrackerComment[];
 }
 
 export const tenboxDir = (taskWorktree: string): string => path.join(taskWorktree, ".tenbox");
@@ -58,7 +60,14 @@ export const roundDir = (dir: string, round: number): string =>
 /** `.tenbox/task.md`: what the planner reads after `decisions.md`. */
 export function renderTaskMd(t: Task): string {
   const body = t.description.trim() || "(no description)";
-  return `# ${t.id} · ${t.title}\n\ntracker: ${t.tracker}\nurl: ${t.url || "-"}\n\n${body}\n`;
+  const head = `# ${t.id} · ${t.title}\n\ntracker: ${t.tracker}\nurl: ${t.url || "-"}\n\n${body}\n`;
+  return head + renderComments(t.comments);
+}
+
+function renderComments(comments: TrackerComment[]): string {
+  if (comments.length === 0) return "";
+  const entries = comments.map((c) => `\n### ${c.author} · ${c.date}\n\n${c.body}\n`);
+  return `\n## Comments\n${entries.join("")}`;
 }
 
 /** The states `task.json` `status` holds besides the `build.json` end statuses. */

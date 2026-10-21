@@ -18,6 +18,7 @@ test("renderTaskMd", () => {
     url: "",
     status: "todo",
     tracker: "none",
+    comments: [],
   });
   expect(md).toBe("# T-1 · Cancel\n\ntracker: none\nurl: -\n\n(no description)\n");
 });
@@ -35,6 +36,7 @@ test("taskFileOf keeps the title and gives a task without url a null url", () =>
     url: "",
     status: "todo",
     tracker: "none",
+    comments: [],
   };
   expect(taskFileOf(task)).toEqual({
     id: "T-1",
@@ -57,4 +59,24 @@ test("readGroupStart reads group.json and gives null for anything else", () => {
   expect(readGroupStart('{"start":"abc123"}')).toEqual({ start: "abc123" });
   expect(readGroupStart('{"start":1}')).toBeNull();
   expect(readGroupStart("not json")).toBeNull();
+});
+
+test("renderTaskMd appends the comments in order, each with author and date", () => {
+  const md = renderTaskMd({
+    id: taskId("T-1"),
+    title: "Cancel",
+    description: "d",
+    url: "",
+    status: "todo",
+    tracker: "linear",
+    comments: [
+      { author: "ann", date: "2026-01-01T00:00:00.000Z", body: "first" },
+      { author: "bob", date: "2026-01-02T00:00:00.000Z", body: "second" },
+    ],
+  });
+  expect(md).toBe(
+    "# T-1 · Cancel\n\ntracker: linear\nurl: -\n\nd\n" +
+      "\n## Comments\n\n### ann · 2026-01-01T00:00:00.000Z\n\nfirst\n" +
+      "\n### bob · 2026-01-02T00:00:00.000Z\n\nsecond\n",
+  );
 });
