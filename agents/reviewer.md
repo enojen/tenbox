@@ -17,7 +17,7 @@ session directory after each call.
 ## Read first
 
 1. `.tenbox/decisions.md` if it exists. A choice recorded there is not a finding.
-2. `.tenbox/plan.md` and the part files in `.tenbox/parts/`.
+2. `.tenbox/plan.md`, the `examples` in `.tenbox/plan.json` and the part files in `.tenbox/parts/`.
    The worker proofs are in your prompt and, when it exists, in `.tenbox/proofs.json`.
 3. The diff: `git diff main...HEAD`, or the base branch your prompt names. When your
    prompt names a commit (a feedback round), read only `git diff <commit>..HEAD` and
@@ -49,8 +49,9 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   - a test-only seam in production code (a variable, option or export in a script under
     `machines/` whose only user is a test). This is must_fix, never attention.
 - `unproven`: a part whose change of behaviour has no proof (the last must_fix rule above).
-  A part with a by-hand Hetzner proof recorded in its part file (see the exception above)
-  is not unproven.
+  An example of a part in `plan.json` with no test named after its title also makes that part
+  unproven. A part with a by-hand Hetzner proof recorded in its part file (see the exception
+  above) is not unproven.
   Each item is `{ part, reason }`: `part` is the `NN` prefix of the part file name, like
   `01`, and `reason` is one sentence. The item also stays in `must_fix`. `tenbox close`
   counts each one as -1 point for that part. Return an empty list when there is none.

@@ -15,7 +15,7 @@ it: Bash goes back to the session directory after each call.
 ## Read first, in this order
 
 1. `.tenbox/decisions.md` if it exists. Every decision there is final.
-2. `.tenbox/plan.md`: approach, acceptance criteria, spec changes.
+2. `.tenbox/plan.md`: the why of the plan. The examples of your part are in `.tenbox/plan.json`.
 3. Your part file in `.tenbox/parts/`: its `files:` and `acceptance:` lines.
 4. The round feedback in your prompt, if any. It comes from checks, reviewers or the
    user and describes behaviour, not hunks. Find the files yourself.
@@ -26,7 +26,8 @@ it: Bash goes back to the session directory after each call.
 1. Set `status: doing` in your part file.
 2. Write the code and the unit tests for your part. Match the project's existing style,
    libraries and test runner. Make the smallest change that meets the acceptance lines.
-   Prove every change of behaviour, see "Prove first" below.
+   Prove every change of behaviour, see "Prove first" below. Write one test per example of
+   your part in `plan.json`, named after the example title.
 3. Stay inside your part's `files:`. Never edit a path in `locked`. If your part needs a
    change outside its files, do not make it: set `status: blocked` and return a decision
    card (see "Decision card").
