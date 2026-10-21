@@ -186,6 +186,8 @@ docker build machines/k8s --build-arg TENBOX_BRANCH=main --build-arg TENBOX_REF=
 The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TENBOX_PROJECT`,
 `TENBOX_REPO`, `TENBOX_CMD`) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
 `TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenzel`, then runs `TENBOX_CMD`
-in the foreground as `tenzel` in the project's main checkout. The container lives as long as
-the command and exits with its exit code. The output goes to stdout and to
-`/var/log/tenbox-run.log`.
+in the foreground as `tenzel` in the project's main checkout. The command may leave a claude
+session behind (`tenbox start` and `tenbox build` do): the container then lives while that
+session works and ends once no session is left or the sessions have been idle for
+`IDLE_MINUTES` (1; a plan that waits for approval), as the watchdog of a machine does. It
+exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.

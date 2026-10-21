@@ -2,12 +2,16 @@
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
 # TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, TRACKER_API_KEY,
 # NTFY_URL, CLAUDE_CREDENTIALS), prepares the volume at /home/tenzel and runs the tenbox
-# command in the foreground, as tenzel, in the project's main checkout. The container lives
-# as long as the command and exits with its exit code. The output is also in
-# /var/log/tenbox-run.log.
+# command in the foreground, as tenzel, in the project's main checkout. The command may
+# leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
+# lives while that session works and ends once no session is left or the sessions have been
+# idle for IDLE_MINUTES (a plan that waits for approval). Exits with the command's exit
+# code. The output is also in /var/log/tenbox-run.log.
 set -euo pipefail
 : "${TENBOX_TASK:?}" "${TENBOX_PROJECT:?}" "${TENBOX_REPO:?}" "${TENBOX_CMD:?}"
 : "${GITHUB_TOKEN:?}" "${CLAUDE_CREDENTIALS:?}"
+IDLE_MINUTES="${IDLE_MINUTES:-1}"
+CHECK_SECONDS=30
 
 home=/home/tenzel
 main="$home/wt/$TENBOX_PROJECT/main"
@@ -68,6 +72,26 @@ install_tenbox() {
   (cd /opt/tenbox && as_tenzel tenbox install > /dev/null)
 }
 
+# 6. After the command: stay while a claude session works, as the watchdog of a machine does.
+sessions_json() { as_tenzel claude agents --json 2> /dev/null || echo "[]"; }
+wait_for_sessions() {
+  local idle=0 sessions working
+  while :; do
+    sessions="$(sessions_json)"
+    if [ "$(printf '%s' "$sessions" | jq length)" -eq 0 ]; then
+      log "no session left"
+      return
+    fi
+    working="$(printf '%s' "$sessions" | jq '[.[] | select(.status == "busy" or .state == "working")] | length')"
+    if [ "$working" -gt 0 ]; then idle=0; else idle=$((idle + 1)); fi
+    if [ $((idle * CHECK_SECONDS)) -ge $((IDLE_MINUTES * 60)) ]; then
+      log "sessions idle for $IDLE_MINUTES min"
+      return
+    fi
+    sleep "$CHECK_SECONDS"
+  done
+}
+
 log "image: $(cat /etc/tenbox-image.json)"
 prepare_home
 setup_claude
@@ -85,4 +109,5 @@ sudo -u tenzel -H env HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin \
   bash -c "cd '$main' && $TENBOX_CMD" 2>&1 < /dev/null | tee -a /var/log/tenbox-run.log
 status="${PIPESTATUS[0]}"
 log "command ended with exit code $status"
+wait_for_sessions
 exit "$status"
