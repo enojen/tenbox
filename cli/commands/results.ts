@@ -11,12 +11,13 @@ import type { StatusReport } from "../../domain/statusReport.ts";
 import type { FailedState } from "../../domain/utils.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
+import type { MachineRunRow } from "../application/machines.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
 import type { StatusUpdate } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
-import type { PrBranch, WorkflowRunRow } from "../infra/gh.ts";
+import type { PrBranch } from "../infra/gh.ts";
 import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
 import type { LINK_STATE } from "./install.ts";
 import type { WaitEvent } from "./wait.ts";
@@ -350,13 +351,13 @@ export interface MachineRunResultJson {
   ok: true;
   task: string;
   cmd: string;
-  /** The run on GitHub; null when `gh` printed none. */
+  /** The run on GitHub (null when `gh` printed none), or the API URL of the Job. */
   url: string | null;
 }
 
 export interface MachineLsResult {
   ok: true;
-  runs: WorkflowRunRow[];
+  runs: MachineRunRow[];
 }
 
 export interface PartDoneResult {

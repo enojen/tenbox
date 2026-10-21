@@ -57,3 +57,26 @@ export function loginExpiredError(expiry: Date): TenboxError {
     "login-expired",
   );
 }
+
+export function noKubeconfigError(file: string): TenboxError {
+  return new TenboxError(
+    `no kubeconfig at ${file}; set KUBECONFIG or write ~/.kube/config`,
+    "no-kubeconfig",
+  );
+}
+
+/** `reason` names the missing field, never a value: the file holds the cluster credentials. */
+export function kubeconfigError(file: string, reason: string): TenboxError {
+  return new TenboxError(`kubeconfig ${file}: ${reason}`, "kubeconfig");
+}
+
+export function templateError(file: string, reason: string): TenboxError {
+  return new TenboxError(`machine template ${file}: ${reason}`, "template");
+}
+
+export function machineBusyError(task: string, jobs: string[]): TenboxError {
+  return new TenboxError(
+    `task ${task} still runs on the cluster: ${jobs.join(", ")}; wait until it ends`,
+    "machine-busy",
+  );
+}

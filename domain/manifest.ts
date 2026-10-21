@@ -97,6 +97,27 @@ const ChecksSchema = z.preprocess(
 /** Where Tenbox sends the one-line notifications; without `ntfy` it sends none. */
 const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
 
+/** Where `tenbox machine run` runs a command: a Job on the cluster, or a `machine.yml` run. */
+export const MACHINE_KIND = { k8s: "k8s", hetzner: "hetzner" } as const;
+
+/** The tenyard directory with `job.yaml` and `pvc.yaml`; `~/` is the home directory. */
+const DEFAULT_TEMPLATE = "~/tenyard/task";
+
+/** The short form `machine: hetzner` is `{ kind: hetzner }`. */
+function toMachineObject(value: unknown): unknown {
+  return typeof value === "string" ? { kind: value } : value;
+}
+
+const MachineSchema = z.preprocess(
+  toMachineObject,
+  z
+    .object({
+      kind: z.enum(MACHINE_KIND).default(MACHINE_KIND.k8s),
+      template: z.string().min(1).default(DEFAULT_TEMPLATE),
+    })
+    .strict(),
+);
+
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 const ManifestSchema = z.object({
   id: z
@@ -120,6 +141,7 @@ const ManifestSchema = z.object({
   tracker: TrackerConfigSchema.prefault({}),
   names: NamesSchema.prefault({}),
   notify: NotifySchema.prefault({}),
+  machine: MachineSchema.prefault({}),
 });
 
 export type CheckTier = (typeof CHECK_TIER)[keyof typeof CHECK_TIER];
@@ -134,10 +156,12 @@ export interface ManifestLayer {
   value: unknown;
 }
 
-/** A layer whose flat `checks:` is turned into tiers, so a flat and a tiered layer merge. */
-function withTiers(value: Record<string, unknown>): Record<string, unknown> {
-  if (!("checks" in value)) return value;
-  return { ...value, checks: toTiers(value.checks) };
+/** A layer in the long forms of `checks:` and `machine:`, so a short and a long layer merge. */
+function withLongForms(value: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...value };
+  if ("checks" in value) out.checks = toTiers(value.checks);
+  if ("machine" in value) out.machine = toMachineObject(value.machine);
+  return out;
 }
 
 /** Layers in order, later ones win, then one validation pass. */
@@ -147,7 +171,7 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
     if (layer.value === null || layer.value === undefined) continue;
     if (!isPlainObject(layer.value))
       throw manifestError(`${layer.file}: expected a YAML mapping at the top`);
-    merged = deepMerge(merged, withTiers(layer.value));
+    merged = deepMerge(merged, withLongForms(layer.value));
   }
   const parsed = ManifestSchema.safeParse(merged);
   if (!parsed.success) {

@@ -5,6 +5,14 @@ import { errorMessage } from "../../domain/utils.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;
+const HTTP_CONFLICT = 409;
+
+/** PEM text: the server's CA, and the client certificate and key when they replace a token. */
+export interface EndpointTls {
+  ca?: string;
+  cert?: string;
+  key?: string;
+}
 
 /** One external service; its name and error code mark every failure that comes from it. */
 export interface Endpoint {
@@ -12,6 +20,7 @@ export interface Endpoint {
   url: string;
   headers: Record<string, string>;
   errorCode: string;
+  tls?: EndpointTls;
 }
 
 type HttpMethod = "GET" | "POST" | "PUT";
@@ -34,7 +43,7 @@ interface HttpCall {
 }
 
 /** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
-export const http = { get, post, put };
+export const http = { get, post, put, ensure };
 
 /** GET, no body. */
 function get<T>(request: JsonGet<T>): Promise<T> {
@@ -51,9 +60,21 @@ function put<T>(request: JsonRequest<T>): Promise<T> {
   return sendJson(request, { method: "PUT", body: JSON.stringify(request.body) });
 }
 
+/** POST a JSON body; null when the server answers 409 Conflict: the object exists already. */
+async function ensure<T>(request: JsonRequest<T>): Promise<T | null> {
+  const call: HttpCall = { method: "POST", body: JSON.stringify(request.body) };
+  const response = await send(request.endpoint, call);
+  if (response.status === HTTP_CONFLICT) return null;
+  return readAnswer(request, response);
+}
+
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
+  const response = await send(request.endpoint, call);
+  return readAnswer(request, response);
+}
+
+async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T> {
   const { endpoint } = request;
-  const response = await send(endpoint, call);
   if (!response.ok) {
     const text = await response.text();
     const detail = text.slice(0, ERROR_BODY_CHARS);
@@ -75,6 +96,7 @@ async function send(endpoint: Endpoint, call: HttpCall): Promise<Response> {
     return await fetch(endpoint.url, {
       ...call,
       headers: { "Content-Type": "application/json", ...endpoint.headers },
+      ...(endpoint.tls === undefined ? {} : { tls: endpoint.tls }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (e) {

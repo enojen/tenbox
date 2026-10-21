@@ -21,7 +21,10 @@ pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp 
 Phase 3 (machines, `docs/design.md` "Machines") has started: the Packer image, the task
 module, the control plane `machine.yml` + `machines/machine.sh` (start, build, close, down, destroy;
 state in a bucket), the watchdog that asks for `down` and the login sync (TEN-419 to
-TEN-422), and `tenbox machine run` and `ls` (TEN-423). No sandbox yet.
+TEN-422), and `tenbox machine run` and `ls` (TEN-423). With `machine: k8s`, the default,
+`tenbox machine run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
+and `ls` lists the Jobs labeled `app=tenyard`; with `machine: hetzner` they start and list
+`machine.yml` runs (TEN-465). No sandbox yet.
 
 ## Rules
 
@@ -89,8 +92,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
 | status report | The state of one task read from its files, its background session and its PR: the `task.json` status, round, parts, session, PR, last check; `tenbox status` prints it (`StatusReport`). |
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
-| machine | A short-lived cloud server of one task, started and stopped by `machine.yml` (`machines`). |
-| machine run | One `machine.yml` workflow run that executes a tenbox command of a task on its machine; `tenbox machine run` starts it, `tenbox machine ls` lists them (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
+| machine | Where the tenbox commands of one task run, chosen by `machine:` of the manifest: with `k8s` (the default) the pod of a Job on the cluster, with `hetzner` a short-lived cloud server of the task, started and stopped by `machine.yml` (`machines`). |
+| machine run | One tenbox command of a task on its machine: with `k8s` (the default) one Job in namespace `tenbox`, filled from `<template>/job.yaml`; with `hetzner` one `machine.yml` workflow run. `tenbox machine run` starts it; `tenbox machine ls` lists them, on `k8s` the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
@@ -152,7 +155,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
     approvals  plans  groups  prs  checks  decisions  notifications  answers  autoAnswers  machines  statusReports
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
-                graphql; claude/ (background sessions, session files, transcripts, settings)
+                graphql, kubernetes (the cluster API: Jobs and volumes); claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
                 layers test

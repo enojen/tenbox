@@ -71,7 +71,8 @@ loaded, so a name is never reused; the newest is in `/run/tenbox-run.unit`. Outp
 ## The control plane: `machine.yml` and `machine.sh`
 
 `.github/workflows/machine.yml` is the only place that holds the machine secrets. Start a
-machine with `tenbox machine run <id> -- tenbox start|build|close <id>`. It runs
+machine with `tenbox machine run <id> -- tenbox start|build|close <id>` in a project with
+`machine: hetzner` (the default `machine: k8s` makes a Job instead, see "Box image" below). It runs
 `gh workflow run machine.yml` and refuses with `no-login` or `login-expired` before gh runs.
 What it runs is the same as these commands, which also work by hand (`down` has no
 `tenbox machine run` form):
@@ -200,3 +201,12 @@ session behind (`tenbox start` and `tenbox build` do): the container then lives 
 session works and ends once no session is left or the sessions have been idle for
 `IDLE_MINUTES` (1; a plan that waits for approval), as the watchdog of a machine does. It
 exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
+
+On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box
+(`machine: k8s`, the default). It reads the kubeconfig (`$KUBECONFIG`, else
+`~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
+`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, and posts the
+volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
+`tenbox` with `fetch`. It refuses with `machine-busy` while a Job of the task is active and
+does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
+volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.

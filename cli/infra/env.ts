@@ -16,6 +16,10 @@ export interface Env {
   tenboxRoot: string;
   /** `~/.claude`; `CLAUDE_CONFIG_DIR` overrides. */
   claudeDir: string;
+  /** `~/.kube/config`; `KUBECONFIG` overrides. */
+  kubeconfig: string;
+  /** The home directory, for a `~/` path in the manifest. */
+  home: string;
   /** `TENBOX_DEBUG=1`: log every run and print a stack for every error. */
   debug: boolean;
 }
@@ -31,6 +35,8 @@ export function env(): Env {
     failurePattern: process.env.WTBASE_PATTERN ?? DEFAULT_FAILURE_PATTERN,
     tenboxRoot: path.resolve(import.meta.dir, "..", ".."),
     claudeDir: process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude"),
+    kubeconfig: process.env.KUBECONFIG ?? path.join(os.homedir(), ".kube", "config"),
+    home: os.homedir(),
     debug: process.env.TENBOX_DEBUG === "1",
   };
 }

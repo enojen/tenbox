@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
@@ -10,6 +11,13 @@ const USAGE_EXIT = 2;
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 const RUN_URL = "https://github.com/o/r/actions/runs/123";
+const HTTP_CREATED = 201;
+const HTTP_CONFLICT = 409;
+const TOKEN = "SECRET-TOKEN";
+const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
+const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
+const JOB_NAME = /^task-ten-1-\d{4}-\d{6}$/;
+const CREATED = "2026-10-21T10:00:00Z";
 
 let project: TempProject;
 let claudeDir: string;
@@ -25,8 +33,39 @@ else
 fi
 `;
 
+/** A shortened tenyard `task/job.yaml`: the fields tenbox fills and the tests read back. */
+const JOB_TEMPLATE = `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: task-__NAME__-__RUN__
+  labels: { app: tenyard, task: __TASK__ }
+spec:
+  template:
+    spec:
+      containers:
+        - name: box
+          image: __IMAGE__
+          env:
+            - { name: TENBOX_TASK, value: "__TASK__" }
+            - { name: TENBOX_PROJECT, value: "__PROJECT__" }
+            - { name: TENBOX_REPO, value: "__REPO__" }
+            - name: TENBOX_CMD
+              value: |-
+                __CMD__
+      volumes:
+        - name: home
+          persistentVolumeClaim: { claimName: task-__NAME__ }
+`;
+
+const PVC_TEMPLATE = `apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: task-__NAME__
+  labels: { app: tenyard, task: __TASK__ }
+`;
+
 beforeEach(async () => {
-  project = await makeTempProject({ "tenbox.yaml": "project: demo\n" });
+  project = await makeTempProject({ "tenbox.yaml": "project: demo\nmachine: hetzner\n" });
   claudeDir = path.join(project.root, "claude");
   calls = path.join(project.root, "gh.calls");
   const bin = path.join(project.root, "bin");
@@ -150,5 +189,270 @@ describe("machine ls", () => {
     });
     const logged = await ghCalls();
     expect(logged).toContain("run list --workflow machine.yml --json");
+  });
+});
+
+/** One request the fake Kubernetes API got. */
+interface ApiCall {
+  method: string;
+  path: string;
+  query: string;
+  auth: string | null;
+  body: unknown;
+}
+
+/** A Kubernetes API server on 127.0.0.1 that logs each request. */
+interface FakeApi {
+  url: string;
+  calls: ApiCall[];
+  /** The answer status of the PVC POST. */
+  pvcStatus: number;
+  /** The items of every Job list. */
+  jobs: unknown[];
+  stop(): void;
+}
+
+function startFakeApi(): FakeApi {
+  const api: FakeApi = { url: "", calls: [], pvcStatus: HTTP_CREATED, jobs: [], stop: () => {} };
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const body = await readBody(request);
+      const auth = request.headers.get("authorization");
+      api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
+      if (request.method === "GET") return Response.json({ items: api.jobs });
+      if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
+      return Response.json(body, { status: HTTP_CREATED });
+    },
+  });
+  api.url = `http://127.0.0.1:${server.port}`;
+  api.stop = () => server.stop(true);
+  return api;
+}
+
+const readBody = (request: Request): Promise<unknown> =>
+  request.method === "POST" ? request.json() : Promise.resolve(null);
+
+const base64 = (text: string) => Buffer.from(text).toString("base64");
+
+interface TokenUser {
+  token: string;
+}
+
+/** The user entry of the tenyard kubeconfig. */
+interface CertificateUser {
+  "client-certificate-data": string;
+  "client-key-data": string;
+}
+
+type KubeUser = TokenUser | CertificateUser;
+
+interface KubeconfigInput {
+  server: string;
+  user: KubeUser;
+}
+
+function kubeconfig(input: KubeconfigInput): string {
+  return JSON.stringify({
+    apiVersion: "v1",
+    "current-context": "tenyard",
+    contexts: [{ name: "tenyard", context: { cluster: "c", user: "u" } }],
+    clusters: [
+      { name: "c", cluster: { server: input.server, "certificate-authority-data": base64("CA") } },
+    ],
+    users: [{ name: "u", user: input.user }],
+  });
+}
+
+/** A posted Job body, as far as the tests read it. */
+const JobBodySchema = z.object({
+  metadata: z.object({ name: z.string(), labels: z.unknown() }),
+  spec: z.object({
+    template: z.object({
+      spec: z.object({
+        containers: z.array(
+          z.object({ env: z.array(z.object({ name: z.string(), value: z.string() })) }),
+        ),
+      }),
+    }),
+  }),
+});
+
+const jobBody = (call: ApiCall | undefined) => JobBodySchema.parse(call?.body);
+
+/** The env of the box container in a posted Job. */
+function jobEnv(call: ApiCall | undefined): Record<string, string> {
+  const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
+  return Object.fromEntries(entries.map((e) => [e.name, e.value]));
+}
+
+interface FakeJobInput {
+  name: string;
+  status: Record<string, number>;
+}
+
+function fakeJob(input: FakeJobInput) {
+  const env = [{ name: "TENBOX_CMD", value: "tenbox build TEN-1" }];
+  return {
+    metadata: { name: input.name, creationTimestamp: CREATED },
+    spec: { template: { spec: { containers: [{ name: "box", env }] } } },
+    status: input.status,
+  };
+}
+
+describe("machine on k8s", () => {
+  let api: FakeApi;
+  let template: string;
+  let kubeFile: string;
+
+  const writeManifest = (machineLine: string) =>
+    files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\n${machineLine}`);
+
+  const build = () => machine(["run", "TEN-1", "--", "tenbox", "build", "TEN-1"]);
+
+  const posts = () => api.calls.filter((c) => c.method === "POST");
+
+  beforeEach(async () => {
+    api = startFakeApi();
+    template = path.join(project.root, "tenyard", "task");
+    kubeFile = path.join(project.root, "kubeconfig");
+    await files.write(path.join(template, "job.yaml"), JOB_TEMPLATE);
+    await files.write(path.join(template, "pvc.yaml"), PVC_TEMPLATE);
+    await files.write(kubeFile, kubeconfig({ server: api.url, user: { token: TOKEN } }));
+    await writeManifest(`machine: { kind: k8s, template: ${template} }\n`);
+    await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
+    await writeLogin(Date.now() + DAY_MS);
+    env.KUBECONFIG = kubeFile;
+  });
+
+  afterEach(() => api.stop());
+
+  test("machine run on k8s posts the PVC and the Job", async () => {
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(posts().map((c) => c.path)).toEqual([PVCS_PATH, JOBS_PATH]);
+    const [pvc, job] = posts();
+    expect(pvc?.body).toMatchObject({
+      metadata: { name: "task-ten-1", labels: { task: "TEN-1" } },
+    });
+    const meta = jobBody(job).metadata;
+    expect(meta.name).toMatch(JOB_NAME);
+    expect(meta.labels).toEqual({ app: "tenyard", task: "TEN-1" });
+    expect(jobEnv(job)).toEqual({
+      TENBOX_TASK: "TEN-1",
+      TENBOX_PROJECT: "demo",
+      TENBOX_REPO: "https://github.com/o/demo.git",
+      TENBOX_CMD: "tenbox build TEN-1",
+    });
+    expect(posts().map((c) => c.auth)).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`]);
+    expect(run.json).toEqual({
+      ok: true,
+      task: "TEN-1",
+      cmd: "build",
+      url: `${api.url}${JOBS_PATH}/${meta.name}`,
+    });
+    expect(run.out).not.toContain(TOKEN);
+    const logged = await ghCalls();
+    expect(logged).toBe("");
+  });
+
+  test("machine run on k8s keeps an existing PVC", async () => {
+    api.pvcStatus = HTTP_CONFLICT;
+    const run = await build();
+    expect([run.code, run.json.ok]).toEqual([0, true]);
+    expect(posts().map((c) => c.path)).toEqual([PVCS_PATH, JOBS_PATH]);
+  });
+
+  test("machine run without a kubeconfig fails before any request", async () => {
+    env.KUBECONFIG = path.join(project.root, "missing");
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "no-kubeconfig"]);
+    expect(api.calls).toEqual([]);
+    const logged = await ghCalls();
+    expect(logged).toBe("");
+  });
+
+  test("machine hetzner keeps the machine.yml run", async () => {
+    await writeManifest("machine: hetzner\n");
+    const run = await build();
+    expect(run.json).toEqual({ ok: true, task: "TEN-1", cmd: "build", url: RUN_URL });
+    const logged = await ghCalls();
+    expect(logged).toBe("workflow run machine.yml -f task=TEN-1 -f cmd=build\n");
+    expect(api.calls).toEqual([]);
+  });
+
+  test("an unknown machine value is a manifest error", async () => {
+    await writeManifest("machine: fly\n");
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "manifest"]);
+    expect(String(run.json.error)).toContain("machine");
+    expect(api.calls).toEqual([]);
+  });
+
+  test("machine ls on k8s lists the Jobs with their state", async () => {
+    api.jobs = [
+      fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } }),
+      fakeJob({ name: "task-ten-2-1021-090000", status: { succeeded: 1 } }),
+    ];
+    const run = await machine(["ls"]);
+    const row = (id: string) => ({
+      id,
+      title: "tenbox build TEN-1",
+      url: `${api.url}${JOBS_PATH}/${id}`,
+      created: CREATED,
+    });
+    expect(run.json).toEqual({
+      ok: true,
+      runs: [
+        { ...row("task-ten-1-1021-100000"), status: "in_progress", conclusion: null },
+        { ...row("task-ten-2-1021-090000"), status: "completed", conclusion: "success" },
+      ],
+    });
+    expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
+      ["GET", JOBS_PATH, "?labelSelector=app%3Dtenyard"],
+    ]);
+  });
+
+  test("a failed Job is completed with conclusion failure", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
+    const run = await machine(["ls"]);
+    expect(run.json.runs).toMatchObject([{ status: "completed", conclusion: "failure" }]);
+  });
+
+  test("a run refuses with machine-busy while a Job of the task is active", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "machine-busy"]);
+    expect(String(run.json.error)).toContain("task-ten-1-1021-100000");
+    expect(api.calls.map((c) => [c.method, c.query])).toEqual([
+      ["GET", "?labelSelector=task%3DTEN-1"],
+    ]);
+  });
+
+  test("a missing job.yaml is a template error before any request", async () => {
+    await files.remove(path.join(template, "job.yaml"));
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "template"]);
+    expect(String(run.json.error)).toContain("job.yaml");
+    expect(api.calls).toEqual([]);
+  });
+
+  test("the title reaches TENBOX_CMD quoted for the shell", async () => {
+    const words = ["tenbox", "start", "TEN-1", "--title", "Fix it's $(x)"];
+    const run = await machine(["run", "TEN-1", "--", ...words]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_CMD).toBe(`tenbox start TEN-1 --title 'Fix it'\\''s $(x)'`);
+  });
+
+  test("a client certificate and key are sent without a token", async () => {
+    const user = { "client-certificate-data": base64("CERT"), "client-key-data": base64("KEY") };
+    await files.write(kubeFile, kubeconfig({ server: api.url, user }));
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(api.calls.map((c) => c.auth)).toEqual([null, null, null]);
+    expect(run.out).not.toContain(base64("KEY"));
   });
 });
