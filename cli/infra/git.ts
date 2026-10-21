@@ -44,6 +44,7 @@ export const git = {
   findRemoteUrl,
   deleteRemoteBranch,
   fetch,
+  fastForwardBranch,
   addDetachedWorktree,
   merge,
   rebaseOnto,
@@ -259,6 +260,24 @@ async function deleteRemoteBranch(dir: string, branch: string): Promise<void> {
 /** Updates the remote-tracking branches of `origin`; nothing local moves. */
 async function fetch(dir: string): Promise<void> {
   await run(["fetch", "--quiet", "origin"], dir);
+}
+
+/**
+ * Fetches `origin/<branch>` in `dir` and moves the local branch to it when that is a
+ * fast-forward. A branch that is ahead, diverged or has no remote branch stays. When `dir` has
+ * the branch checked out, its files move too.
+ */
+async function fastForwardBranch(dir: string, branch: string): Promise<void> {
+  await run(["fetch", "--quiet", "origin", branch], dir);
+  const fetched = await run(["rev-parse", "FETCH_HEAD"], dir);
+  const remote = fetched.trim();
+  const local = await findCommit(dir, `refs/heads/${branch}`);
+  if (local === null || local === remote) return;
+  const behind = await isAncestor(dir, local, remote);
+  if (!behind) return;
+  const current = await findBranch(dir);
+  if (current === branch) await run(["merge", "--ff-only", "--quiet", remote], dir);
+  else await run(["update-ref", `refs/heads/${branch}`, remote, local], dir);
 }
 
 /** A worktree with no branch, checked out at `ref`. */

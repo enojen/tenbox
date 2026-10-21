@@ -339,6 +339,56 @@ describe("tenbox close", () => {
 
     const remoteHeads = (origin: string) => git.run(["branch", "--list"], origin);
 
+    /** Pushes a new commit to `origin/feat/T-1` from a second clone; returns its sha. */
+    async function pushFromOtherClone(origin: string): Promise<string> {
+      const other = path.join(project.root, "other-branch");
+      await git.run(["clone", "-q", "-b", "feat/T-1", origin, other], project.root);
+      await git.run(["config", "user.name", "t"], other);
+      await git.run(["config", "user.email", "t@example.com"], other);
+      await commitOn(other, "remote.txt");
+      await git.run(["push", "-q", "origin", "feat/T-1"], other);
+      const head = await git.run(["rev-parse", "HEAD"], other);
+      return head.trim();
+    }
+
+    test("close fast-forwards a task branch pushed from another clone", async () => {
+      await setup();
+      const origin = await addOrigin();
+      const head = await pushFromOtherClone(origin);
+      const bin = await ghPath(mergedGh(head, 1));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const worktreeIsDir = await files.isDir(taskWorktree);
+      const branches = await branchList();
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+      expect(worktreeIsDir).toBe(false);
+      expect(branches).toBe("");
+    });
+
+    test("close keeps a branch that is ahead of origin", async () => {
+      await setup();
+      const origin = await addOrigin();
+      const originHead = await git.run(["rev-parse", "feat/T-1"], origin);
+      await commitOn(taskWorktree, "local.txt");
+      const localHead = await git.run(["rev-parse", "feat/T-1"], project.mainDir);
+      const bin = await ghPath(mergedGh(originHead.trim(), 1));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      const after = await git.run(["rev-parse", "feat/T-1"], project.mainDir);
+      expect(run.json).toMatchObject({ code: "unmerged" });
+      expect(after).toBe(localHead);
+    });
+
+    test("close goes on when the remote branch is gone", async () => {
+      await setup();
+      const origin = path.join(project.root, "origin.git");
+      await git.run(["init", "-q", "--bare", "-b", "main", origin], project.root);
+      await git.run(["remote", "add", "origin", origin], project.mainDir);
+      await git.run(["push", "-q", "origin", "main"], project.mainDir);
+      const bin = await binWithGit("nogh-remote");
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      expect([run.code, run.json.ok]).toEqual([0, true]);
+    });
+
     test("a merge commit is refused and nothing changes", async () => {
       await setup();
       const { origin, bin } = await mergedOnGithub(2);

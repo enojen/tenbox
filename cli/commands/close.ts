@@ -264,6 +264,7 @@ const MERGED_IN_GIT: Merge = { source: MERGE_SOURCE.git, commit: null, pr: null 
 /** A found PR decides alone; without one, a test merge into the base decides. */
 async function findMerge(target: CloseTarget): Promise<Merge> {
   const { mainDir, branch } = target;
+  await fastForwardBranch(target);
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
   if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
@@ -274,6 +275,17 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
     commit: pr.mergeCommit?.oid ?? null,
     pr: { createdAt: pr.createdAt, mergedAt: pr.mergedAt ?? null },
   };
+}
+
+/** A PR merged from another clone has a head the local branch lacks; a failure changes nothing. */
+async function fastForwardBranch(target: CloseTarget): Promise<void> {
+  const { mainDir, taskWorktree, branch } = target;
+  const hasWorktree = await files.isDir(taskWorktree);
+  try {
+    await git.fastForwardBranch(hasWorktree ? taskWorktree : mainDir, branch);
+  } catch (e) {
+    log(`tenbox close: git fetch origin ${branch} failed (${errorMessage(e)})`);
+  }
 }
 
 async function findTestMerge(target: CloseTarget): Promise<Merge> {
