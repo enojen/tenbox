@@ -8,6 +8,10 @@ export function noPlanError(dir: string): TenboxError {
   return new TenboxError(`no plan.md in ${dir}; run /tenbox-plan first`, "no-plan");
 }
 
+export function noPlanResultError(dir: string): TenboxError {
+  return new TenboxError(`no valid plan.json in ${dir}; run /tenbox-plan first`, "no-plan");
+}
+
 export function notApprovedError(id: string): TenboxError {
   return new TenboxError(`${id} has no approved plan; run: tenbox approve ${id}`, "not-approved");
 }
@@ -170,6 +174,24 @@ export function checksStaleError(input: ChecksStale): TenboxError {
   return new TenboxError(
     `group ${group}: ${ran}, HEAD is ${head}; run: tenbox check ${id}${flag}, or pass --force`,
     "checks-stale",
+  );
+}
+
+export interface CheckFailed {
+  id: string;
+  group: number;
+  /** `fast`: the latest `checks.json`; `full`: the full tier `tenbox build done` ran. */
+  tier: string;
+  summary: string;
+}
+
+/** `details` keeps the group and the tier, so the workflow can tell a failed full tier apart. */
+export function checkFailedError(input: CheckFailed): TenboxError {
+  const { id, group, tier, summary } = input;
+  return new TenboxError(
+    `group ${group}: the ${tier} checks of ${id} have new failures:\n${summary}`,
+    "check-failed",
+    { group, tier },
   );
 }
 

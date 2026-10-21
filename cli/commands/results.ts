@@ -163,6 +163,12 @@ export interface PrResult {
   groups: GroupPrResult[];
 }
 
+/** The `pr` of `tenbox build done` when `tenbox pr` threw: the build stays recorded. */
+export interface PrError {
+  ok: false;
+  error: string;
+}
+
 export interface ProofResult {
   ok: true;
   task: string;

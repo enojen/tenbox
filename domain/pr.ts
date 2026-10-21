@@ -53,6 +53,12 @@ export function checksCommit(text: string | null): string | null {
   return typeof parsed?.commit === "string" ? parsed.commit : null;
 }
 
+/** True when a round's `checks.json` has `ok: true`; false when it is missing or not JSON. */
+export function checksOk(text: string | null): boolean {
+  if (text === null) return false;
+  return parseObject(text)?.ok === true;
+}
+
 /** What the CI checks of a PR add up to; `none` is a PR with no checks reported. */
 export const CI_STATE = { pass: "pass", fail: "fail", pending: "pending", none: "none" } as const;
 

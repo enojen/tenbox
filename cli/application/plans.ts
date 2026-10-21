@@ -1,9 +1,10 @@
+import { noPlanResultError } from "../../domain/errors/tasks.ts";
 import { type PlanResult, parsePlan, planFile, readPlan } from "../../domain/plan.ts";
 import { tenboxDir } from "../../domain/task.ts";
 import { files } from "../infra/files.ts";
 
 /** Plans: the validated planner result, `plan.json` in the task dir. */
-export const plans = { save, find };
+export const plans = { save, find, get };
 
 /** The saved plan and the path of `plan.json`. */
 interface SavedPlan {
@@ -23,4 +24,11 @@ async function save(taskWorktree: string, planText: string): Promise<SavedPlan> 
 async function find(dir: string): Promise<PlanResult | null> {
   const text = await files.read(planFile(dir));
   return text === null ? null : readPlan(text);
+}
+
+/** The plan result in `dir`; `no-plan` when `plan.json` is missing or not valid. */
+async function get(dir: string): Promise<PlanResult> {
+  const plan = await find(dir);
+  if (plan === null) throw noPlanResultError(dir);
+  return plan;
 }

@@ -446,6 +446,8 @@ test("without --wait the group has no ci key and gh pr checks is never called", 
 
 const ONE_MINUTE_MS = 60_000;
 const HALF_HOUR_MS = 30 * ONE_MINUTE_MS;
+/** Half an hour of polls spawns the fake `gh` many times; under the full suite that takes over 5 s. */
+const PENDING_WAIT_TEST_TIMEOUT_MS = 30_000;
 
 interface WaitOutcome {
   result: Awaited<ReturnType<typeof openPr>> | null;
@@ -483,26 +485,30 @@ async function waitOnFakeClock(env: Record<string, string>) {
   }
 }
 
-test("--wait with checks that stay pending times out with ci-timeout and the pending checks", async () => {
-  await commit(taskWorktree, "b.txt");
-  const gh = await installGh();
-  await gh.setChecks("unit\tpending\t0\thttps://x/2\n", 8);
-  const { caught, slept } = await waitOnFakeClock(gh.env);
-  expect(caught).toMatchObject({
-    code: "ci-timeout",
-    details: {
-      groups: [
-        {
-          ci: {
-            state: "pending",
-            checks: [{ name: "unit", state: "pending", time: "0", url: "https://x/2" }],
+test(
+  "--wait with checks that stay pending times out with ci-timeout and the pending checks",
+  async () => {
+    await commit(taskWorktree, "b.txt");
+    const gh = await installGh();
+    await gh.setChecks("unit\tpending\t0\thttps://x/2\n", 8);
+    const { caught, slept } = await waitOnFakeClock(gh.env);
+    expect(caught).toMatchObject({
+      code: "ci-timeout",
+      details: {
+        groups: [
+          {
+            ci: {
+              state: "pending",
+              checks: [{ name: "unit", state: "pending", time: "0", url: "https://x/2" }],
+            },
           },
-        },
-      ],
-    },
-  });
-  expect(slept).toBeGreaterThanOrEqual(HALF_HOUR_MS);
-});
+        ],
+      },
+    });
+    expect(slept).toBeGreaterThanOrEqual(HALF_HOUR_MS);
+  },
+  PENDING_WAIT_TEST_TIMEOUT_MS,
+);
 
 test("--wait with no checks gives ci none after the register window and exits 0", async () => {
   await commit(taskWorktree, "b.txt");

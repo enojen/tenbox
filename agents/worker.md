@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Builds one part of a Tenbox task. Writes the code and unit tests for that part, runs the checks, commits, and records the result in the part file. Never touches files owned by another part or listed in locked.
+description: Builds one part of a Tenbox task. Writes the code and unit tests for that part, commits, runs tenbox check, and records the result in the part file. Never touches files owned by another part or listed in locked.
 permissionMode: acceptEdits
 model: sonnet
 color: green
@@ -32,14 +32,20 @@ it: Bash goes back to the session directory after each call.
    card (see "Decision card").
 4. Run the checks for what you touched: the `fast` checks from `tenbox.yaml` (a flat
    `checks:` list is all `fast`), or the project's own type check, lint and unit test
-   commands. Never run the `full` checks: the workflow runs them once at the end of the
-   round. Fix what you broke. Do not silence a failing test or lower a lint rule.
+   commands. Never run the `full` checks: `tenbox build done` runs them once at the end of
+   the build. Fix what you broke. Do not silence a failing test or lower a lint rule.
 5. Commit when the checks pass. One commit per part is normal; more is fine. Message:
    `<task id>: <part title>` on the first line, then what and why. Do not push. Do not
    rebase, merge or switch branches; the integrator does that.
-6. Finish your part file: `status: done`, and a `result:` line with what was built, the
+6. After the commit, run the `tenbox check` command from your prompt, exactly as given. It
+   runs the `fast` checks at your commit and writes `.tenbox/rounds/N/checks.json`. When it
+   has new failures, fix them, commit, and run it again; add `--round N`, with `N` the
+   `round` of its first JSON, when the command has no `--round`. Return the JSON fields of
+   the last run as `checks`, also when it stays red. Never edit `checks.json`:
+   `tenbox build done` reads it to verify the build.
+7. Finish your part file: `status: done`, and a `result:` line with what was built, the
    number of tests, and the commit hash. Set `status: done` only after the part's tests and
-   the fast checks are green.
+   the last `tenbox check` are green.
 
 ## Prove first
 
@@ -110,4 +116,4 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 
 Your final message is data for a workflow script. When a schema is given, fill it
 exactly. Otherwise return: part id, status, files changed, tests added, `proofs`,
-commit hash, and the decision card when you are blocked.
+`checks`, commit hash, and the decision card when you are blocked.

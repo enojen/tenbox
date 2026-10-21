@@ -28,8 +28,18 @@ afterEach(async () => {
 });
 
 const decide = (...args: string[]) => tenbox(["decide", "T-1", ...args], project.mainDir, fake.env);
+const PLAN = {
+  summary: "s",
+  estimated_lines: 1,
+  parts: [{ id: "01", difficulty: "easy" }],
+  criteria: [],
+  lenses: [],
+  questions: [],
+};
+const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", parts: PLAN.parts, lenses: [] })}`;
 const approve = async () => {
   await files.write(path.join(path.dirname(decisionsFile), "plan.md"), "# plan\n");
+  await files.writeJson(path.join(path.dirname(decisionsFile), "plan.json"), PLAN);
   await tenbox(["approve", "T-1"], project.mainDir, fake.env);
 };
 const bgCalls = async () => {
@@ -113,10 +123,10 @@ describe("tenbox decide", () => {
         file: decisionsFile,
         added: 1,
         ticked: 1,
-        sent: "/tenbox-build T-1",
+        sent: SENT,
       },
     ]);
-    expect(calls.map((call) => call.args.at(-1))).toEqual(["/tenbox-build T-1"]);
+    expect(calls.map((call) => call.args.at(-1))).toEqual([SENT]);
   });
 
   test("not-approved comes after the answers are written and starts nothing", async () => {

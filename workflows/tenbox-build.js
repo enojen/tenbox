@@ -1,13 +1,16 @@
 export const meta = {
   name: 'tenbox-build',
   description: 'Build, check and review one Tenbox task, round after round, until it passes or needs you',
-  whenToUse: 'In a task worktree after the plan is approved. args: the task id, or { task, feedback, maxRounds, answer }.',
+  whenToUse: 'In a task worktree after the plan is approved; `tenbox build <id>` starts it. args: { task, parts, lenses, groups, feedback, maxRounds, answer }, or that object as JSON text.',
   phases: [{ title: 'Build' }, { title: 'Checks' }, { title: 'Review' }],
 }
 
-const input = typeof args === 'string' ? { task: args } : (args ?? {})
-const task = input.task
-if (!task) throw new Error('args: the task id, for example "TEN-301"')
+// `tenbox build` sends the plan as JSON text; `tenbox answer` resumes with the object.
+const input = typeof args === 'string' && args.trim().startsWith('{') ? JSON.parse(args) : (args ?? {})
+const task = typeof input === 'string' ? input : input.task
+if (!task || !Array.isArray(input.parts)) {
+  throw new Error(`args: the parts and lenses of plan.json are missing; start it with \`tenbox build ${task ?? '<id>'}\``)
+}
 const maxRounds = input.maxRounds ?? 3
 // `tenbox answer` resumes the run with { round, part, option, text }. Only that worker's prompt
 // changes, so every earlier agent returns from the resume cache.
@@ -31,7 +34,6 @@ const BUILD_STATUS = {
   readyForYou: 'ready-for-you',
   needsYou: 'needs-you',
   failed: 'failed',
-  notApproved: 'not-approved',
 }
 // The worker statuses in agents/worker.md (no TypeScript source).
 const WORKER_STATUS = { done: 'done', blocked: 'blocked' }
@@ -45,29 +47,10 @@ const PART_LIST = {
   },
 }
 const LENS_LIST = { type: 'array', items: { enum: ['security', 'contract'] } }
-const GROUP = {
-  type: 'object',
-  properties: {
-    id: { type: 'integer' },
-    name: { type: 'string' },
-    needs: { type: 'array', items: { type: 'integer' } },
-    recipe: {
-      type: 'object',
-      properties: {
-        model: { enum: ['haiku', 'sonnet', 'opus', 'fable'] },
-        effort: { enum: ['low', 'medium', 'high'] },
-        lenses: LENS_LIST,
-        tier: { enum: ['fast', 'full'] },
-      },
-      required: ['model', 'effort', 'lenses', 'tier'],
-    },
-  },
-  required: ['id', 'name', 'needs', 'recipe'],
-}
-// Round 1 of the task also lists the groups, so a plan without groups needs no extra agent.
+// Round 1 takes the parts from the args; a later round asks the planner.
 const PARTS = {
   type: 'object',
-  properties: { parts: PART_LIST, lenses: LENS_LIST, groups: { type: 'array', items: GROUP } },
+  properties: { parts: PART_LIST, lenses: LENS_LIST },
   required: ['parts', 'lenses'],
 }
 const GROUP_PARTS = { type: 'object', properties: { parts: PART_LIST }, required: ['parts'] }
@@ -75,6 +58,20 @@ const GROUP_PARTS = { type: 'object', properties: { parts: PART_LIST }, required
 const WORKTREE = {
   type: 'object',
   properties: { ok: { type: 'boolean' }, worktree: { type: 'string' }, error: { type: 'string' } },
+  required: ['ok'],
+}
+// Only the fields the loop reads; the full result is in .tenbox/rounds/N/checks.json.
+// `commit` and `file` come only from the CLI: without them the command did not run.
+const CHECKS = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    commit: { type: 'string' },
+    round: { type: 'integer' },
+    file: { type: 'string' },
+    summary: { type: 'string' },
+    error: { type: 'string' },
+  },
   required: ['ok'],
 }
 const NON_BLANK = { type: 'string', pattern: '\\S' }
@@ -104,22 +101,10 @@ const BUILT = {
         required: ['file', 'test', 'failure'],
       },
     },
+    // The JSON of the worker's last `tenbox check`.
+    checks: CHECKS,
   },
   required: ['status', 'proofs'],
-}
-// Only the fields the loop reads; the full result is in .tenbox/rounds/N/checks.json.
-// `commit` and `file` come only from the CLI: without them the command did not run.
-const CHECKS = {
-  type: 'object',
-  properties: {
-    ok: { type: 'boolean' },
-    commit: { type: 'string' },
-    round: { type: 'integer' },
-    file: { type: 'string' },
-    summary: { type: 'string' },
-    error: { type: 'string' },
-  },
-  required: ['ok'],
 }
 const MAX_NICE_TO_HAVE = 3
 const REVIEW = {
@@ -136,19 +121,7 @@ const REVIEW = {
   required: ['must_fix', 'nice_to_have', 'attention', 'unproven'],
 }
 
-// The approval gate: `file` comes only from the CLI; without it the command did not run.
-const APPROVED = {
-  type: 'object',
-  properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
-  required: ['ok'],
-}
-// Every end status goes through `tenbox build done`; `recorded` is its JSON.
-const RECORDED = {
-  type: 'object',
-  properties: { ok: { type: 'boolean' }, file: { type: 'string' }, error: { type: 'string' } },
-  required: ['ok'],
-}
-// A ready build opens the PR; a failed `tenbox pr` keeps the status and shows in `pr.ok`.
+// A ready build opens the draft PR in `tenbox build done`; a failed one shows in `pr.ok`.
 const PR = {
   type: 'object',
   properties: {
@@ -158,7 +131,21 @@ const PR = {
   },
   required: ['ok'],
 }
-// Every reviewed round's attention items, each with where it came from; `finish` merges them.
+// Every end status goes through `tenbox build done`; `recorded` is its JSON.
+// A refusal has `code`, and `check-failed` has the group and the tier in `details`.
+const RECORDED = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    file: { type: 'string' },
+    error: { type: 'string' },
+    code: { type: 'string' },
+    details: { type: 'object', properties: { group: { type: 'integer' }, tier: { type: 'string' } } },
+    pr: PR,
+  },
+  required: ['ok'],
+}
+// Every reviewed round's attention items, each with where it came from; `record` merges them.
 const attentionItems = []
 const ATTENTION = {
   type: 'object',
@@ -177,23 +164,22 @@ const mergeAttention = async () => {
     { agentType: 'reviewer', schema: ATTENTION, phase: 'Review', label: 'merge attention' })
   return merged?.attention ?? attentionItems.map((item) => item.text)
 }
-const finish = async (result) => {
-  const full = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...result, attention: await mergeAttention() }
-  // A quoted heredoc: a quote in the text cannot break the shell.
-  const recorded = await agent(
-    `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(full)}\nEOF\n)"`,
-    { agentType: 'runner', schema: RECORDED, phase: 'Build', label: 'record build' })
-  if (full.status !== BUILD_STATUS.readyForYou || !recorded?.ok) return { ...full, recorded }
-  const pr = await agent(`Run \`tenbox pr ${task}\` and return its JSON.`,
-    { agentType: 'runner', schema: PR, phase: 'Build', label: 'open pr' })
-  return { ...full, recorded, pr }
+// A quoted heredoc: a quote in the text cannot break the shell.
+const recordBuild = (result) => agent(
+  `Run this command and return its JSON:\n\ntenbox build done ${task} --json "$(cat <<'EOF'\n${JSON.stringify(result)}\nEOF\n)"`,
+  { agentType: 'runner', schema: RECORDED, phase: 'Build', label: 'record build' })
+const record = async (end) => {
+  const result = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...end, ...collected(), attention: await mergeAttention() }
+  return { ...result, recorded: await recordBuild(result) }
 }
-
-phase('Build')
-const approved = await agent(`Run \`tenbox approved ${task}\` and return its JSON.`,
-  { agentType: 'runner', schema: APPROVED, phase: 'Build', label: 'approval' })
-if (!approved?.ok || !approved.file) {
-  return finish({ status: BUILD_STATUS.notApproved, error: approved?.error ?? 'tenbox approved did not run' })
+// `tenbox build done` checks a ready build: a red full tier is one more round of its group.
+const redFullTier = (done) => done.recorded?.code === 'check-failed' && done.recorded.details?.tier === 'full'
+// Any other refusal of a ready build is recorded as failed, with the refusal as feedback.
+const finish = async (done) => {
+  if (done.status !== BUILD_STATUS.readyForYou || done.recorded?.ok) return done
+  const { recorded, ...ready } = done
+  const failed = { ...ready, status: BUILD_STATUS.failed, feedback: recorded?.error ?? 'tenbox build done did not run' }
+  return { ...failed, recorded: await recordBuild(failed) }
 }
 
 // Every round's unproven items: a part caught once keeps its -1 even when the fix lands.
@@ -205,8 +191,9 @@ const proofs = []
 const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
 const collected = () => ({ nice_to_have: niceToHave, unproven, proofs })
 
-const TASK_SCOPE = { group: null, worktree: null, tag: '', checkFlag: '' }
-const groupScope = (group, worktree) => ({ group, worktree, tag: `g${group.id} `, checkFlag: ` --group ${group.id}` })
+// `reviewedCommit` is the checks commit of the last round that ran a review; a feedback round reviews only the lines after it.
+const TASK_SCOPE = { group: null, worktree: null, tag: '', checkFlag: '', reviewedCommit: null }
+const groupScope = (group, worktree) => ({ group, worktree, tag: `g${group.id} `, checkFlag: ` --group ${group.id}`, reviewedCommit: null })
 const worktreeLine = (scope) => scope.worktree
   ? `\nWork in the group worktree ${scope.worktree}: run every command and edit every file there.`
   : ''
@@ -220,8 +207,7 @@ const workerModel = (scope, part) => scope.group
 
 const listParts = async (scope, round, feedback) => {
   if (!scope.group) {
-    const groupsAsk = round === 1 ? ' Also list the groups of .tenbox/plan.json, an empty list when it has none.' : ''
-    return agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses.${groupsAsk} Round feedback: ${feedback}`,
+    return agent(`Task ${task}, round ${round}. List the parts still to build, and the done parts this feedback asks to change, and the extra review lenses. Round feedback: ${feedback}`,
       { agentType: 'planner', schema: PARTS, phase: 'Build', label: `round ${round}: parts` })
   }
   const { parts } = await agent(`Task ${task}, group ${scope.group.id}, round ${round}. List the parts still to build in group ${scope.group.id}, and the done parts of that group this feedback asks to change. Round feedback: ${feedback}`,
@@ -229,46 +215,46 @@ const listParts = async (scope, round, feedback) => {
   return { parts, lenses: scope.group.recipe.lenses }
 }
 
-const buildRounds = async (scope, listing) => {
-  let feedback = input.feedback ?? 'none'
-  // The checks commit of the last round that ran a review; a feedback round reviews only the lines after it.
-  let reviewedCommit = null
-  const scopeLine = () => reviewedCommit
-    ? `\nThis is a feedback round: review only the lines changed since ${reviewedCommit}: \`git diff ${reviewedCommit}..HEAD\`.`
+// `start` is the first round, its feedback, and its listing of parts and lenses when the args give one.
+const buildRounds = async (scope, start) => {
+  let feedback = start.feedback
+  const scopeLine = () => scope.reviewedCommit
+    ? `\nThis is a feedback round: review only the lines changed since ${scope.reviewedCommit}: \`git diff ${scope.reviewedCommit}..HEAD\`.`
     : ''
-  // A worker builds one part; a fix attempt carries the red check summary and reopens the part file.
-  const buildPart = async (round, part, { attempt, summary }) => {
+  // `checkRound` is the round number of the first check; later checks of the round reuse it.
+  const checkCommand = (checkRound) => `tenbox check ${task}${scope.checkFlag}${checkRound ? ` --round ${checkRound}` : ''}`
+  // A plan part has no goal: the worker reads its part file.
+  const partLine = (part) => `Task ${task}, part ${part.id}${part.goal ? `: ${part.goal}` : ''}.`
+  // A worker builds one part and runs its check; a fix attempt carries the red check summary and reopens the part file.
+  const buildPart = async (round, part, { attempt, summary, checkRound }) => {
     const fix = attempt === 'fix'
     const prompt = fix
-      ? `Task ${task}, part ${part.id}: ${part.goal}. The check of this part failed: ${summary}\nSet \`status: todo\` in your part file first, then fix it.`
-      : `Task ${task}, part ${part.id}: ${part.goal}. Round feedback: ${feedback}${answerLine(round, part.id)}`
-    const built = await agent(prompt + worktreeLine(scope),
+      ? `${partLine(part)} The check of this part failed: ${summary}\nSet \`status: todo\` in your part file first, then fix it.`
+      : `${partLine(part)} Round feedback: ${feedback}${answerLine(round, part.id)}`
+    const checkLine = `\nAfter your commit, run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
+    const built = await agent(prompt + checkLine + worktreeLine(scope),
       { agentType: 'worker', schema: BUILT, phase: 'Build', label: `round ${round}: ${scope.tag}${part.id}${fix ? ' fix' : ''}`, ...workerModel(scope, part) })
     proofs.push(...(built?.proofs ?? []).map((proof) => ({ ...proof, part: part.id })))
-    if (built && built.status !== WORKER_STATUS.blocked) return {}
+    if (built && built.status !== WORKER_STATUS.blocked) return { checks: built.checks ?? null }
     return { end: { status: BUILD_STATUS.needsYou, round, part: part.id, ...(built?.decision && { decision: built.decision }) } }
   }
-  // `checkRound` is the round number of the first check; later checks of the round reuse it.
-  const runChecks = (round, label, checkRound) => agent(
-    `Run \`tenbox check ${task}${scope.checkFlag}${checkRound ? ` --round ${checkRound}` : ''}\` and return its JSON.`,
-    { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: ${scope.tag}${label}` })
-  for (let round = 1; round <= maxRounds; round++) {
+  for (let round = start.round; round <= maxRounds; round++) {
     phase('Build')
-    const { parts, lenses } = round === 1 && listing ? listing : await listParts(scope, round, feedback)
+    const { parts, lenses } = round === start.round && start.listing ? start.listing : await listParts(scope, round, feedback)
     // One after another: the parts of one scope share one worktree.
-    // A part's check runs at once; a red check gives its worker one fix in the same round.
+    // A red check of a worker gives it one fix in the same round.
     let checkRound = null
     let checks = null
     let redFeedback = null
     for (const part of parts) {
-      const first = await buildPart(round, part, { attempt: 'build', summary: null })
+      const first = await buildPart(round, part, { attempt: 'build', summary: null, checkRound })
       if (first.end) return first.end
-      checks = await runChecks(round, `${part.id} check`, checkRound)
+      checks = first.checks
       checkRound = checks?.round ?? checkRound
       if (checksGreen(checks)) continue
-      const fixed = await buildPart(round, part, { attempt: 'fix', summary: checksSummary(checks) })
+      const fixed = await buildPart(round, part, { attempt: 'fix', summary: checksSummary(checks), checkRound })
       if (fixed.end) return fixed.end
-      checks = await runChecks(round, `${part.id} check fix`, checkRound)
+      checks = fixed.checks
       checkRound = checks?.round ?? checkRound
       if (checksGreen(checks)) continue
       redFeedback = `part ${part.id}: ${checksSummary(checks)}`
@@ -278,7 +264,10 @@ const buildRounds = async (scope, listing) => {
       feedback = redFeedback
       continue
     }
-    if (!parts.length) checks = await runChecks(round, 'checks', null)
+    if (!parts.length) {
+      checks = await agent(`Run \`${checkCommand(null)}\` and return its JSON.`,
+        { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: ${scope.tag}checks` })
+    }
     if (!checksGreen(checks)) {
       feedback = checksSummary(checks)
       continue
@@ -297,7 +286,7 @@ const buildRounds = async (scope, listing) => {
       roundParts.add(item.part)
       unproven.push(item)
     }
-    reviewedCommit = checks.commit
+    scope.reviewedCommit = checks.commit
     for (const r of reviews) attentionItems.push(...r.attention.map((text) => ({ round, lens: r.lens, worktree: scope.worktree, text })))
     niceToHave.push(...reviews.flatMap((r) => r.nice_to_have))
     const mustFix = reviews.flatMap((r) => r.must_fix)
@@ -305,29 +294,31 @@ const buildRounds = async (scope, listing) => {
       feedback = mustFix.join('\n')
       continue
     }
-    if (scope.group?.recipe.tier === 'fast') return { status: BUILD_STATUS.readyForYou, round }
-    phase('Checks')
-    const full = await agent(`Run \`tenbox check ${task}${scope.checkFlag} --tier full --round ${round}\` and return its JSON.`,
-      { agentType: 'runner', schema: CHECKS, phase: 'Checks', label: `round ${round}: ${scope.tag}full checks` })
-    if (!full?.ok) {
-      feedback = full?.summary ?? full?.error ?? 'tenbox check --tier full did not run'
-      continue
-    }
     return { status: BUILD_STATUS.readyForYou, round }
   }
   return { status: BUILD_STATUS.failed, round: maxRounds, feedback }
 }
 
+const firstStart = (listing) => ({ round: 1, feedback: input.feedback ?? 'none', listing })
+// Each group's scope, so a red full tier can give that group one more round.
+const scopes = new Map()
+// Group 1 is the task worktree, where this session runs.
+const openWorktree = (group) => group.id === 1
+  ? { ok: true, worktree: null }
+  : agent(`Run \`tenbox worktree ${task} --group ${group.id}\` and return its JSON.`,
+    { agentType: 'runner', schema: WORKTREE, phase: 'Build', label: `round 1: g${group.id} worktree` })
 const WAITING = 'waiting'
 const buildGroup = async (group, runs) => {
   const needs = await Promise.all(group.needs.map((id) => runs.get(id)))
   if (needs.some((end) => end.status !== BUILD_STATUS.readyForYou)) return { status: WAITING }
-  const opened = await agent(`Run \`tenbox worktree ${task} --group ${group.id}\` and return its JSON.`,
-    { agentType: 'runner', schema: WORKTREE, phase: 'Build', label: `round 1: g${group.id} worktree` })
-  if (!opened?.ok || !opened.worktree) {
+  const opened = await openWorktree(group)
+  if (!opened?.ok || opened.worktree === undefined) {
     return { status: BUILD_STATUS.failed, round: 0, feedback: opened?.error ?? 'tenbox worktree did not run' }
   }
-  return buildRounds(groupScope(group, opened.worktree))
+  const scope = groupScope(group, opened.worktree)
+  scopes.set(group.id, scope)
+  const parts = input.parts.filter((part) => group.parts.includes(part.id))
+  return buildRounds(scope, firstStart({ parts, lenses: group.recipe.lenses }))
 }
 // needs-you wins with the lowest such group, then failed, else every group is ready-for-you.
 const groupsEnd = (groups, ends) => {
@@ -348,7 +339,13 @@ const buildGroups = async (groups) => {
 
 const checksGreen = (checks) => Boolean(checks?.ok && checks.commit && checks.file)
 const checksSummary = (checks) => checks?.summary ?? checks?.error ?? 'tenbox check did not run'
-const listing = await listParts(TASK_SCOPE, 1, input.feedback ?? 'none')
-const groups = listing.groups ?? []
-const end = groups.length ? await buildGroups(groups) : await buildRounds(TASK_SCOPE, listing)
-return finish({ ...end, ...collected() })
+const groups = input.groups ?? []
+const end = groups.length
+  ? await buildGroups(groups)
+  : await buildRounds(TASK_SCOPE, firstStart({ parts: input.parts, lenses: input.lenses ?? [] }))
+let done = await record(end)
+while (redFullTier(done)) {
+  const scope = scopes.get(done.recorded.details.group) ?? TASK_SCOPE
+  done = await record(await buildRounds(scope, { round: done.round + 1, feedback: done.recorded.error, listing: null }))
+}
+return finish(done)

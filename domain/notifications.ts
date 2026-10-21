@@ -30,7 +30,7 @@ const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => st
     n.recommended === undefined
       ? `tenbox attach ${n.id}`
       : `tenbox answer ${n.id} ${n.recommended}`,
-  [NOTIFICATION_STATE.readyForYou]: (n) => `tenbox pr ${n.id}`,
+  [NOTIFICATION_STATE.readyForYou]: (n) => `tenbox pr ${n.id} --ready`,
   [NOTIFICATION_STATE.failed]: (n) => `tenbox attach ${n.id}`,
   [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox attach ${n.id}`,
   [NOTIFICATION_STATE.prOpened]: (n) => `tenbox close ${n.id}`,

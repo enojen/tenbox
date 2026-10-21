@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { files } from "../infra/files.ts";
+import { git } from "../infra/git.ts";
 import {
   type CliRun,
   type FakeClaude,
@@ -23,11 +25,30 @@ async function setup(): Promise<void> {
 const run = (...args: string[]): Promise<CliRun> => tenbox(args, project.mainDir, fake.env);
 const taskWorktree = (): string => path.join(project.wtRoot, "demo", "T-1");
 const planFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.md");
+const planJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.json");
 
-async function approve(): Promise<void> {
+const PARTS = [{ id: "01", difficulty: "hard" }];
+const RECIPE = { model: "opus", effort: "high", lenses: [], tier: "fast" };
+const GROUPS = [{ id: 1, name: "feat: a", parts: ["01"], needs: [], recipe: RECIPE }];
+
+/** A plan result with one part and the contract lens; `groups` only when given. */
+const planResult = (groups?: object[]) => ({
+  summary: "s",
+  estimated_lines: 10,
+  parts: PARTS,
+  criteria: [],
+  lenses: ["contract"],
+  questions: [],
+  ...(groups && { groups }),
+});
+
+async function approve(plan: object | null = planResult()): Promise<void> {
   await files.write(planFile(), "# plan\n");
+  if (plan !== null) await files.writeJson(planJsonFile(), plan);
   await run("approve", "T-1");
 }
+
+const SENT = `/tenbox-build ${JSON.stringify({ task: "T-1", parts: PARTS, lenses: ["contract"] })}`;
 
 /** The prompts of the `claude --bg` calls: the last argument of each. */
 async function bgPrompts(): Promise<string[]> {
@@ -53,16 +74,31 @@ describe("tenbox build", () => {
     expect(prompts).toEqual([]);
   });
 
-  test("starts claude --bg with /tenbox-build <id> in the task worktree", async () => {
+  test("sends the groups of a plan that has them", async () => {
+    await setup();
+    await approve(planResult(GROUPS));
+    const built = await run("build", "T-1");
+    const args = { task: "T-1", parts: PARTS, lenses: ["contract"], groups: GROUPS };
+    expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
+  });
+
+  test("an approved plan without plan.json is no-plan and starts nothing", async () => {
+    await setup();
+    await approve(null);
+    const built = await run("build", "T-1");
+    const prompts = await bgPrompts();
+    expect([built.code, built.json.code]).toEqual([1, "no-plan"]);
+    expect(built.json.error).toContain("plan.json");
+    expect(prompts).toEqual([]);
+  });
+
+  test("starts claude --bg with /tenbox-build and the plan JSON in the task worktree", async () => {
     await setup();
     await approve();
     const built = await run("build", "T-1");
     const real = await files.realPath(taskWorktree());
     const calls = await fake.calls();
-    expect([built.code, built.json]).toEqual([
-      0,
-      { ok: true, task: "T-1", sent: "/tenbox-build T-1" },
-    ]);
+    expect([built.code, built.json]).toEqual([0, { ok: true, task: "T-1", sent: SENT }]);
     expect(calls.at(-1)?.cwd).toBe(real);
     expect(calls.at(-1)?.args.slice(0, 1)).toEqual(["--bg"]);
     expect(calls.at(-1)?.args.slice(-6)).toEqual([
@@ -71,7 +107,7 @@ describe("tenbox build", () => {
       "--allowedTools",
       "Workflow",
       "--",
-      "/tenbox-build T-1",
+      SENT,
     ]);
   });
 
@@ -108,7 +144,7 @@ describe("tenbox build", () => {
     const built = await run("build", "T-1");
     const prompts = await bgPrompts();
     expect([built.code, built.json.ok]).toEqual([0, true]);
-    expect(prompts).toEqual(["/tenbox-build T-1"]);
+    expect(prompts).toEqual([SENT]);
   });
 
   test("a claude --bg that fails gives its message", async () => {
@@ -123,6 +159,33 @@ describe("tenbox build", () => {
 
 const USAGE_EXIT = 2;
 
+/** Each check prints its file and fails when the task worktree has it. */
+const CHECKS_MANIFEST = `project: demo
+checks:
+  fast:
+    unit: "test ! -f fast.txt || { cat fast.txt; exit 1; }"
+  full:
+    e2e: "test ! -f full.txt || { cat full.txt; exit 1; }"
+`;
+
+/** A fake `gh` that logs its calls and keeps the PRs it creates in `prs.json`. */
+const FAKE_GH = `#!/usr/bin/env bun
+import fs from "node:fs";
+const dir = process.env.GH_FAKE;
+const args = process.argv.slice(2);
+const db = dir + "/prs.json";
+const prs = fs.existsSync(db) ? JSON.parse(fs.readFileSync(db, "utf8")) : [];
+const flag = (name) => args[args.indexOf(name) + 1];
+fs.appendFileSync(dir + "/calls.log", JSON.stringify(args) + "\\n");
+if (args[1] === "create") {
+  prs.push({ number: prs.length + 1, url: "https://example.com/pull/1", isDraft: args.includes("--draft"),
+    state: "OPEN", headRefName: flag("--head"), body: flag("--body") });
+  fs.writeFileSync(db, JSON.stringify(prs));
+}
+if (args[1] === "list") console.log(JSON.stringify(prs.filter((p) => !args.includes("--head") || p.headRefName === flag("--head"))));
+`;
+const FAILING_GH = "#!/bin/sh\necho gh is down >&2\nexit 1\n";
+
 describe("tenbox build done", () => {
   let buildJson: string;
   let proofsJson: string;
@@ -131,7 +194,7 @@ describe("tenbox build done", () => {
   const proof = (test: string) => ({ part: "01", file: "a.test.ts", test, failure: "got 1" });
 
   const valid = {
-    status: "ready-for-you",
+    status: "failed",
     round: 2,
     proofs: [proof("first")],
     attention: ["a"],
@@ -145,16 +208,141 @@ describe("tenbox build done", () => {
   });
 
   beforeEach(async () => {
-    project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
+    project = await makeTempProject({ "tenbox.yaml": CHECKS_MANIFEST, "a.txt": "a\n" });
     const tenboxDir = path.join(project.wtRoot, "demo", "T-1", ".tenbox");
     buildJson = path.join(tenboxDir, "build.json");
     proofsJson = path.join(tenboxDir, "proofs.json");
     overrideFile = path.join(tenboxDir, "override.yaml");
+    ghEnv = {};
     await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
   });
 
   const buildDone = (...args: string[]) =>
-    tenbox(["build", "done", "T-1", ...args], project.mainDir);
+    tenbox(["build", "done", "T-1", ...args], project.mainDir, ghEnv);
+  let ghEnv: Record<string, string> = {};
+  const ghState = (): string => path.join(project.root, "gh-state");
+
+  /** Puts `script` first in `PATH` as `gh`. */
+  async function installGh(script: string): Promise<void> {
+    const bin = path.join(project.root, "gh-bin");
+    await files.write(path.join(bin, "gh"), script);
+    await chmod(path.join(bin, "gh"), 0o755);
+    await files.write(path.join(ghState(), ".keep"), "");
+    ghEnv = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_FAKE: ghState() };
+  }
+
+  /** Commits `changed` in the task worktree with an `origin` to push to, then runs `tenbox check`. */
+  async function checkedTask(changed: Record<string, string> = { "b.txt": "b\n" }) {
+    const origin = path.join(project.root, "origin.git");
+    await git.run(["init", "-q", "--bare", origin], project.mainDir);
+    await git.run(["remote", "add", "origin", origin], project.mainDir);
+    await commit(changed);
+    await tenbox(["check", "T-1"], project.mainDir);
+  }
+
+  async function commit(changed: Record<string, string>): Promise<void> {
+    const dir = path.dirname(path.dirname(buildJson));
+    for (const [name, text] of Object.entries(changed))
+      await files.write(path.join(dir, name), text);
+    await git.run(["add", ...Object.keys(changed)], dir);
+    await git.run(["commit", "-q", "-m", "change"], dir);
+  }
+
+  const ready = { ...valid, status: "ready-for-you" };
+  const readyJson = ["--json", JSON.stringify(ready)];
+  const fullChecksJson = (): string =>
+    path.join(path.dirname(buildJson), "rounds", "1", "checks-full.json");
+
+  describe("ready-for-you", () => {
+    beforeEach(() => installGh(FAKE_GH));
+
+    test("a commit after the last tenbox check is checks-stale and writes no build.json", async () => {
+      await checkedTask();
+      await commit({ "c.txt": "c\n" });
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([run.code, run.json.code, written]).toEqual([1, "checks-stale", false]);
+    });
+
+    test("a red checks.json at HEAD is check-failed with its summary and writes no build.json", async () => {
+      await checkedTask({ "fast.txt": " FAIL  fast one\n" });
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([run.code, run.json.code, written]).toEqual([1, "check-failed", false]);
+      expect(run.json.error).toContain("FAIL  fast one");
+    });
+
+    test("a plan without groups runs the full tier; a new failure there is check-failed", async () => {
+      await checkedTask({ "full.txt": " FAIL  full one\n" });
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      const full = await files.exists(fullChecksJson());
+      expect([run.code, run.json.code, written, full]).toEqual([1, "check-failed", false, true]);
+      expect(run.json.error).toContain("FAIL  full one");
+    });
+
+    test("a plan whose only group has tier fast runs no full tier", async () => {
+      const recipe = { model: "opus", effort: "high", lenses: [], tier: "fast" };
+      const group = { id: 1, name: "feat: a", parts: ["01"], needs: [], recipe };
+      const plan = { ...planResult([group]), lenses: [] };
+      await files.writeJson(path.join(path.dirname(buildJson), "plan.json"), plan);
+      await checkedTask({ "full.txt": " FAIL  full one\n" });
+      const run = await buildDone(...readyJson);
+      const full = await files.exists(fullChecksJson());
+      expect([run.code, run.json.ok, full]).toEqual([0, true, false]);
+    });
+
+    test("an accepted result writes build.json and opens a draft PR", async () => {
+      await checkedTask();
+      const run = await buildDone(...readyJson);
+      const written = await readJson(buildJson);
+      const full = await files.exists(fullChecksJson());
+      const calls = await files.read(path.join(ghState(), "calls.log"));
+      expect([run.code, run.json.file, written.status, full]).toEqual([
+        0,
+        buildJson,
+        "ready-for-you",
+        true,
+      ]);
+      expect(run.json.pr).toEqual({
+        ok: true,
+        task: "T-1",
+        groups: [
+          {
+            group: 1,
+            branch: "feat/T-1",
+            state: "created",
+            pr: { number: 1, url: "https://example.com/pull/1", draft: true },
+          },
+        ],
+      });
+      expect(calls).toContain('"--draft"');
+    });
+
+    test("a failing gh keeps build.json and gives pr.ok false", async () => {
+      await installGh(FAILING_GH);
+      await checkedTask();
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([run.code, run.json.ok, written]).toEqual([0, true, true]);
+      expect(run.json.pr).toMatchObject({ ok: false, error: expect.stringContaining("gh") });
+    });
+  });
+
+  test.each(["needs-you", "failed"])(
+    "%s is written with no checks and opens no PR",
+    async (status) => {
+      await installGh(FAKE_GH);
+      await commit({ "b.txt": "b\n" });
+      const run = await buildDone(...withJson({ status }));
+      const calls = await files.exists(path.join(ghState(), "calls.log"));
+      expect([run.code, run.json, calls]).toEqual([
+        0,
+        { ok: true, task: "T-1", file: buildJson },
+        false,
+      ]);
+    },
+  );
   const withJson = (change: Record<string, unknown>) => [
     "--json",
     JSON.stringify({ ...valid, ...change }),
@@ -287,13 +475,18 @@ describe("tenbox build done", () => {
     });
 
     test("ready-for-you detail counts round, attention, nice-to-have and unproven", async () => {
-      await buildDone(...withJson(valid));
+      await installGh(FAKE_GH);
+      await checkedTask();
+      await buildDone(...readyJson);
       expect(ntfy.lines()).toEqual([
-        "demo · T-1 · ready-for-you · round 2, attention 1, nice-to-have 1, unproven 1 → tenbox pr T-1",
+        "demo · T-1 · ready-for-you · round 2, attention 1, nice-to-have 1, unproven 1 → tenbox pr T-1 --ready",
+        "demo · T-1 · pr-opened · https://example.com/pull/1 → tenbox close T-1",
       ]);
     });
 
     test("ready-for-you with empty lists shows zero counts", async () => {
+      await installGh(FAILING_GH);
+      await checkedTask();
       await buildDone(
         ...withJson({
           status: "ready-for-you",
@@ -304,7 +497,7 @@ describe("tenbox build done", () => {
         }),
       );
       expect(ntfy.lines()).toEqual([
-        "demo · T-1 · ready-for-you · round 1, attention 0, nice-to-have 0, unproven 0 → tenbox pr T-1",
+        "demo · T-1 · ready-for-you · round 1, attention 0, nice-to-have 0, unproven 0 → tenbox pr T-1 --ready",
       ]);
     });
 

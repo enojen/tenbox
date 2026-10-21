@@ -254,7 +254,7 @@ async function assertAhead(dir: string, branch: string, base: string): Promise<v
   if (merged) throw noCommitsError(branch, base);
 }
 
-interface CheckedInput {
+export interface CheckedInput {
   id: TaskId;
   group: number;
   /** The group worktree. */
@@ -263,10 +263,10 @@ interface CheckedInput {
 }
 
 /** The latest round's checks ran on the commit that is about to be pushed. */
-async function assertChecked(input: CheckedInput): Promise<void> {
+export async function assertChecked(input: CheckedInput): Promise<void> {
   const { id, group, dir, taskWorktree } = input;
   const head = await git.findHead(dir);
-  const text = await latestChecksText(groupTaskDir(taskWorktree, group));
+  const text = await latestChecksText(taskWorktree, group);
   const checked = checksCommit(text);
   if (head !== null && checked === head) return;
   throw checksStaleError({ id, group, checked, head: head ?? "unknown" });
@@ -280,7 +280,7 @@ async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   const dir = tenboxDir(run.taskWorktree);
   const task = await tasks.find(dir);
   const planText = await files.read(planMdFile(dir));
-  const checksText = await latestChecksText(groupTaskDir(run.taskWorktree, group.id));
+  const checksText = await latestChecksText(run.taskWorktree, group.id);
   const summary = checksSummary(checksText);
   return {
     title: prTitle(id, group.name ?? task?.title ?? null),
@@ -288,8 +288,12 @@ async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   };
 }
 
-/** The text of the highest round's `checks.json` in `dir`; null when there is none. */
-async function latestChecksText(dir: string): Promise<string | null> {
+/** The text of the group's highest round `checks.json`; null when there is none. */
+export async function latestChecksText(
+  taskWorktree: string,
+  group: number,
+): Promise<string | null> {
+  const dir = groupTaskDir(taskWorktree, group);
   const names = await files.list(roundsDir(dir));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;

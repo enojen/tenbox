@@ -48,13 +48,13 @@ async function setup(build: object | null = needsYou): Promise<void> {
   if (build !== null) await run("build", "done", "T-1", "--json", JSON.stringify(build));
 }
 
-async function writeBuildRun(): Promise<void> {
+async function writeBuildRun(args: string = "T-1"): Promise<void> {
   const run = {
     runId: RUN_ID,
     workflowName: "tenbox-build",
     startTime: 1,
     scriptPath: scriptPath(),
-    args: "T-1",
+    args,
   };
   await files.write(path.join(sessionDir(), "workflows", `${RUN_ID}.json`), JSON.stringify(run));
 }
@@ -124,6 +124,22 @@ describe("tenbox answer", () => {
     expect(prompt).toContain(scriptPath());
     const answer = { round: 2, part: "03", option: 2, text: "sqlite" };
     expect(prompt).toContain(JSON.stringify({ task: "T-1", answer }));
+  });
+
+  test("a run started with JSON args resumes with that object plus the answer", async () => {
+    await setup();
+    const plan = {
+      task: "T-1",
+      parts: [{ id: "03", difficulty: "easy" }],
+      lenses: ["contract"],
+      groups: [{ id: 1, name: "feat: a", parts: ["03"], needs: [] }],
+    };
+    await writeBuildRun(JSON.stringify(plan));
+    await run("answer", "T-1", "2");
+    const calls = await fake.calls();
+    const prompt = calls.at(-1)?.args.at(-1) ?? "";
+    const answer = { round: 2, part: "03", option: 2, text: "sqlite" };
+    expect(prompt).toContain(`these args: ${JSON.stringify({ ...plan, answer })}`);
   });
 
   test("a second answer is answered and changes nothing", async () => {
