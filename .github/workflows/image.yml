@@ -1,11 +1,10 @@
 name: image
-# Every merge to main builds a new machine image (docs/design.md "Machines"); a new server
-# boots from the newest one. Run it by hand to move claude or bun.
+# Builds a new machine image by hand (`gh workflow run image.yml`): a new server boots from
+# the newest one. It no longer runs on every merge, since the box image (box.yml) is the path
+# in use and every build costs a server hour and a snapshot.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-# One build at a time; a second one waits, so the newest snapshot is the newest merge.
+# One build at a time; a second one waits, so the newest snapshot is the newest build.
 concurrency:
   group: image
 jobs:

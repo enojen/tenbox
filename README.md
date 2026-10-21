@@ -402,7 +402,7 @@ Linux runner (label `tenbox-ci`).
 ## Machines: `machines/`
 
 Tasks run on short-lived cloud machines, one per task, instead of your computer. What exists
-today: the image they boot from, built with Packer after every merge to main (the newest three are kept); the OpenTofu module that gives one task its
+today: the image they boot from, built with Packer when you run the `image` workflow by hand (the newest three are kept); the OpenTofu module that gives one task its
 volume and server; the control plane, `.github/workflows/machine.yml` with `cmd` start, build,
 close or down, which runs `machines/machine.sh` with the state in a bucket; and the watchdog
 that asks that workflow for `down` after five idle minutes; and the login sync, which keeps a
