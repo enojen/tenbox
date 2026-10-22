@@ -1,9 +1,8 @@
 import path from "node:path";
 import { worktreeError } from "../../../domain/errors/git.ts";
-import { noBaseError } from "../../../domain/errors/index.ts";
+import { errorMessage, noBaseError } from "../../../domain/errors/index.ts";
 import { EXCLUDED_PATHS, type Project } from "../../../domain/project.ts";
 import { tenboxDir } from "../../../domain/task.ts";
-import { errorMessage } from "../../../domain/utils.ts";
 import { claudeSettings } from "../../infra/claude/settings.ts";
 import { log } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";

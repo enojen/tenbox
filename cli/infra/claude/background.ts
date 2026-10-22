@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { claudeError } from "../../../domain/errors/tools.ts";
 import type { TaskId } from "../../../domain/ids.ts";
-import { parseJson } from "../../../domain/utils.ts";
+import { jsons } from "../../../domain/utils.ts";
 import { processes } from "../processes.ts";
 import type { ResumableRun } from "./sessionFiles.ts";
 
@@ -127,10 +127,10 @@ async function resumeBackground(run: ClaudeRun, resume: ClaudeResume): Promise<v
  * lists its subdirs, and a session without a `pid` cannot be stopped, attached or busy. */
 async function listBackground(run: ClaudeRun): Promise<BackgroundSession[]> {
   const stdout = await runChecked(run, ["agents", "--json", "--cwd", run.cwd]);
-  const parsed = AgentListSchema.safeParse(parseJson(stdout));
-  if (!parsed.success) throw claudeError("agents", "output is not a session list");
+  const result = jsons.check(AgentListSchema, stdout);
+  if (!result.ok) throw claudeError("agents", "output is not a session list");
   const sessions: BackgroundSession[] = [];
-  for (const { id, cwd, kind, startedAt, state, pid } of parsed.data) {
+  for (const { id, cwd, kind, startedAt, state, pid } of result.value) {
     if (kind === BACKGROUND && id !== undefined && pid !== undefined && cwd === run.cwd) {
       const known = state ?? UNKNOWN_STATE;
       sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(known), state: known });

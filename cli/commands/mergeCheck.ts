@@ -1,3 +1,4 @@
+import type { CheckOutcome } from "../../domain/check.ts";
 import { mergeConflictError, newFailuresError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
@@ -11,7 +12,7 @@ import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { gh, type PrBranch } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
-import type { CheckOutcome, MergeCheckResult } from "./results.ts";
+import type { MergeCheckResult } from "./results.ts";
 
 export interface MergeCheckInput {
   /** Default: the manifest's `base`. */

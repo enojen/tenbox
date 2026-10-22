@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { TenboxError } from "../../domain/errors/index.ts";
+import { errorMessage } from "../../domain/errors/index.ts";
 import { serviceError } from "../../domain/errors/tools.ts";
-import { errorMessage } from "../../domain/utils.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;

@@ -2,7 +2,7 @@ import { setDefaultTimeout } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { parseObject } from "../../domain/utils.ts";
+import { jsons, objects } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
@@ -54,8 +54,9 @@ export async function tenboxInput(input: CliInput): Promise<CliRun> {
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  const json = parseObject(out);
-  if (!json) throw new Error(`stdout is not JSON (exit ${code}):\n${out}\n--- stderr:\n${err}`);
+  const json = jsons.parse(out);
+  if (!objects.isRecord(json))
+    throw new Error(`stdout is not JSON (exit ${code}):\n${out}\n--- stderr:\n${err}`);
   return { code, out, err, json };
 }
 
@@ -129,8 +130,8 @@ const HookSettings = z.object({
 /** The `Notification` hooks in the `--settings` JSON of a `claude` call; null without a valid one. */
 export function notificationHooks(args: string[]): z.infer<typeof HookSettings>["hooks"] | null {
   const at = args.indexOf("--settings");
-  const parsed = HookSettings.safeParse(parseObject(args[at + 1] ?? ""));
-  return parsed.success ? parsed.data.hooks : null;
+  const result = jsons.check(HookSettings, args[at + 1] ?? "");
+  return result.ok ? result.value.hooks : null;
 }
 
 async function readCalls(file: string): Promise<ClaudeCall[]> {

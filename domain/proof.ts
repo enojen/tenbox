@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { badProofsError } from "./errors/tasks.ts";
-import { isFilled, parseJson } from "./utils.ts";
+import { badFileError } from "./errors/tasks.ts";
+import { jsons, strings } from "./utils.ts";
 
-const filled = z.string().refine(isFilled, "must not be blank");
+const filled = z.string().refine(strings.isNotBlank, "must not be blank");
 
 /** One worker proof: the test that failed before the code, and how. Four non-blank strings. */
 export const ProofSchema = z.object({ part: filled, file: filled, test: filled, failure: filled });
@@ -19,11 +19,9 @@ export const trimProof = (proof: StatsProof): StatsProof => ({
   failure: proof.failure.trim(),
 });
 
-/** The proofs in the text of `proofs.json`; `bad-proofs` unless it is an array of valid proofs. */
+/** The proofs in the text of `proofs.json`; `bad-file` unless it is an array of valid proofs. */
 export function readProofs(text: string, file: string): StatsProof[] {
-  const parsed = parseJson(text);
-  if (parsed === undefined) throw badProofsError(file, "is not valid JSON");
-  if (!Array.isArray(parsed)) throw badProofsError(file, "is not a JSON array");
-  if (!parsed.every(isProof)) throw badProofsError(file, "has an item that is not a valid proof");
-  return parsed;
+  const result = jsons.check(z.array(ProofSchema), text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }

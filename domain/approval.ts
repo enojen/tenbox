@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { parseObject } from "./utils.ts";
+import { badFileError } from "./errors/tasks.ts";
+import { jsons } from "./utils.ts";
 
 /** What `tenbox approve` records in `approved.json`: when, and which `plan.json`. */
 const ApprovalSchema = z.object({
@@ -11,8 +12,9 @@ const ApprovalSchema = z.object({
 
 export type Approval = z.infer<typeof ApprovalSchema>;
 
-/** The approval in `approved.json` text; null when it is not a JSON object or does not match. */
-export function readApproval(text: string): Approval | null {
-  const parsed = ApprovalSchema.safeParse(parseObject(text));
-  return parsed.success ? parsed.data : null;
+/** The approval in the text of `approved.json`; `bad-file` when it is not JSON or does not match. */
+export function readApproval(text: string, file: string): Approval {
+  const result = jsons.check(ApprovalSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }

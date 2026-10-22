@@ -1,16 +1,6 @@
 import { expect, test } from "bun:test";
 import { taskId } from "./ids.ts";
-import {
-  bodyHasLine,
-  CI_STATE,
-  checksCommit,
-  checksSummary,
-  ciState,
-  groupLine,
-  parseCiChecks,
-  prBody,
-  prTitle,
-} from "./pr.ts";
+import { bodyHasLine, CI_STATE, ciState, groupLine, parseCiChecks, prBody, prTitle } from "./pr.ts";
 
 const PLAN = "# T\n\n## Summary\nAdd the thing.\n";
 
@@ -30,13 +20,6 @@ test("prBody leaves out what is missing", () => {
   expect(prBody("L", null, "ok")).toBe("L\n\n## Checks\n\nok");
 });
 
-test("checksSummary reads summary, or null for missing text, bad JSON or no summary", () => {
-  expect(checksSummary('{"ok":true,"summary":"2 checks pass"}')).toBe("2 checks pass");
-  expect(checksSummary(null)).toBeNull();
-  expect(checksSummary("not json")).toBeNull();
-  expect(checksSummary('{"ok":true}')).toBeNull();
-});
-
 test("groupLine names the task and the group", () => {
   expect(groupLine(taskId("TB-7"), 2)).toBe("tenbox: TB-7 group 2");
 });
@@ -47,13 +30,6 @@ test("bodyHasLine matches a whole line only", () => {
   expect(bodyHasLine(`intro\r\n${line}\r\n`, line)).toBe(true);
   expect(bodyHasLine("tenbox: TB-7 group 10\n", line)).toBe(false);
   expect(bodyHasLine(`see ${line}`, line)).toBe(false);
-});
-
-test("checksCommit reads commit, or null for missing text, bad JSON or no commit", () => {
-  expect(checksCommit('{"ok":true,"commit":"abc123"}')).toBe("abc123");
-  expect(checksCommit(null)).toBeNull();
-  expect(checksCommit("not json")).toBeNull();
-  expect(checksCommit('{"ok":true}')).toBeNull();
 });
 
 const line = (name: string, state: string) => `${name}\t${state}\t1m\thttps://x/${name}`;

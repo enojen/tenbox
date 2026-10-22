@@ -1,10 +1,10 @@
 import path from "node:path";
 import { z } from "zod";
-import { badDecisionsError, unknownDecisionError, unknownQuestionError } from "./errors/tasks.ts";
+import { badInputError, unknownDecisionError, unknownQuestionError } from "./errors/tasks.ts";
 import type { PlanDecision, PlanResult } from "./plan.ts";
-import { isFilled, issueLines, parseJson } from "./utils.ts";
+import { jsons, strings } from "./utils.ts";
 
-const filled = z.string().refine(isFilled, "must not be blank");
+const filled = z.string().refine(strings.isNotBlank, "must not be blank");
 /** One line: a newline would break the `- ` entry and the check for an entry already there. */
 const oneLine = filled.refine((text) => !text.includes("\n"), "must be one line");
 
@@ -26,12 +26,15 @@ export type DecideItem = Decision | DecisionTaken;
 
 export const isDecisionTaken = (item: DecideItem): item is DecisionTaken => "decision" in item;
 
-/** The items in the text; `bad-decisions` unless it is a JSON array of valid items. */
+/** What `tenbox decide --json` holds, as a `bad-input` message names it. */
+const DECISIONS_INPUT = "the decisions";
+
+/** The items in `--json` input; `bad-input` unless it is a JSON array of valid items. */
 export function parseDecisions(text: string): DecideItem[] {
   const item = z.union([DecisionSchema, DecisionTakenSchema]);
-  const parsed = z.array(item).safeParse(parseJson(text));
-  if (!parsed.success) throw badDecisionsError(issueLines(parsed.error));
-  return parsed.data;
+  const result = jsons.check(z.array(item), text);
+  if (!result.ok) throw badInputError(DECISIONS_INPUT, result.issues);
+  return result.value;
 }
 
 /** The plan with the options taken, and one note `<title>: <option text>` per item. */
@@ -42,7 +45,7 @@ export interface OptionsTaken {
 
 /**
  * Sets `taken` on the plan decision of each item. Throws `unknown-decision` when the text fits
- * other than one title, `bad-decisions` when `taken` is not one of its options.
+ * other than one title, `bad-input` when `taken` is not one of its options.
  */
 export function takeOptions(plan: PlanResult, items: DecisionTaken[]): OptionsTaken {
   const changed = structuredClone(plan);
@@ -51,7 +54,9 @@ export function takeOptions(plan: PlanResult, items: DecisionTaken[]): OptionsTa
     const option = card.options[item.taken - 1];
     if (option === undefined) {
       const count = card.options.length;
-      throw badDecisionsError([`"${card.title}" has ${count} options; ${item.taken} is not one`]);
+      throw badInputError(DECISIONS_INPUT, [
+        `"${card.title}" has ${count} options; ${item.taken} is not one`,
+      ]);
     }
     card.taken = item.taken;
     return { answer: `${card.title}: ${option}` };

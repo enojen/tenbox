@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  checksPassed,
   costComment,
   countPlan,
   countPoints,
@@ -109,14 +108,6 @@ test("sumCode counts test files apart", () => {
   expect(sumCode([])).toEqual({ added: 0, removed: 0, files: 0, test_added: 0 });
 });
 
-test("checksPassed reads ok and gives null for anything else", () => {
-  expect(checksPassed('{"ok":true}')).toBe(true);
-  expect(checksPassed('{"ok":false}')).toBe(false);
-  expect(checksPassed("{}")).toBeNull();
-  expect(checksPassed("not json")).toBeNull();
-  expect(checksPassed(null)).toBeNull();
-});
-
 test("countPoints gives +1 per proof and -1 per unproven item, per part in order", () => {
   let count = 0;
   const proof = (part: string) => ({ part, file: "f", test: `t${count++}`, failure: "x" });
@@ -199,10 +190,12 @@ const AGENT = {
   cache_read: 6,
 };
 
+const STATS_FILE = "/t/stats.json";
+
 test("readStatsRecord gives the agents of a schema 5 stats.json with no runs, or no agents", () => {
   const withAgents = JSON.stringify({ schema: 5, agents: [AGENT] });
-  expect(readStatsRecord(withAgents)).toEqual({ agents: [AGENT], runs: null });
-  expect(readStatsRecord(JSON.stringify({ schema: 5, agents: null }))).toEqual({
+  expect(readStatsRecord(withAgents, STATS_FILE)).toEqual({ agents: [AGENT], runs: null });
+  expect(readStatsRecord(JSON.stringify({ schema: 5, agents: null }), STATS_FILE)).toEqual({
     agents: [],
     runs: null,
   });
@@ -210,20 +203,26 @@ test("readStatsRecord gives the agents of a schema 5 stats.json with no runs, or
 
 test("readStatsRecord gives the agents and runs of a schema 6 stats.json", () => {
   const run = { workflow: "tenbox-build", started: "2026-10-14T10:00:00.000Z", finished: false };
-  expect(readStatsRecord(JSON.stringify({ schema: 6, agents: [AGENT], runs: [run] }))).toEqual({
-    agents: [AGENT],
-    runs: [run],
-  });
+  const text = JSON.stringify({ schema: 6, agents: [AGENT], runs: [run] });
+  expect(readStatsRecord(text, STATS_FILE)).toEqual({ agents: [AGENT], runs: [run] });
+});
+
+test.each([
+  ["schema 3", JSON.stringify({ schema: 3, agents: [AGENT] })],
+  ["schema 4, whose agents have no usage", JSON.stringify({ schema: 4, agents: [AGENT] })],
+])("readStatsRecord gives null for an older %s", (_name, text) => {
+  expect(readStatsRecord(text, STATS_FILE)).toBeNull();
 });
 
 test.each([
   ["text that is not JSON", "{nope"],
-  ["schema 3", JSON.stringify({ schema: 3, agents: [AGENT] })],
-  ["schema 4, whose agents have no usage", JSON.stringify({ schema: 4, agents: [AGENT] })],
+  ["no schema", JSON.stringify({ agents: [AGENT] })],
   [
-    "an agent without usage",
+    "a schema 5 agent without usage",
     JSON.stringify({ schema: 5, agents: [{ ...AGENT, calls: undefined }] }),
   ],
-])("readStatsRecord gives null for %s", (_name, text) => {
-  expect(readStatsRecord(text)).toBeNull();
+])("readStatsRecord refuses %s with bad-file", (_name, text) => {
+  expect(() => readStatsRecord(text, STATS_FILE)).toThrow(
+    expect.objectContaining({ code: "bad-file" }),
+  );
 });

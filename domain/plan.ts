@@ -1,9 +1,10 @@
 import path from "node:path";
 import { z } from "zod";
-import { badPlanError, noPlanError } from "./errors/tasks.ts";
+import { badFileError, badInputError, noPlanError } from "./errors/tasks.ts";
 import { GroupSchema, groupIssues, LensSchema } from "./group.ts";
 import { DEFAULT_KIND, TaskKindSchema } from "./kind.ts";
-import { issueLines, parseObject } from "./utils.ts";
+import { planMdFile } from "./task.ts";
+import { jsons } from "./utils.ts";
 
 const text = z.string().min(1);
 
@@ -90,38 +91,35 @@ const PlanResultSchema = z
 
 export type PlanResult = z.infer<typeof PlanResultSchema>;
 
-/** The plan result in the text; `bad-plan` when it is not a JSON object or does not match the schema. */
+/** The plan result in `--json` input; `bad-input` when it is not JSON or does not match the schema. */
 export function parsePlan(planText: string): PlanResult {
-  const parsed = PlanResultSchema.safeParse(parseObject(planText));
-  if (!parsed.success) throw badPlanError(issueLines(parsed.error));
-  return parsed.data;
+  const result = jsons.check(PlanResultSchema, planText);
+  if (!result.ok) throw badInputError("the plan result", result.issues);
+  return result.value;
 }
 
-/** The plan result in the text; null when it is not valid. */
-export function readPlan(planText: string): PlanResult | null {
-  const parsed = PlanResultSchema.safeParse(parseObject(planText));
-  return parsed.success ? parsed.data : null;
+/** The plan result in the text of `plan.json`; `bad-file` when it is not JSON or does not match the schema. */
+export function readPlan(planText: string, file: string): PlanResult {
+  const result = jsons.check(PlanResultSchema, planText);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }
 
-/** The texts of one plan: the result and `plan.md` (null when missing) of the `.tenbox/` folder `dir`. */
-export interface PlanTexts {
+/** `plan.md` (null when missing) of the `.tenbox/` folder `dir`. */
+export interface PlanMd {
   dir: string;
-  plan: string;
   planMd: string | null;
 }
 
-/**
- * The plan result, checked as `tenbox plan done` and `tenbox approve` check it:
- * `no-plan` without `plan.md`, `bad-plan` for a bad result or a `plan.md` over the limit.
- */
-export function validatePlan(texts: PlanTexts): PlanResult {
-  const plan = parsePlan(texts.plan);
+/** Checks `plan.md` as `tenbox plan done` and `tenbox approve` do: `no-plan` when missing, `bad-file` over the limit. */
+export function checkPlanMd(texts: PlanMd): void {
   if (texts.planMd === null) throw noPlanError(texts.dir);
   const lines = lineCount(texts.planMd);
   if (lines > PLAN_MD_MAX_LINES) {
-    throw badPlanError([`plan.md has ${lines} lines; the limit is ${PLAN_MD_MAX_LINES}`]);
+    throw badFileError(planMdFile(texts.dir), [
+      `${lines} lines; the limit is ${PLAN_MD_MAX_LINES}`,
+    ]);
   }
-  return plan;
 }
 
 /** A last line without a newline counts too. */

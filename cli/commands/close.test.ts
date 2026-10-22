@@ -8,6 +8,7 @@ import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { checkResult } from "../test/checkResult.ts";
 import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -641,8 +642,8 @@ describe("tenbox close", () => {
     await files.write(path.join(dir, "parts", "02-b.md"), "status: todo\n");
     const done = await tenbox(["plan", "done", "T-1", "--json", PLAN_RESULT], project.mainDir);
     expect(done.json.ok).toBe(true);
-    await files.write(path.join(dir, "rounds", "1", "checks.json"), '{"ok":false}');
-    await files.write(path.join(dir, "rounds", "2", "checks.json"), '{"ok":true}');
+    await files.writeJson(path.join(dir, "rounds", "1", "checks.json"), checkResult({ ok: false }));
+    await files.writeJson(path.join(dir, "rounds", "2", "checks.json"), checkResult({ round: 2 }));
     await files.write(path.join(taskWorktree, "src", "a.ts"), "1\n2\n3\n");
     await files.write(path.join(taskWorktree, "src", "a.test.ts"), "1\n2\n");
     await files.write(path.join(taskWorktree, "test", "b.ts"), "1\n");
@@ -1095,21 +1096,21 @@ describe("tenbox close build result, proofs and points", () => {
     ["a value that is not an array", '{"part":"01"}'],
     ["an item with a blank field", JSON.stringify([{ ...proof("t"), test: "" }])],
     ["an item that is not an object", JSON.stringify([proof("t"), 7])],
-  ])("proofs.json with %s is bad-proofs and closes nothing", async (_name, text) => {
+  ])("proofs.json with %s is bad-file and closes nothing", async (_name, text) => {
     await setup();
     await writePart("01-x.md", "status: done\n");
     await files.write(path.join(taskWorktree, ".tenbox", "proofs.json"), text);
     const run = await closeT1();
-    expect(run.json.code).toBe("bad-proofs");
+    expect(run.json.code).toBe("bad-file");
     expect(run.json.error).toContain("proofs.json");
     await expectUntouched(run);
   });
 
-  test("an invalid proofs.json is bad-proofs and closes nothing", async () => {
+  test("an invalid proofs.json is bad-file and closes nothing", async () => {
     await setup();
     await files.write(path.join(taskWorktree, ".tenbox", "proofs.json"), "{ not json");
     const run = await closeT1();
-    expect(run.json.code).toBe("bad-proofs");
+    expect(run.json.code).toBe("bad-file");
     await expectUntouched(run);
   });
 

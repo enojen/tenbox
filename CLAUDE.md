@@ -18,18 +18,15 @@ with `gh`), `tenbox build` (starts `claude --bg` with `/tenbox-build` in the tas
 close` stops it), `tenbox stats` and `tenbox merge-check` (merge the open task PRs in a temporary
 worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`, which also
 pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp tracker.
-Phase 3 (machines, `docs/design.md` "Machines") has started: the Packer image, the task
-module, the control plane `machine.yml` + `machines/machine.sh` (start, build, close, down, destroy;
-state in a bucket), the watchdog that asks for `down` and the login sync (TEN-419 to
-TEN-422), and `tenbox machine run` and `ls` (TEN-423). With `machine: k8s`, the default,
-`tenbox machine run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
-and `ls` lists the Jobs labeled `app=tenyard`; with `machine: hetzner` they start and list
-`machine.yml` runs (TEN-465). No sandbox yet.
+Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`),
+the login sync to the Secrets of the box (`machines/login/`), and `tenbox machine run` and `ls`
+(TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
+and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
 
 ## Rules
 
 - TypeScript on Bun, few dependencies, no Python. Code, docs and agent prompts in English.
-  `machines/` is the exception: Packer HCL, systemd units and bash that run on Ubuntu only.
+  `machines/` is the exception: a Dockerfile, systemd units and bash that run on Ubuntu only.
 - Must run on macOS and Linux from the first commit: `os.homedir()` and `path.join`, no
   GNU-only or BSD-only shell flags, hooks as `bun run hooks/<name>.ts`. Spawn only `git`,
   `gh`, `docker`, `claude` and tenbox itself (`process.execPath`).
@@ -92,8 +89,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
 | status report | The state of one task read from its files, its background session and its PR: the `task.json` status, round, parts, session, PR, last check; `tenbox status` prints it (`StatusReport`). |
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
-| machine | Where the tenbox commands of one task run, chosen by `machine:` of the manifest: with `k8s` (the default) the pod of a Job on the cluster, with `hetzner` a short-lived cloud server of the task, started and stopped by `machine.yml` (`machines`). |
-| machine run | One tenbox command of a task on its machine: with `k8s` (the default) one Job in namespace `tenbox`, filled from `<template>/job.yaml`; with `hetzner` one `machine.yml` workflow run. `tenbox machine run` starts it; `tenbox machine ls` lists them, on `k8s` the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
+| machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
+| machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
@@ -104,11 +101,12 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - Signatures use named types (`rules/named-parameter-types`). A shape used twice gets a name.
 - A function takes its parameter object whole and destructures it in the body
   (`rules/no-destructured-parameters`).
-- Layers and their direction: `domain/` imports nothing outside itself; `cli/infra/` imports
+- Layers and their direction: `domain/` imports nothing outside itself and stays pure: no clock,
+  randomness, process, file system or network (`rules/pure-domain`; `ids.ts` makes random ids); `cli/infra/` imports
   only `domain/`; `cli/application/` imports both, directly: no ports bag, no dependency
   injection; `cli/commands/` imports all three. The one port is `Tracker`, because its
-  adapter is chosen at run time. `cli/test/layers.test.ts` checks the `domain/` and
-  `cli/infra/` rules.
+  adapter is chosen at run time. `cli/test/layers.test.ts` checks the `domain/`,
+  `cli/infra/` and `cli/application/` rules.
 - In `application/`, one module per glossary concept, named in the plural:
   `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
   exports the module object; other modules import only that. A function name does not repeat
@@ -122,7 +120,16 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - `application/` calls the named git functions in `infra/git.ts` (`rules/no-raw-git-in-application`).
   A tool's file format or command line lives in `infra/`.
 - Start a process only through `cli/infra/processes.ts` (`rules/no-raw-spawn`).
-- Parse JSON only with `parseJson` / `parseObject` from `domain/utils.ts` (`rules/no-raw-json-parse`).
+- Parse JSON only with `jsons.parse` / `jsons.check` from `domain/utils.ts` (`rules/no-raw-json-parse`).
+- Check JSON text against a schema with `jsons.check(schema, text)`, JSON Lines with
+  `jsons.checkLines(schema, text)` (`rules/use-jsons-check`).
+  In `domain/`, `read*` reads a file and throws `badFileError` (`bad-file`); `parse*` reads
+  `--json` or stdin input and throws `badInputError` (`bad-input`) (`rules/read-file-parse-input`).
+  A missing file is null in `application/`; a broken one is an error.
+- A file Claude Code writes (session files, transcripts, credentials) is read with `claudeFiles.find`
+  or `findLines` in `cli/infra/claude/`, against a schema of only the fields Tenbox reads: missing
+  or broken is null, and broken gives one warning line on stderr. A JSONL line of a type Tenbox
+  does not read passes the schema's catch-all member and is not counted (`rules/claude-files-only`).
 - Outside `domain/` and `cli/infra/`, read a Tenbox file with a `read*` function in `domain/`
   (`rules/json-readers-in-domain`).
 - Write a JSON file with `files.writeJson` (`rules/write-json-once`).
@@ -139,7 +146,10 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 - A branded type has one constructor function.
 - `exactOptionalPropertyTypes` is on: `a?: T` = the key may be missing; `a: T | undefined` = the key
   is always set. Never both.
-- Generic helpers live in `domain/utils.ts`; search there before writing one.
+- Generic helpers live in `domain/utils.ts`, grouped in plural namespaces (`jsons`, `objects`,
+  `strings`, `lists`, `durations`, `hashes`; `rules/utils-namespaces`); search there before writing one. Only pure, general
+  functions: no Tenbox concept, no clock, no file system. Error helpers (`errorMessage`,
+  `issueLines`, `failedState`) live in `domain/errors/index.ts`.
 - Data that code counts comes from a schema or a JSON file, never from Markdown.
 - Less code is always better: no code for a later phase (`unused` check, knip).
 
@@ -170,11 +180,9 @@ agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
-machines/   packer/ (the image: template, build.sh, scripts/), tofu/task/ (volume + server per task,
-            cloud-init, tenbox-boot.sh), machine.sh (one command of .github/workflows/machine.yml;
-            local.sh runs it from your computer), login/ (the claude.ai login sync from your
-            computer to the bucket), watchdog/ (script, service, timer), k8s/ (the box image:
-            Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR on every merge)
+machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR
+            on every merge), login/ (the claude.ai login sync from your computer to the Secrets
+            of the box)
 docs/       design.md (the target design), flow page and mockups
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```

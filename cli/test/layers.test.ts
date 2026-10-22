@@ -19,6 +19,11 @@ const RULES: LayerRule[] = [
   { folder: "server", allowed: ["server", "domain"], allowedInTests: [] },
   { folder: "server/infra", allowed: ["server/infra", "domain"], allowedInTests: [] },
   { folder: "cli/infra", allowed: ["cli/infra", "domain"], allowedInTests: ["cli/test"] },
+  {
+    folder: "cli/application",
+    allowed: ["cli/application", "cli/infra", "domain"],
+    allowedInTests: ["cli/test"],
+  },
 ];
 
 function relativeImports(source: string): string[] {

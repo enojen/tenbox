@@ -1,5 +1,5 @@
 [Unit]
-Description=Send the claude.ai login to the tenbox bucket and the Secrets of the box
+Description=Write the claude.ai login to the Secrets of the box
 
 [Service]
 Type=oneshot

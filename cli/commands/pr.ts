@@ -1,3 +1,4 @@
+import type { CheckResult } from "../../domain/check.ts";
 import {
   checksStaleError,
   ciFailedError,
@@ -12,8 +13,6 @@ import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import {
   CI_STATE,
   type CiCheck,
-  checksCommit,
-  checksSummary,
   ciState,
   GROUP_PR_STATE,
   type GroupPrState,
@@ -32,7 +31,8 @@ import {
   roundsDir,
   tenboxDir,
 } from "../../domain/task.ts";
-import { MS_PER_SECOND } from "../../domain/utils.ts";
+import { durations } from "../../domain/utils.ts";
+import { checks } from "../application/checks.ts";
 import { groups } from "../application/groups.ts";
 import { notifications } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
@@ -96,9 +96,9 @@ const CI_DEADLINE_MINUTES = 30;
 /** GitHub needs a moment to register the checks of a new push. */
 const CI_REGISTER_MINUTES = 2;
 const SECONDS_PER_MINUTE = 60;
-const CI_INTERVAL_MS = CI_INTERVAL_SECONDS * MS_PER_SECOND;
-const CI_DEADLINE_MS = CI_DEADLINE_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND;
-const CI_REGISTER_MS = CI_REGISTER_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND;
+const CI_INTERVAL_MS = CI_INTERVAL_SECONDS * durations.MS_PER_SECOND;
+const CI_DEADLINE_MS = CI_DEADLINE_MINUTES * SECONDS_PER_MINUTE * durations.MS_PER_SECOND;
+const CI_REGISTER_MS = CI_REGISTER_MINUTES * SECONDS_PER_MINUTE * durations.MS_PER_SECOND;
 
 interface CiWaitInput {
   run: PrRun;
@@ -266,8 +266,8 @@ export interface CheckedInput {
 export async function assertChecked(input: CheckedInput): Promise<void> {
   const { id, group, dir, taskWorktree } = input;
   const head = await git.findHead(dir);
-  const text = await latestChecksText(taskWorktree, group);
-  const checked = checksCommit(text);
+  const latest = await findLatestChecks(taskWorktree, group);
+  const checked = latest?.commit ?? null;
   if (head !== null && checked === head) return;
   throw checksStaleError({ id, group, checked, head: head ?? "unknown" });
 }
@@ -280,24 +280,24 @@ async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   const dir = tenboxDir(run.taskWorktree);
   const task = await tasks.find(dir);
   const planText = await files.read(planMdFile(dir));
-  const checksText = await latestChecksText(run.taskWorktree, group.id);
-  const summary = checksSummary(checksText);
+  const latest = await findLatestChecks(run.taskWorktree, group.id);
+  const summary = latest?.summary ?? null;
   return {
     title: prTitle(id, group.name ?? task?.title ?? null),
     body: prBody(groupLine(id, group.id), planText, summary),
   };
 }
 
-/** The text of the group's highest round `checks.json`; null when there is none. */
-export async function latestChecksText(
+/** The check result of the group's highest round; null when it has no `checks.json`. */
+export async function findLatestChecks(
   taskWorktree: string,
   group: number,
-): Promise<string | null> {
+): Promise<CheckResult | null> {
   const dir = groupTaskDir(taskWorktree, group);
   const names = await files.list(roundsDir(dir));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;
-  return files.read(checksFile(roundDir(dir, latest)));
+  return checks.find(checksFile(roundDir(dir, latest)));
 }
 
 interface CreateOrUpdateInput {

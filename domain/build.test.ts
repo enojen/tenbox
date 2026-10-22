@@ -6,6 +6,7 @@ import {
   buildKind,
   groupTiers,
   parseBuild,
+  readBuild,
   uniqueFiles,
 } from "./build.ts";
 import type { ChangedFile } from "./changedFile.ts";
@@ -35,31 +36,31 @@ const needsYou = (decision: Record<string, unknown>): string =>
     decision,
   });
 
-test("a card without kind or with an unknown kind is bad-build", () => {
+test("a card without kind or with an unknown kind is bad-input", () => {
   const { kind: _kind, ...noKind } = card;
   expect(() => parseBuild(needsYou({ ...noKind, recommended: 1 }))).toThrow(
-    expect.objectContaining({ code: "bad-build" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
   expect(() => parseBuild(needsYou({ ...card, kind: "foo", recommended: 1 }))).toThrow(
-    expect.objectContaining({ code: "bad-build" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
 });
 
-test("a card whose recommended option is not one of its options is bad-build", () => {
+test("a card whose recommended option is not one of its options is bad-input", () => {
   expect(() => parseBuild(needsYou({ ...card, recommended: 3 }))).toThrow(
-    expect.objectContaining({ code: "bad-build" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
   expect(() => parseBuild(needsYou({ ...card, recommended: 0 }))).toThrow(
-    expect.objectContaining({ code: "bad-build" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
 });
 
-test("a deadline that is not a date is bad-build, so no timer waits on it", () => {
+test("a deadline that is not a date is bad-input, so no timer waits on it", () => {
   const text = needsYou({ ...card, recommended: 1 }).replace(/}$/, ',"deadline":"not-a-date"}');
-  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-build" }));
+  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
-test("an answered card whose time is not an ISO date-time is bad-build", () => {
+test("an answered card whose time is not an ISO date-time is bad-input", () => {
   const answered = (at: string) =>
     needsYou({ ...card, recommended: 1 }).replace(
       /}$/,
@@ -67,7 +68,7 @@ test("an answered card whose time is not an ISO date-time is bad-build", () => {
     );
   expect(parseBuild(answered(IN_30_MINUTES)).answered?.at).toBe(IN_30_MINUTES);
   expect(() => parseBuild(answered("yesterday"))).toThrow(
-    expect.objectContaining({ code: "bad-build" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
 });
 
@@ -157,9 +158,9 @@ test("the kind of a build is the result's, else the plan's, else normal", () => 
   expect(buildKind({ result: ready(), plan: null })).toBe("normal");
 });
 
-test("an unknown kind in a build result is bad-build", () => {
+test("an unknown kind in a build result is bad-input", () => {
   const text = JSON.stringify({ ...ready(), kind: "tiny" });
-  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-build" }));
+  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
 const changed = (path: string, lines: number): ChangedFile => ({ path, added: lines, removed: 0 });
@@ -184,5 +185,14 @@ test("a diff over the limits of its kind is kind-raised with the review of the k
       code: "kind-raised",
       details: { kind: "normal", lenses: ["contract"], reviews: 3 },
     }),
+  );
+});
+
+test("readBuild reads build.json and refuses a broken one with bad-file", () => {
+  const file = "/t/.tenbox/build.json";
+  expect(readBuild(needsYou({ ...card, recommended: 1 }), file).status).toBe("needs-you");
+  expect(() => readBuild("{nope", file)).toThrow(expect.objectContaining({ code: "bad-file" }));
+  expect(() => readBuild(needsYou({ ...card, recommended: 3 }), file)).toThrow(
+    "/t/.tenbox/build.json is not valid",
   );
 });

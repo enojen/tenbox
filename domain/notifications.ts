@@ -1,6 +1,7 @@
+import { z } from "zod";
 import { BUILD_STATUS, type BuildStatus } from "./build.ts";
 import type { TaskId } from "./ids.ts";
-import { parseObject } from "./utils.ts";
+import { jsons } from "./utils.ts";
 
 /** What a person must act on: three build statuses and four events. */
 export const NOTIFICATION_STATE = {
@@ -55,10 +56,13 @@ export function notificationLine(notification: Notification): string {
 /** The detail of a `blocked` line when the hook input has no `message`. */
 const PERMISSION_PROMPT = "permission prompt";
 
-/** The detail of a `blocked` line from the JSON a Notification hook reads on stdin; null when that is not a JSON object. */
+/** What Claude Code gives a Notification hook on stdin; only the message is read. */
+const HookInputSchema = z.object({ message: z.string().optional() });
+
+/** The detail of a `blocked` line from the hook's stdin; null when it does not fit the hook input. */
 export function blockedDetail(stdin: string): string | null {
-  const input = parseObject(stdin);
-  if (input === null) return null;
-  const { message } = input;
-  return typeof message === "string" && message.trim() !== "" ? message.trim() : PERMISSION_PROMPT;
+  const input = jsons.check(HookInputSchema, stdin);
+  if (!input.ok) return null;
+  const message = input.value.message?.trim() ?? "";
+  return message === "" ? PERMISSION_PROMPT : message;
 }

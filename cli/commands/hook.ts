@@ -1,6 +1,6 @@
+import { errorMessage } from "../../domain/errors/index.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { blockedDetail, NOTIFICATION_STATE } from "../../domain/notifications.ts";
-import { errorMessage } from "../../domain/utils.ts";
 import { notifications } from "../application/notifications.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { log } from "../infra/env.ts";
@@ -14,7 +14,7 @@ import type { HookResult } from "./results.ts";
 export async function blockedHook(id: TaskId): Promise<HookResult> {
   const input = await stdin.read();
   const detail = blockedDetail(input);
-  if (detail === null) return unsent(id, "stdin is not a JSON object");
+  if (detail === null) return unsent(id, "stdin does not fit the Notification hook input");
   try {
     const taskWorktree = await worktrees.get(id);
     const notification = { id, state: NOTIFICATION_STATE.blocked, detail };

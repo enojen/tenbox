@@ -5,7 +5,7 @@ import { files } from "../infra/files.ts";
 /** Proofs: the worker proofs `tenbox proof` records in `.tenbox/proofs.json`, a JSON array. */
 export const proofs = { read, append, appendAll };
 
-/** None when the file is missing; `bad-proofs` unless it is an array of valid proofs. */
+/** None when the file is missing; `bad-file` unless it is an array of valid proofs. */
 async function read(taskWorktree: string): Promise<StatsProof[]> {
   const file = proofsFile(tenboxDir(taskWorktree));
   const text = await files.read(file);

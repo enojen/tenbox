@@ -1,3 +1,4 @@
+import { failedState } from "../../domain/errors/index.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { TaskKind } from "../../domain/kind.ts";
 import { TRACKER_KIND } from "../../domain/manifest.ts";
@@ -14,7 +15,6 @@ import {
   tenboxDir,
 } from "../../domain/task.ts";
 import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
-import { failedState } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 interface TaskSource {
@@ -53,10 +53,11 @@ async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
   return { ...found, id, tracker: tracker.kind, comments };
 }
 
-/** The task in `task.json` of `dir`; null when it is missing or not valid. */
+/** The task in `task.json` of `dir`; null when it is missing, `bad-file` when it is not valid. */
 async function find(dir: string): Promise<TaskFile | null> {
-  const text = await files.read(taskFile(dir));
-  return text === null ? null : readTaskFile(text);
+  const file = taskFile(dir);
+  const text = await files.read(file);
+  return text === null ? null : readTaskFile(text, file);
 }
 
 /** Makes the task files through `.tenbox` and returns the path of `task.md`; existing ones are kept. */

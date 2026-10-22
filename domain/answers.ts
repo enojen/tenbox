@@ -1,6 +1,6 @@
 import { BUILD_STATUS, type BuildResult, CARD_KIND, type DecisionCard } from "./build.ts";
 import type { TaskId } from "./ids.ts";
-import { isPlainObject, parseObject } from "./utils.ts";
+import { jsons, objects } from "./utils.ts";
 
 /** What `/tenbox-build` gets in its args: only that round's worker of that part sees it. */
 interface WorkflowAnswer {
@@ -72,8 +72,8 @@ export function answerNote(note: AnswerNote): string {
 /** The run's own args plus the answer; JSON text is parsed, anything else becomes `{ task }`. */
 export function argsWithAnswer(input: RunAnswer): object {
   const { id, runArgs, answer } = input;
-  const parsed = typeof runArgs === "string" ? parseObject(runArgs) : runArgs;
-  const base = isPlainObject(parsed) ? parsed : { task: id };
+  const parsed = typeof runArgs === "string" ? jsons.parse(runArgs) : runArgs;
+  const base = objects.isRecord(parsed) ? parsed : { task: id };
   return { ...base, answer };
 }
 

@@ -10,14 +10,14 @@ import {
   uniqueFiles,
 } from "../../domain/build.ts";
 import type { ChangedFile } from "../../domain/changedFile.ts";
+import { errorMessage } from "../../domain/errors/index.ts";
 import { checkFailedError } from "../../domain/errors/tasks.ts";
 import { sessionName, type TaskId, taskBranch } from "../../domain/ids.ts";
 import { CHECK_TIER, type Manifest } from "../../domain/manifest.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plan.ts";
-import { checksOk, checksSummary } from "../../domain/pr.ts";
 import { groupBranch, groupWorktreeDir, tenboxDir } from "../../domain/task.ts";
-import { errorMessage, MS_PER_SECOND } from "../../domain/utils.ts";
+import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
@@ -30,7 +30,7 @@ import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { runChecks } from "./check.ts";
-import { assertChecked, latestChecksText, openPr } from "./pr.ts";
+import { assertChecked, findLatestChecks, openPr } from "./pr.ts";
 import type { PrError, PrResult, SendBuildResult, TaskFileResult } from "./results.ts";
 
 /**
@@ -75,7 +75,7 @@ interface GroupCheck {
 
 /** As `tenbox check` without `--timeout`. */
 const FULL_TIER_TIMEOUT_SECONDS = 600;
-const FULL_TIER_TIMEOUT_MS = FULL_TIER_TIMEOUT_SECONDS * MS_PER_SECOND;
+const FULL_TIER_TIMEOUT_MS = FULL_TIER_TIMEOUT_SECONDS * durations.MS_PER_SECOND;
 
 /**
  * Validates the build result and writes it with its kind to the task's `.tenbox/build.json`. A
@@ -173,9 +173,9 @@ async function assertFastGreen(check: GroupCheck): Promise<void> {
   const { id, taskWorktree, group } = check;
   const dir = group === 1 ? taskWorktree : groupWorktreeDir(taskWorktree, group);
   await assertChecked({ id, group, dir, taskWorktree });
-  const text = await latestChecksText(taskWorktree, group);
-  if (checksOk(text)) return;
-  const summary = checksSummary(text) ?? "no summary";
+  const latest = await findLatestChecks(taskWorktree, group);
+  if (latest?.ok === true) return;
+  const summary = latest?.summary ?? "no summary";
   throw checkFailedError({ id, group, tier: CHECK_TIER.fast, summary });
 }
 

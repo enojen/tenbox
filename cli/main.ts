@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-import { TenboxError } from "../domain/errors/index.ts";
+import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { TASK_KINDS, type TaskKind } from "../domain/kind.ts";
-import { errorMessage, isDigits, MS_PER_SECOND } from "../domain/utils.ts";
+import { durations, strings } from "../domain/utils.ts";
 import {
   type ArgSpec,
   flagValue,
@@ -117,7 +117,8 @@ const COMMANDS: Record<string, Command> = {
         round: intValue(values, "round"),
         tier: tierValue(values),
         base: stringValue(values, "base"),
-        timeoutMs: (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * MS_PER_SECOND,
+        timeoutMs:
+          (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * durations.MS_PER_SECOND,
       }),
   },
   worktree: {
@@ -135,7 +136,7 @@ const COMMANDS: Record<string, Command> = {
     run: (_positionals, values) =>
       mergeCheck({
         base: stringValue(values, "base"),
-        timeoutMs: DEFAULT_TIMEOUT_SECONDS * MS_PER_SECOND,
+        timeoutMs: DEFAULT_TIMEOUT_SECONDS * durations.MS_PER_SECOND,
       }),
   },
   close: {
@@ -267,7 +268,7 @@ const COMMANDS: Record<string, Command> = {
       const [, option = ""] = positionals;
       const auto = flagValue(values, "auto");
       if (auto && option === "") return answerWhenDue(id);
-      if (auto || !isDigits(option)) throw usageError(`usage: ${ANSWER_USAGE}`);
+      if (auto || !strings.isWholeNumber(option)) throw usageError(`usage: ${ANSWER_USAGE}`);
       return answerCard({ id, option: Number(option) });
     },
   },

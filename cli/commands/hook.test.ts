@@ -48,8 +48,8 @@ describe("tenbox hook blocked", () => {
     expect(ntfy.lines()).toEqual(["demo · T-1 · blocked · permission prompt → tenbox attach T-1"]);
   });
 
-  test("stdin that is not a JSON object sends nothing, exits 0 and logs one line", async () => {
-    const texts = ["not json", "[1]", ""];
+  test("stdin that is not JSON or does not fit the hook input sends nothing, exits 0 and logs one line", async () => {
+    const texts = ["not json", "[1]", "", JSON.stringify({ ...PROMPT, message: 5 })];
     for (const text of texts) {
       const run = await hook(text);
       const lines = run.err.split("\n").filter((line) => line !== "");

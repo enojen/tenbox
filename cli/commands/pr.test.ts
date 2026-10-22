@@ -250,6 +250,18 @@ test("a group PR is found by its body line when the head branch differs", async 
   expect([rows(run)[0]?.state, prs.length, prs[0]?.title]).toEqual(["updated", 1, "T-1 · x"]);
 });
 
+test("gh pr list output that does not fit is a gh error that names the field, and nothing is created", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  const db = path.join(project.root, "gh-state", "prs.json");
+  const broken = { number: 3, url: "https://example.com/pull/3", state: GH_STATE.open };
+  await files.write(db, JSON.stringify([{ ...broken, headRefName: "feat/T-1", body: "" }]));
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  const prs = await gh.prs();
+  expect([run.code, run.json.code, prs.length]).toEqual([1, "gh", 1]);
+  expect(run.json.error).toStartWith("gh pr list failed: output does not fit: 0.isDraft: ");
+});
+
 test("a PR with no body line is found by its branch", async () => {
   await commit(taskWorktree, "b.txt");
   const gh = await installGh();

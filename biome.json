@@ -56,6 +56,15 @@
       "plugins": ["./rules/no-raw-spawn/rule.grit"]
     },
     {
+      "includes": [
+        "**/cli/infra/claude/**",
+        "!**/*.test.ts",
+        "!**/cli/infra/claude/claudeFiles.ts",
+        "!**/cli/infra/claude/settings.ts"
+      ],
+      "plugins": ["./rules/claude-files-only/rule.grit"]
+    },
+    {
       "includes": ["**", "!**/*.test.ts", "!**/domain/utils.ts", "!**/rules/*/good.ts"],
       "plugins": ["./rules/no-raw-json-parse/rule.grit"]
     },
@@ -77,6 +86,43 @@
     {
       "includes": ["**", "!**/*.test.ts"],
       "plugins": ["./rules/no-state-literal-compare/rule.grit"]
+    },
+    {
+      "includes": ["**/domain/utils.ts"],
+      "plugins": ["./rules/utils-namespaces/rule.grit"]
+    },
+    {
+      "includes": ["**"],
+      "plugins": ["./rules/use-jsons-check/rule.grit"]
+    },
+    {
+      "includes": ["**/domain/**", "!**/*.test.ts"],
+      "plugins": ["./rules/read-file-parse-input/rule.grit"]
+    },
+    {
+      "includes": ["**/domain/**", "!**/*.test.ts", "!**/domain/ids.ts"],
+      "plugins": ["./rules/pure-domain/rule.grit"]
+    },
+    {
+      "includes": ["**/domain/**", "!**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "node:fs": "domain/ is pure: read files, the OS and processes in cli/infra/ and pass the value in.",
+                  "node:fs/promises": "domain/ is pure: read files, the OS and processes in cli/infra/ and pass the value in.",
+                  "node:os": "domain/ is pure: read files, the OS and processes in cli/infra/ and pass the value in.",
+                  "node:child_process": "domain/ is pure: read files, the OS and processes in cli/infra/ and pass the value in.",
+                  "node:net": "domain/ is pure: read files, the OS and processes in cli/infra/ and pass the value in."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },

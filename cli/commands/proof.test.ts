@@ -45,10 +45,10 @@ describe("tenbox proof", () => {
     expect(written.map((one: { test: string }) => one.test)).toEqual(["t one", "t two"]);
   });
 
-  test("an invalid proofs.json is bad-proofs and stays as it is", async () => {
+  test("an invalid proofs.json is bad-file and stays as it is", async () => {
     await files.write(proofsFile, "{ not json");
     const run = await proof(...fullFlags("t"));
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-proofs"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
     expect(run.json.error).toContain("proofs.json");
     const kept = await files.read(proofsFile);
     expect(kept).toBe("{ not json");
@@ -57,10 +57,10 @@ describe("tenbox proof", () => {
   test.each([
     ["a value that is not an array", '{"part":"01"}'],
     ["an item with a blank field", '[{"part":"01","file":"a","test":"","failure":"x"}]'],
-  ])("proofs.json with %s is bad-proofs and stays as it is", async (_name, text) => {
+  ])("proofs.json with %s is bad-file and stays as it is", async (_name, text) => {
     await files.write(proofsFile, text);
     const run = await proof(...fullFlags("t"));
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-proofs"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
     expect(run.json.error).toContain("proofs.json");
     const kept = await files.read(proofsFile);
     expect(kept).toBe(text);

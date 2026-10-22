@@ -1,14 +1,14 @@
 import type { AUTO_ANSWER_STATE } from "../../domain/answers.ts";
 import type { Approval } from "../../domain/approval.ts";
 import type { DecisionCard, RoundStatus } from "../../domain/build.ts";
-import type { BaselineSource } from "../../domain/failures.ts";
-import type { CheckTier, TrackerKind } from "../../domain/manifest.ts";
+import type { BaseInfo, CheckOutcome } from "../../domain/check.ts";
+import type { FailedState } from "../../domain/errors/index.ts";
+import type { TrackerKind } from "../../domain/manifest.ts";
 import type { PlanResult } from "../../domain/plan.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/pr.ts";
 import type { StatsProof } from "../../domain/proof.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { StatusReport } from "../../domain/statusReport.ts";
-import type { FailedState } from "../../domain/utils.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
 import type { MachineRunRow } from "../application/machines.ts";
@@ -248,48 +248,6 @@ export interface ApproveResult extends Approval {
   file: string;
 }
 
-interface BaselineSummary {
-  sha: string;
-  source: BaselineSource;
-  failures: number;
-}
-
-export interface CheckOutcome {
-  name: string;
-  cmd: string;
-  exit_code: number;
-  duration_ms: number;
-  timed_out: boolean;
-  failures: number;
-  new_failures: string[];
-  /** New failures of the first run that the rerun did not repeat; they do not fail the check. */
-  flaky: string[];
-  fixed: string[];
-  baseline: BaselineSummary;
-}
-
-export interface CheckRun extends CheckOutcome {
-  log: string;
-}
-
-interface BaseInfo {
-  ref: string;
-  sha: string;
-}
-
-export interface CheckResult {
-  ok: boolean;
-  task: string;
-  round: number;
-  worktree: string;
-  commit: string;
-  base: BaseInfo;
-  checks: CheckRun[];
-  summary: string;
-  file: string;
-  tier: CheckTier;
-}
-
 export interface MergeCheckResult {
   ok: boolean;
   base: BaseInfo;
@@ -351,8 +309,8 @@ export interface MachineRunResultJson {
   ok: true;
   task: string;
   cmd: string;
-  /** The run on GitHub (null when `gh` printed none), or the API URL of the Job. */
-  url: string | null;
+  /** The API URL of the Job. */
+  url: string;
 }
 
 export interface MachineLsResult {

@@ -1,0 +1,12 @@
+language js
+
+or {
+  `function $name($params): $ret { $body }`,
+  `function $name($params) { $body }`
+} as $fn where {
+  or {
+    and { $name <: r"read[A-Z].*", $body <: contains `badInputError($args)` as $hit },
+    and { $name <: r"parse[A-Z].*", $body <: contains `badFileError($args)` as $hit }
+  },
+  register_diagnostic(span=$hit, message="read* reads a file and throws badFileError; parse* reads --json or stdin input and throws badInputError.")
+}

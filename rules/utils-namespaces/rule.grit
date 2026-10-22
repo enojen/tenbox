@@ -1,0 +1,9 @@
+language js
+
+JsExport() as $export where {
+  $export <: not or {
+    `export const $name = { $props }` where { $name <: r"[a-z][A-Za-z]*s" },
+    r"(?s)export (?:type|interface) .*"
+  },
+  register_diagnostic(span=$export, message="domain/utils.ts exports only plural namespace objects, like export const strings = { ... }, and types.")
+}

@@ -1,5 +1,4 @@
 import type { TaskId } from "./ids.ts";
-import { parseObject } from "./utils.ts";
 
 /** What `tenbox pr` did with the PR. */
 export const PR_STATE = { created: "created", updated: "updated" } as const;
@@ -37,26 +36,6 @@ export function prBody(
     planText ? `<details><summary>Plan</summary>\n\n${planText.trim()}\n</details>` : null,
   ];
   return parts.filter((part) => part !== null).join("\n\n");
-}
-
-/** `summary` from a round's `checks.json`; null when the text is missing or not JSON. */
-export function checksSummary(text: string | null): string | null {
-  if (text === null) return null;
-  const parsed = parseObject(text);
-  return typeof parsed?.summary === "string" ? parsed.summary : null;
-}
-
-/** `commit` from a round's `checks.json`; null when the text is missing, not JSON or has none. */
-export function checksCommit(text: string | null): string | null {
-  if (text === null) return null;
-  const parsed = parseObject(text);
-  return typeof parsed?.commit === "string" ? parsed.commit : null;
-}
-
-/** True when a round's `checks.json` has `ok: true`; false when it is missing or not JSON. */
-export function checksOk(text: string | null): boolean {
-  if (text === null) return false;
-  return parseObject(text)?.ok === true;
 }
 
 /** What the CI checks of a PR add up to; `none` is a PR with no checks reported. */

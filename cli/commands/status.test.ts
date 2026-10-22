@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, symlink } from "node:fs/promises";
 import path from "node:path";
 import { files } from "../infra/files.ts";
+import { checkResult } from "../test/checkResult.ts";
 import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
@@ -113,13 +114,20 @@ describe("tenbox status", () => {
   test("takes the round and the last check result from the newest checks.json", async () => {
     const checks = (n: number, text: object) =>
       files.writeJson(path.join(tenboxDir, "rounds", String(n), "checks.json"), text);
-    await checks(1, { ok: false, summary: "1 new failure" });
-    await checks(2, { ok: true, summary: "all pass" });
+    await checks(1, checkResult({ ok: false, summary: "1 new failure" }));
+    await checks(2, checkResult({ round: 2, summary: "all pass" }));
     const run = await status();
     expect([run.json.round, run.json.checks]).toEqual([
       2,
       { round: 2, ok: true, summary: "all pass" },
     ]);
+  });
+
+  test("a checks.json without tier, from before tier was written, is bad-file", async () => {
+    const { tier: _, ...old } = checkResult({});
+    await files.writeJson(path.join(tenboxDir, "rounds", "1", "checks.json"), old);
+    const run = await status();
+    expect([run.code, run.json.code]).toEqual([1, "bad-file"]);
   });
 
   test("reports the state of the newest background session of the task worktree", async () => {

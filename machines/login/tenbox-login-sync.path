@@ -1,5 +1,5 @@
 [Unit]
-Description=Send the claude.ai login to the bucket and the Secrets when it changes
+Description=Write the claude.ai login to the Secrets of the box when it changes
 
 [Path]
 PathModified=%h/.claude/.credentials.json

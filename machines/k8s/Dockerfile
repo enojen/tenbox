@@ -1,5 +1,5 @@
-# The tenbox box image for a Kubernetes pod (TEN-460). Same content as the Packer
-# image: Ubuntu, bun, gh, claude, this repo at /opt/tenbox. /home/tenzel is the task volume.
+# The tenbox box image for a Kubernetes pod (TEN-460): Ubuntu, bun, gh, claude, this
+# repo at /opt/tenbox. /home/tenzel is the task volume.
 # Build it with the box workflow, or by hand (machines/README.md): the context is
 # machines/k8s and holds only the git bundle.
 FROM ubuntu:24.04

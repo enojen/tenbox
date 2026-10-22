@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests tenbox-login-sync.sh with a stub kubectl and a stub curl in PATH. Run: bash machines/login/test.sh
+# Tests tenbox-login-sync.sh with a stub kubectl in PATH. Run: bash machines/login/test.sh
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 fails=0
@@ -11,9 +11,6 @@ setup() {
   export HOME="$root/home"
   mkdir -p "$HOME/.claude" "$HOME/.config/tenbox" "$root/bin" "$root/repo/machines/login"
   echo '{"claudeAiOauth":{"refreshTokenExpiresAt":1800000000000,"accessToken":"SECRET-LOGIN"}}' > "$HOME/.claude/.credentials.json"
-  printf 'mybucket\n' > "$HOME/.config/tenbox/bucket"
-  printf 'SECRET-ACCESS\n' > "$HOME/.config/tenbox/bucket-access-key"
-  printf 'SECRET-BUCKETKEY\n' > "$HOME/.config/tenbox/bucket-secret-key"
   printf 'SECRET-GHTOKEN\n' > "$HOME/.config/tenbox/github-token"
   cp "$here/tenbox-login-sync.sh" "$root/repo/machines/login/"
   cat > "$root/repo/tenbox.local.yaml" <<YAML
@@ -36,16 +33,10 @@ if [ "$3" = create ]; then
   done
 else cat > /dev/null; fi
 STUB
-  cat > "$root/bin/curl" <<'STUB'
-#!/usr/bin/env bash
-echo "curl $*" >> "$STUB_DIR/argv.log"
-cat > "$STUB_DIR/curl-stdin.log"
-[ -z "${CURL_FAIL:-}" ] || exit 22
-STUB
-  chmod +x "$root/bin/kubectl" "$root/bin/curl"
+  chmod +x "$root/bin/kubectl"
   export STUB_DIR="$root" PATH="$root/bin:$PATH"
   : > "$root/argv.log"; : > "$root/secrets.log"
-  unset KUBECTL_FAIL CURL_FAIL KUBECTL_KILL
+  unset KUBECTL_FAIL KUBECTL_KILL
 }
 run() { bash "$root/repo/machines/login/tenbox-login-sync.sh" > "$root/out.log" 2>&1; }
 
@@ -56,7 +47,6 @@ check "github-token gets the token" 'grep -qx "github-token token=SECRET-GHTOKEN
 check "tracker gets api_key" 'grep -qx "tracker api_key=SECRET-TRACKER" "$root/secrets.log"'
 check "ntfy gets url" 'grep -qx "ntfy url=https://ntfy.sh/SECRET-NTFY" "$root/secrets.log"'
 check "every kubectl call uses namespace tenbox" '! grep "^kubectl " "$root/argv.log" | grep -qv "^kubectl -n tenbox "'
-check "bucket keys go to curl on stdin" 'grep -q "SECRET-ACCESS:SECRET-BUCKETKEY" "$root/curl-stdin.log"'
 check "no secret value in any argv" '! grep -q "SECRET-" "$root/argv.log"'
 check "no secret value in the output" '! grep -q "SECRET-" "$root/out.log"'
 
@@ -64,10 +54,6 @@ setup; printf 'tracker:\n  api_key: ""\nnotify:\n  ntfy: ""\n' > "$root/repo/ten
 check "empty values: exit 0" '[ "$code" = 0 ]'
 check "empty values: tracker and ntfy skipped" '! grep -q -e "^tracker " -e "^ntfy " "$root/secrets.log"'
 check "empty values: the other two still written" '[ "$(wc -l < "$root/secrets.log")" = 2 ]'
-
-setup; CURL_FAIL=1 run; code=$?
-check "upload failure: exit 1" '[ "$code" = 1 ]'
-check "upload failure: Secrets still written" '[ "$(wc -l < "$root/secrets.log")" = 4 ]'
 
 setup; KUBECTL_FAIL=1 run; code=$?
 check "kubectl failure: exit 1" '[ "$code" = 1 ]'

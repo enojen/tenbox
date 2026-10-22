@@ -1,9 +1,10 @@
 import { closeSync, openSync } from "node:fs";
 import type { TenboxError } from "../../domain/errors/index.ts";
 import { noCommandError, noDirError } from "../../domain/errors/tools.ts";
-import { elapsedMs, hasErrorCode } from "../../domain/utils.ts";
+import { elapsedMs } from "./clock.ts";
 import { env, log } from "./env.ts";
 import { files } from "./files.ts";
+import { hasErrorCode } from "./nodeErrors.ts";
 
 interface ProcessOptions {
   cwd?: string;

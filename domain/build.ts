@@ -1,7 +1,13 @@
 import path from "node:path";
 import { z } from "zod";
 import { type ChangedFile, changedLines } from "./changedFile.ts";
-import { answeredError, badBuildError, kindRaisedError, noDecisionError } from "./errors/tasks.ts";
+import {
+  answeredError,
+  badFileError,
+  badInputError,
+  kindRaisedError,
+  noDecisionError,
+} from "./errors/tasks.ts";
 import { usageError } from "./errors/usage.ts";
 import type { Group } from "./group.ts";
 import {
@@ -15,7 +21,7 @@ import {
 import { CHECK_TIER, type CheckTier } from "./manifest.ts";
 import type { PlanResult } from "./plan.ts";
 import { ProofSchema } from "./proof.ts";
-import { isFilled, issueLines, parseObject } from "./utils.ts";
+import { jsons, strings } from "./utils.ts";
 
 /** `build.json` in a `.tenbox/` folder: the last build result. */
 export const buildFile = (dir: string): string => path.join(dir, "build.json");
@@ -23,7 +29,7 @@ export const buildFile = (dir: string): string => path.join(dir, "build.json");
 /** One line: the card goes into a `decisions.md` bullet and a notification line. */
 const oneLine = z
   .string()
-  .refine(isFilled, "must not be blank")
+  .refine(strings.isNotBlank, "must not be blank")
   .refine((text) => !text.includes("\n"), "must be one line");
 
 const UnprovenSchema = z.object({ part: z.string(), reason: z.string() });
@@ -111,17 +117,18 @@ export interface OpenCard {
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
 export type Unproven = BuildResult["unproven"][number];
 
-/** The build result in the text; `bad-build` when it is not a JSON object or does not match. */
+/** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {
-  const parsed = BuildResultSchema.safeParse(parseObject(text));
-  if (!parsed.success) throw badBuildError(issueLines(parsed.error));
-  return parsed.data;
+  const result = jsons.check(BuildResultSchema, text);
+  if (!result.ok) throw badInputError("the build result", result.issues);
+  return result.value;
 }
 
-/** The build result in the text; null when it is not valid. */
-export function readBuild(text: string): BuildResult | null {
-  const parsed = BuildResultSchema.safeParse(parseObject(text));
-  return parsed.success ? parsed.data : null;
+/** The build result in the text of `build.json`; `bad-file` when it is not JSON or does not match. */
+export function readBuild(text: string, file: string): BuildResult {
+  const result = jsons.check(BuildResultSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }
 
 /** The card to answer; `no-decision` without a `needs-you` card, `answered` once answered. */

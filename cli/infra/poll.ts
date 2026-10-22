@@ -1,4 +1,4 @@
-import { MS_PER_SECOND } from "../../domain/utils.ts";
+import { durations } from "../../domain/utils.ts";
 
 /** What `pollUntil` checks: null until done, and the moment it gives up. */
 export interface Poll<T> {
@@ -14,7 +14,7 @@ export async function pollUntil<T>(poll: Poll<T>): Promise<T | null> {
   while (found === null) {
     const left = poll.deadlineMs - Date.now();
     if (left <= 0) return null;
-    await Bun.sleep(Math.min(left, poll.intervalMs ?? MS_PER_SECOND));
+    await Bun.sleep(Math.min(left, poll.intervalMs ?? durations.MS_PER_SECOND));
     found = await poll.check();
   }
   return found;

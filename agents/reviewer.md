@@ -44,13 +44,13 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   - a change of behaviour, a fix or a new feature, without a test in the diff that fails
     without it, or without its proof in `proofs` (worker "Prove first"). A rename
     or a move with no change of behaviour needs none. Exception: a part whose plan says
-    the proof is by hand on Hetzner and whose part file records that proof is not
+    the proof is by hand on the cluster and whose part file records that proof is not
     must_fix; see `attention`;
   - a test-only seam in production code (a variable, option or export in a script under
     `machines/` whose only user is a test). This is must_fix, never attention.
 - `unproven`: a part whose change of behaviour has no proof (the last must_fix rule above).
   An example of a part in `plan.json` with no test named after its title also makes that part
-  unproven. A part with a by-hand Hetzner proof recorded in its part file (see the exception
+  unproven. A part with a by-hand cluster proof recorded in its part file (see the exception
   above) is not unproven.
   Each item is `{ part, reason }`: `part` is the `NN` prefix of the part file name, like
   `01`, and `reason` is one sentence. The item also stays in `must_fix`. `tenbox close`
@@ -64,7 +64,7 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   data or of a feature, an OpenAPI or other contract change, a file in `locked` or next
   to one, a file the plan does not mention, a secret or an external paid service. Give
   the reason in a few words, like "schema change, not reversible". A part with a by-hand
-  Hetzner proof recorded in its part file goes here as "proof by hand on Hetzner".
+  cluster proof recorded in its part file goes here as "proof by hand on the cluster".
 
 Code shape rules, for added or changed code only, test files included; the project
 `CLAUDE.md` wins where it says otherwise:

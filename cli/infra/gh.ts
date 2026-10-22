@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
 import { bodyHasLine, type CiCheck, parseCiChecks } from "../../domain/pr.ts";
-import { parseJson } from "../../domain/utils.ts";
+import { jsons } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
 
 export interface PrText {
@@ -40,8 +40,6 @@ export const gh = {
   create,
   edit,
   markReady,
-  runWorkflow,
-  listRuns,
   listChecks,
 };
 
@@ -102,6 +100,20 @@ function isMergedAt(pr: PrState, head: string): boolean {
 /** `pr create`, `api --method`: enough to name the command in an error without its long arguments. */
 const SUBCOMMAND_WORDS = 2;
 
+interface GhOutput<T> {
+  schema: z.ZodType<T>;
+  /** The `gh` words for the error, such as `pr list`. */
+  subcommand: string;
+  stdout: string;
+}
+
+/** The `--json` output of a `gh` command; a `gh` error with the issues when it does not fit. */
+function checkOutput<T>(output: GhOutput<T>): T {
+  const result = jsons.check(output.schema, output.stdout);
+  if (result.ok) return result.value;
+  throw ghError(output.subcommand, `output does not fit: ${result.issues.join("; ")}`);
+}
+
 async function run(args: string[], cwd: string): Promise<string> {
   const result = await processes.run(["gh", ...args], { cwd });
   if (result.code === 0) return result.stdout.trim();
@@ -115,7 +127,7 @@ async function findPr(dir: string, branch: string): Promise<PrState | null> {
   try {
     const result = await processes.run(["gh", ...args], { cwd: dir });
     if (result.code !== 0) return null;
-    return PrViewSchema.parse(parseJson(result.stdout));
+    return checkOutput({ schema: PrViewSchema, subcommand: "pr view", stdout: result.stdout });
   } catch (e) {
     if (e instanceof TenboxError && e.code === "no-command") return null;
     throw e;
@@ -135,7 +147,8 @@ async function countParents(dir: string, sha: string): Promise<number> {
 async function findByLine(dir: string, line: string): Promise<GroupPr | null> {
   const args = ["pr", "list", "--state", "all", "--search", `"${line}" in:body`];
   const out = await run([...args, "--limit", LIST_LIMIT, "--json", PR_FIELDS], dir);
-  const found = PrListSchema.parse(parseJson(out)).filter((pr) => bodyHasLine(pr.body, line));
+  const listed = checkOutput({ schema: PrListSchema, subcommand: "pr list", stdout: out });
+  const found = listed.filter((pr) => bodyHasLine(pr.body, line));
   const pr = pickPr(found);
   return pr === undefined ? null : toGroupPr(pr);
 }
@@ -143,7 +156,7 @@ async function findByLine(dir: string, line: string): Promise<GroupPr | null> {
 async function findByBranch(dir: string, branch: string): Promise<GroupPr | null> {
   const args = ["pr", "list", "--head", branch, "--state", "all", "--json", PR_FIELDS];
   const out = await run(args, dir);
-  const pr = pickPr(PrListSchema.parse(parseJson(out)));
+  const pr = pickPr(checkOutput({ schema: PrListSchema, subcommand: "pr list", stdout: out }));
   return pr === undefined ? null : toGroupPr(pr);
 }
 
@@ -151,7 +164,8 @@ async function findByBranch(dir: string, branch: string): Promise<GroupPr | null
 async function listOpen(dir: string, base: string): Promise<PrBranch[]> {
   const args = ["pr", "list", "--state", "open", "--base", base, "--limit", LIST_LIMIT];
   const out = await run([...args, "--json", "number,headRefName"], dir);
-  return PrBranchListSchema.parse(parseJson(out)).map((pr) => ({
+  const listed = checkOutput({ schema: PrBranchListSchema, subcommand: "pr list", stdout: out });
+  return listed.map((pr) => ({
     number: pr.number,
     branch: pr.headRefName,
   }));
@@ -172,59 +186,6 @@ async function edit(dir: string, number: number, text: PrText): Promise<void> {
 
 async function markReady(dir: string, number: number): Promise<void> {
   await run(["pr", "ready", String(number)], dir);
-}
-
-/** One `-f name=value` workflow input. */
-export type WorkflowFields = Record<string, string>;
-
-interface WorkflowRunInput {
-  dir: string;
-  workflow: string;
-  fields: WorkflowFields;
-}
-
-const RUN_URL = /https:\/\/\S+\/actions\/runs\/\d+/;
-
-/** Starts the workflow; the URL of its run, or null when `gh` printed none. */
-async function runWorkflow(input: WorkflowRunInput): Promise<string | null> {
-  const fields = Object.entries(input.fields).flatMap(([k, v]) => ["-f", `${k}=${v}`]);
-  const out = await run(["workflow", "run", input.workflow, ...fields], input.dir);
-  return RUN_URL.exec(out)?.[0] ?? null;
-}
-
-export interface WorkflowRunRow {
-  id: number;
-  title: string;
-  status: string;
-  conclusion: string;
-  url: string;
-  created: string;
-}
-
-/** The output of `gh run list --json databaseId,displayTitle,status,conclusion,url,createdAt`. */
-const RunListSchema = z.array(
-  z.object({
-    databaseId: z.number(),
-    displayTitle: z.string(),
-    status: z.string(),
-    conclusion: z.string(),
-    url: z.string(),
-    createdAt: z.iso.datetime(),
-  }),
-);
-
-/** The latest runs of the workflow, newest first. */
-async function listRuns(dir: string, workflow: string): Promise<WorkflowRunRow[]> {
-  const fields = "databaseId,displayTitle,status,conclusion,url,createdAt";
-  const out = await run(["run", "list", "--workflow", workflow, "--json", fields], dir);
-  return RunListSchema.parse(parseJson(out)).map((r) => ({
-    id: r.databaseId,
-    title: r.displayTitle,
-    status: r.status,
-    conclusion: r.conclusion,
-    url: r.url,
-    created: r.createdAt,
-  }));
 }
 
 const NO_CHECKS = "no checks reported";

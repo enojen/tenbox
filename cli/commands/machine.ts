@@ -10,7 +10,7 @@ export interface MachineRunArgs {
   usage: string;
 }
 
-/** Starts one tenbox command of the task as a `machine.yml` run. */
+/** Starts one tenbox command of the task as a Job on the cluster. */
 export async function runOnMachine(args: MachineRunArgs): Promise<MachineRunResultJson> {
   if (args.words.length === 0) throw usageError(`usage: ${args.usage}`);
   const { task, cmd, url } = await machines.run({ id: args.id, words: args.words });

@@ -1,5 +1,5 @@
 language js
 
 `JSON.parse($text)` as $call where {
-  register_diagnostic(span=$call, message="No raw JSON.parse: call parseJson or parseObject from domain/utils.ts.")
+  register_diagnostic(span=$call, message="No raw JSON.parse: call jsons.parse or jsons.check from domain/utils.ts.")
 }

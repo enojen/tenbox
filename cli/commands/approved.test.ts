@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { sha256Hex } from "../../domain/utils.ts";
+import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
 import { readStatus } from "../test/taskStatus.ts";
@@ -59,7 +59,7 @@ describe("tenbox approved", () => {
       task: "T-1",
       file: approvedFile,
       at: approval.at,
-      plan_sha: sha256Hex(PLAN_TEXT),
+      plan_sha: hashes.sha256Hex(PLAN_TEXT),
     });
   });
 

@@ -92,7 +92,7 @@ async function rebase(request: RebaseRequest): Promise<string[]> {
   const { taskWorktree, group, worktree, base } = request;
   const file = groupFile(groupDir(tenboxDir(taskWorktree), group));
   const text = await files.read(file);
-  const saved = text === null ? null : readGroupStart(text);
+  const saved = text === null ? null : readGroupStart(text, file);
   if (saved === null) return [];
   await git.fetch(worktree);
   const onto = `origin/${base}`;

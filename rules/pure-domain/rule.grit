@@ -1,0 +1,15 @@
+language js
+
+or {
+  `Date.now()`,
+  `performance.now()`,
+  `new Date()`,
+  `Math.random()`,
+  `crypto.getRandomValues($args)`,
+  `crypto.randomUUID()`,
+  `fetch($args)`,
+  `process.$member`,
+  `Bun.$member` where { $member <: not `stripANSI` }
+} as $call where {
+  register_diagnostic(span=$call, message="domain/ is pure: no clock, randomness, process, network or Bun I/O; do it in cli/infra/ and pass the value in.")
+}

@@ -1,0 +1,8 @@
+language js
+
+or {
+  `$schema.safeParse(jsons.parse($text))`,
+  `$schema.parse(jsons.parse($text))`
+} as $call where {
+  register_diagnostic(span=$call, message="Check JSON text against a schema with jsons.check(schema, text).")
+}

@@ -1,5 +1,5 @@
+import { errorMessage } from "../../domain/errors/index.ts";
 import { type Notification, notificationLine } from "../../domain/notifications.ts";
-import { errorMessage } from "../../domain/utils.ts";
 import { sessionLinks } from "../infra/claude/sessionLinks.ts";
 import { log } from "../infra/env.ts";
 import { notify } from "../infra/notify.ts";

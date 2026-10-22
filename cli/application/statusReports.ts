@@ -2,9 +2,7 @@ import path from "node:path";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { type TaskId, taskBranch, taskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifest.ts";
-import { checksSummary } from "../../domain/pr.ts";
 import { taskWorktreeDir, taskWorktreeNames } from "../../domain/project.ts";
-import { checksPassed } from "../../domain/stats.ts";
 import type { ReportChecks, ReportPr, StatusReport } from "../../domain/statusReport.ts";
 import {
   approvedFile,
@@ -18,6 +16,7 @@ import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { GH_STATE, gh } from "../infra/gh.ts";
 import { builds } from "./builds.ts";
+import { checks } from "./checks.ts";
 import { parts } from "./parts.ts";
 import { projects } from "./projects.ts";
 import { sessions } from "./sessions.ts";
@@ -72,8 +71,8 @@ async function findPr(taskWorktree: string, branch: string): Promise<ReportPr | 
 /** The newest round that has a `checks.json`. */
 async function findChecks(dir: string, rounds: number[]): Promise<ReportChecks | null> {
   for (const round of [...rounds].reverse()) {
-    const text = await files.read(checksFile(roundDir(dir, round)));
-    if (text !== null) return { round, ok: checksPassed(text), summary: checksSummary(text) };
+    const result = await checks.find(checksFile(roundDir(dir, round)));
+    if (result !== null) return { round, ok: result.ok, summary: result.summary };
   }
   return null;
 }

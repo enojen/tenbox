@@ -1,6 +1,6 @@
-declare function parseJson(text: string): unknown;
+declare const jsons: { parse(text: string): unknown };
 
 export function samples(text: string): string {
-  const value = parseJson(text);
+  const value = jsons.parse(text);
   return JSON.stringify(value);
 }

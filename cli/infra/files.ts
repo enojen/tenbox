@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { hasErrorCode } from "../../domain/utils.ts";
+import { hasErrorCode } from "./nodeErrors.ts";
 
 const JSON_INDENT = 2;
 const MISSING_CODES = ["ENOENT", "ENOTDIR"];

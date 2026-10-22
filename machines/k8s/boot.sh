@@ -72,7 +72,7 @@ install_tenbox() {
   (cd /opt/tenbox && as_tenzel tenbox install > /dev/null)
 }
 
-# 6. After the command: stay while a claude session works, as the watchdog of a machine does.
+# 6. After the command: stay while a claude session works.
 sessions_json() { as_tenzel claude agents --json 2> /dev/null || echo "[]"; }
 wait_for_sessions() {
   local idle=0 sessions working

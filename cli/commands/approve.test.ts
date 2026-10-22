@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { sha256Hex } from "../../domain/utils.ts";
+import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
 import { readStatus } from "../test/taskStatus.ts";
@@ -73,10 +73,10 @@ describe("tenbox approve", () => {
     expect(run.json).toMatchObject({
       task: "T-1",
       file: approvedFile,
-      plan_sha: sha256Hex(PLAN_TEXT),
+      plan_sha: hashes.sha256Hex(PLAN_TEXT),
     });
     const approved = await readApproved();
-    expect(approved).toEqual({ at: run.json.at, plan_sha: sha256Hex(PLAN_TEXT) });
+    expect(approved).toEqual({ at: run.json.at, plan_sha: hashes.sha256Hex(PLAN_TEXT) });
     expect(Number.isNaN(Date.parse(String(run.json.at)))).toBe(false);
   });
 
@@ -98,7 +98,7 @@ describe("tenbox approve", () => {
     await writePlan(second);
     const run = await approve("T-1");
     const approved = await readApproved();
-    expect(approved).toEqual({ at: run.json.at, plan_sha: sha256Hex(second) });
+    expect(approved).toEqual({ at: run.json.at, plan_sha: hashes.sha256Hex(second) });
   });
 
   test.each([
@@ -110,19 +110,19 @@ describe("tenbox approve", () => {
         decisions: [{ title: "t", options: ["a", "b"], taken: 3, reason: "r" }],
       }),
     ],
-  ])("a hand-written plan.json with %s is bad-plan and writes nothing", async (_name, text) => {
+  ])("a hand-written plan.json with %s is bad-file and writes nothing", async (_name, text) => {
     await writePlan(text);
     const run = await approve("T-1");
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
     const written = await files.exists(approvedFile);
     expect(written).toBe(false);
   });
 
-  test("a plan.md over the limit is bad-plan and writes nothing", async () => {
+  test("a plan.md over the limit is bad-file and writes nothing", async () => {
     await writePlan();
     await files.write(planFile, "line\n".repeat(PLAN_MD_LIMIT + 1));
     const run = await approve("T-1");
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
     expect(run.json.error).toContain("plan.md");
     const written = await files.exists(approvedFile);
     expect(written).toBe(false);

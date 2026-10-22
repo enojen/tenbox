@@ -1,5 +1,5 @@
 import { setupError } from "../../domain/errors/tasks.ts";
-import { elapsedMs } from "../../domain/utils.ts";
+import { elapsedMs } from "../infra/clock.ts";
 import { log } from "../infra/env.ts";
 import { shell } from "../infra/shell.ts";
 

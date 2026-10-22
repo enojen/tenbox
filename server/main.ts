@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import type { Server } from "bun";
-import { TenboxError } from "../domain/errors/index.ts";
-import { errorMessage } from "../domain/utils.ts";
+import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { projects } from "./application/projects.ts";
 import { users } from "./application/users.ts";
 import { readProjectAddArgs } from "./commands/projectAdd.ts";

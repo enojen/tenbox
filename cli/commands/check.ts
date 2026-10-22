@@ -1,5 +1,6 @@
 import path from "node:path";
 import { buildFile } from "../../domain/build.ts";
+import type { CheckResult, CheckRun } from "../../domain/check.ts";
 import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
@@ -26,7 +27,6 @@ import { worktrees } from "../application/worktrees/index.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import type { CheckResult, CheckRun } from "./results.ts";
 
 export interface CheckInput {
   id: TaskId;

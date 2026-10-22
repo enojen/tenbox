@@ -2,6 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import { BUILD_STATUS, type BuildResult, type Unproven } from "./build.ts";
 import type { ChangedFile } from "./changedFile.ts";
+import { badFileError } from "./errors/tasks.ts";
 import { partIdOf } from "./part.ts";
 import type { PlanResult } from "./plan.ts";
 import type { StatsProof } from "./proof.ts";
@@ -12,7 +13,7 @@ import {
   type RunMinutes,
   type RunTimeline,
 } from "./runs.ts";
-import { parseObject } from "./utils.ts";
+import { jsons } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
@@ -138,13 +139,6 @@ function isTestPath(file: string): boolean {
   return file.endsWith(TEST_FILE_SUFFIX) || directories.includes(TEST_DIR);
 }
 
-/** `ok` from a round's `checks.json`; null when the text is missing or not JSON. */
-export function checksPassed(text: string | null): boolean | null {
-  if (text === null) return null;
-  const parsed = parseObject(text);
-  return typeof parsed?.ok === "boolean" ? parsed.ok : null;
-}
-
 /** The proofs in order with the part number as part; a part, file and test seen again is dropped. */
 export function distinctProofs(proofs: StatsProof[]): StatsProof[] {
   const seen = new Set<string>();
@@ -199,9 +193,17 @@ export interface StatsRecord {
   runs: RunMark[] | null;
 }
 
-/** The agents and runs in `stats.json` text; no agents when it had no session files. Null when the text is not a stats record of a readable schema. */
-export function readStatsRecord(text: string): StatsRecord | null {
-  const parsed = StatsRecordSchema.safeParse(parseObject(text));
-  if (!parsed.success) return null;
-  return { agents: parsed.data.agents ?? [], runs: parsed.data.runs ?? null };
+/** Only the schema number, to tell an older `stats.json` from a broken one. */
+const StatsVersionSchema = z.object({ schema: z.number().int() });
+
+/**
+ * The agents and runs in the text of `stats.json`; no agents when it had no session files.
+ * Null for an older schema; `bad-file` when it is not JSON or does not match a readable schema.
+ */
+export function readStatsRecord(text: string, file: string): StatsRecord | null {
+  const version = jsons.check(StatsVersionSchema, text);
+  if (version.ok && version.value.schema < READABLE_SCHEMA) return null;
+  const result = jsons.check(StatsRecordSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return { agents: result.value.agents ?? [], runs: result.value.runs ?? null };
 }

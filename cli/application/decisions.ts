@@ -28,7 +28,7 @@ export interface DecisionsSaved {
 
 /**
  * Writes nothing when a question fits other than one line (`unknown-question`), a decision other
- * than one title (`unknown-decision`), or `taken` is not an option (`bad-decisions`). A plan that
+ * than one title (`unknown-decision`), or `taken` is not an option (`bad-input`). A plan that
  * was approved is approved again, because the person who decides is the one who approves.
  */
 async function save(taskWorktree: string, items: DecideItem[]): Promise<DecisionsSaved> {

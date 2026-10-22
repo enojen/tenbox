@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { mergeManifest, type TrackerConfig } from "./manifest.ts";
-import { deepMerge } from "./utils.ts";
+import { deepMerge, mergeManifest, type TrackerConfig } from "./manifest.ts";
+import { jsons, objects } from "./utils.ts";
+
+test("deepMerge: a __proto__ key does not change the prototype of the result", () => {
+  const layer = jsons.parse(`{"__proto__": {"polluted": true}}`);
+  if (!objects.isRecord(layer)) throw new Error("the layer is not an object");
+  const merged = deepMerge({}, layer);
+  expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+  expect("polluted" in merged).toBe(false);
+});
 
 test("deepMerge: objects merge, arrays replace", () => {
   expect(deepMerge({ a: { x: 1, y: 2 }, l: [1] }, { a: { y: 3 }, l: [2] })).toEqual({

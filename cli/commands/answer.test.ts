@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { parseObject } from "../../domain/utils.ts";
+import { jsons, objects } from "../../domain/utils.ts";
 import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -54,8 +54,10 @@ async function writeBuildRun(args: string = "T-1"): Promise<void> {
     runId: RUN_ID,
     workflowName: "tenbox-build",
     startTime: 1,
+    durationMs: 1,
     scriptPath: scriptPath(),
     args,
+    workflowProgress: [],
   };
   await files.write(path.join(sessionDir(), "workflows", `${RUN_ID}.json`), JSON.stringify(run));
 }
@@ -67,7 +69,8 @@ async function readText(name: string): Promise<string> {
 
 async function readBuild(): Promise<Json | null> {
   const text = await readText("build.json");
-  return parseObject(text);
+  const build = jsons.parse(text);
+  return objects.isRecord(build) ? build : null;
 }
 
 /** Rewrites the deadline of the card in `build.json` to `ms` from now. */

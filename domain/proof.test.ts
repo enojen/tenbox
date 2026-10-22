@@ -12,6 +12,6 @@ test.each([
   ["text that is not JSON", "{nope"],
   ["an object", "{}"],
   ["an item that is not a proof", JSON.stringify([{ part: "01" }])],
-])("readProofs fails with bad-proofs for %s", (_name, text) => {
-  expect(() => readProofs(text, FILE)).toThrow(expect.objectContaining({ code: "bad-proofs" }));
+])("readProofs fails with bad-file for %s", (_name, text) => {
+  expect(() => readProofs(text, FILE)).toThrow(expect.objectContaining({ code: "bad-file" }));
 });

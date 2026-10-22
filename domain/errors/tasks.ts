@@ -65,24 +65,18 @@ export function partNotCommittedError(part: string, reason: string): TenboxError
   return new TenboxError(`part ${part} is not committed: ${reason}`, "part-not-committed");
 }
 
-export function badProofsError(file: string, problem: string): TenboxError {
-  return new TenboxError(`${file} ${problem}`, "bad-proofs");
+/** A Tenbox file that is not JSON or does not fit its schema. */
+export function badFileError(file: string, issues: string[]): TenboxError {
+  return new TenboxError(`${file} is not valid: ${issues.join("; ")}`, "bad-file", issues);
 }
 
-export function badPlanError(issues: string[]): TenboxError {
-  return new TenboxError(`the plan result is not valid: ${issues.join("; ")}`, "bad-plan", issues);
+/** A JSON input from stdin or an argument that does not fit its schema. */
+export function badInputError(what: string, issues: string[]): TenboxError {
+  return new TenboxError(`${what} is not valid: ${issues.join("; ")}`, "bad-input", issues);
 }
 
 export function setupError(exitCode: number, cmd: string, output: string): TenboxError {
   return new TenboxError(`setup failed (exit ${exitCode}): ${cmd}`, "setup", { output });
-}
-
-export function badBuildError(issues: string[]): TenboxError {
-  return new TenboxError(
-    `the build result is not valid: ${issues.join("; ")}`,
-    "bad-build",
-    issues,
-  );
 }
 
 export function waitTimeoutError(file: string, seconds: number): TenboxError {
@@ -108,14 +102,6 @@ export function inTaskWorktreeError(taskWorktree: string): TenboxError {
   return new TenboxError(
     `run tenbox close outside ${taskWorktree}; it removes that directory`,
     "in-task-worktree",
-  );
-}
-
-export function badDecisionsError(issues: string[]): TenboxError {
-  return new TenboxError(
-    `the decisions are not valid: ${issues.join("; ")}`,
-    "bad-decisions",
-    issues,
   );
 }
 

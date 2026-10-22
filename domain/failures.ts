@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { lastNonEmpty, unique } from "./utils.ts";
+import { lists, strings } from "./utils.ts";
 
 /** vitest/jest `FAIL × ✕ ✗`, bun `(fail)`, tsc `error TS1234`: the devbox `wtbase` default. */
 export const DEFAULT_FAILURE_PATTERN = "(^|\\s)(FAIL|\\(fail\\)|×|✕|✗)(\\s|$)|error TS[0-9]+";
@@ -49,7 +49,7 @@ export function parseFailures(
 ): FailureLine[] {
   const lines = commandOutput.split("\n").map(failureLine);
   const matched = lines.filter(isFailureLine(failurePattern));
-  const failures = unique(matched).sort();
+  const failures = lists.unique(matched).sort();
   if (isCrash(failures, exitCode)) return [buildCrashFailure(lines, exitCode)];
   return failures;
 }
@@ -82,7 +82,7 @@ function isCrash(failures: FailureLine[], exitCode: number): boolean {
 }
 
 function buildCrashFailure(lines: FailureLine[], exitCode: number): FailureLine {
-  const reason = lastNonEmpty(lines);
+  const reason = strings.lastNonEmptyLine(lines);
   if (reason === undefined) return failureLine(`exit ${exitCode}`);
   return failureLine(`exit ${exitCode}: ${reason.slice(0, MAX_REASON_LENGTH)}`);
 }

@@ -28,8 +28,9 @@ async function update(taskWorktree: string, result: BuildResult): Promise<void> 
   await files.writeJson(buildFile(tenboxDir(taskWorktree)), result);
 }
 
-/** The build result in `dir`; null when `build.json` is missing or not valid. */
+/** The build result in `dir`; null when `build.json` is missing, `bad-file` when it is not valid. */
 async function find(dir: string): Promise<BuildResult | null> {
-  const text = await files.read(buildFile(dir));
-  return text === null ? null : readBuild(text);
+  const file = buildFile(dir);
+  const text = await files.read(file);
+  return text === null ? null : readBuild(text, file);
 }

@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
-import { isPlainObject } from "../../domain/utils.ts";
+import { objects } from "../../domain/utils.ts";
 import { git } from "../infra/git.ts";
 import { type Json, tenbox } from "./cli.ts";
 import { makeTempProject, type TempProject } from "./tempProject.ts";
@@ -16,7 +16,7 @@ const statusOf = (cwd: string) => git.run(["status", "--porcelain"], cwd);
 
 const unitCheck = (json: Json) => {
   const checks = Array.isArray(json.checks) ? json.checks : [];
-  return checks.find((c) => isPlainObject(c) && c.name === "unit");
+  return checks.find((c) => objects.isRecord(c) && c.name === "unit");
 };
 
 beforeAll(async () => {

@@ -1,13 +1,17 @@
+import { type CheckOutcome, type CheckResult, readCheckResult } from "../../domain/check.ts";
 import { compareWithBaseline, findFlaky, parseFailures } from "../../domain/failures.ts";
 import type { Project } from "../../domain/project.ts";
-import { elapsedMs } from "../../domain/utils.ts";
-import type { CheckOutcome } from "../commands/results.ts";
+import { elapsedMs } from "../infra/clock.ts";
 import { log } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
 import { type ShellResult, shell } from "../infra/shell.ts";
 import { baselines } from "./baselines.ts";
 
-/** One check run and judged: only failures the base commit did not have count. */
-export const checks = { run, summarize };
+/**
+ * One check run and judged: only failures the base commit did not have count. `find` reads what
+ * `tenbox check` wrote to a round.
+ */
+export const checks = { run, summarize, find };
 
 interface CheckRequest {
   project: Project;
@@ -97,4 +101,10 @@ function describeNewFailures(outcome: CheckOutcome): string {
 function describeFlaky(outcome: CheckOutcome): string {
   const lines = outcome.flaky.map((line) => `  ${line}`).join("\n");
   return `${outcome.name}: ${outcome.flaky.length} flaky (failed once, passed on the rerun)\n${lines}`;
+}
+
+/** The check result in `file`; null when it is missing, `bad-file` when it is not valid. */
+async function find(file: string): Promise<CheckResult | null> {
+  const text = await files.read(file);
+  return text === null ? null : readCheckResult(text, file);
 }

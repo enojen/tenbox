@@ -1,13 +1,13 @@
+/**
+ * Generic helpers. Only pure, general functions belong here: no Tenbox concept, no clock,
+ * no file system, no process.
+ */
 import { createHash } from "node:crypto";
 import type { z } from "zod";
-
-export const unique = <T>(items: T[]): T[] => [...new Set(items)];
-
-export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+import { issueLines } from "./errors/index.ts";
 
 /** The JSON value in `text`; undefined when the text is not JSON. */
-export function parseJson(text: string): unknown {
+function parse(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
@@ -15,63 +15,92 @@ export function parseJson(text: string): unknown {
   }
 }
 
-/** The JSON object in `text`; null when the text is not JSON or not an object. */
-export function parseObject(text: string): Record<string, unknown> | null {
-  const parsed = parseJson(text);
-  return isPlainObject(parsed) ? parsed : null;
+/** The value of a JSON text that fits a schema. */
+interface JsonValid<T> {
+  ok: true;
+  value: T;
 }
 
-/** Merge b over a: objects key by key, arrays and scalars replaced. */
-export function deepMerge(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...a };
-  for (const [k, v] of Object.entries(b)) {
-    const prev = out[k];
-    out[k] = isPlainObject(prev) && isPlainObject(v) ? deepMerge(prev, v) : v;
-  }
-  return out;
+/** Why a JSON text does not fit a schema: `not JSON`, or one line per issue. */
+interface JsonInvalid {
+  ok: false;
+  issues: string[];
 }
 
-export const lastNonEmpty = <T extends string>(lines: T[]): T | undefined =>
-  lines.findLast((line) => line !== "");
+type JsonCheck<T> = JsonValid<T> | JsonInvalid;
 
-export const isFilled = (value: unknown): value is string =>
-  typeof value === "string" && value.trim() !== "";
+const NOT_JSON = "not JSON";
 
-export const isDigits = (s: string): boolean => /^[0-9]+$/.test(s);
+/** The text checked against the schema; never throws. */
+function check<T>(schema: z.ZodType<T>, text: string): JsonCheck<T> {
+  const value = parse(text);
+  if (value === undefined) return { ok: false, issues: [NOT_JSON] };
+  const parsed = schema.safeParse(value);
+  return parsed.success
+    ? { ok: true, value: parsed.data }
+    : { ok: false, issues: issueLines(parsed.error) };
+}
 
-export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** The lines of a JSON Lines text that fit a schema, and how many did not. */
+interface JsonLines<T> {
+  values: T[];
+  skipped: number;
+}
 
-/** The state of a step that threw and did not stop the command. */
-export type FailedState = `failed: ${string}`;
+/**
+ * Each non-empty line checked against the schema; never throws. A last line with no newline
+ * after it may still be written: it is kept when it fits and not counted when it does not.
+ */
+function checkLines<T>(schema: z.ZodType<T>, text: string): JsonLines<T> {
+  const lines = text.split("\n");
+  const last = lines.length - 1;
+  const result: JsonLines<T> = { values: [], skipped: 0 };
+  lines.forEach((line, index) => {
+    if (line.trim() === "") return;
+    const checked = check(schema, line);
+    if (checked.ok) result.values.push(checked.value);
+    else if (index < last) result.skipped += 1;
+  });
+  return result;
+}
 
-export const failedState = (e: unknown): FailedState => `failed: ${errorMessage(e)}`;
+/** JSON values. */
+export const jsons = { parse, check, checkLines };
 
-/** One line per zod issue, `path: message`; `(root)` for the value itself. */
-export const issueLines = (error: z.ZodError): string[] =>
-  error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
+/** Objects: a record is an object that is not null and not an array, from JSON or YAML. */
+export const objects = {
+  isRecord: (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v),
+};
 
-export const elapsedMs = (started: number): number => Math.round(performance.now() - started);
+/** Strings: blank means empty or only whitespace; a whole number is only the digits 0-9. */
+export const strings = {
+  isNotBlank: (value: unknown): value is string => typeof value === "string" && value.trim() !== "",
+  isWholeNumber: (s: string): boolean => /^[0-9]+$/.test(s),
+  lastNonEmptyLine: <T extends string>(lines: T[]): T | undefined =>
+    lines.findLast((line) => line !== ""),
+};
 
-export const hasErrorCode = (e: unknown, codes: readonly string[]): boolean =>
-  e instanceof Error && "code" in e && codes.includes(String(e.code));
+export const lists = {
+  unique: <T>(items: T[]): T[] => [...new Set(items)],
+};
 
-export const MS_PER_SECOND = 1000;
+const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60_000;
 const MINUTE_DECIMALS = 10;
 
 /** Milliseconds as minutes with one decimal. */
-export const toMinutes = (ms: number): number =>
+const msToMinutes = (ms: number): number =>
   Math.round((ms / MS_PER_MINUTE) * MINUTE_DECIMALS) / MINUTE_DECIMALS;
 
 /** Minutes between two ISO times; null when a time is missing. */
-export function minutesBetween(from: string | null, to: string | null): number | null {
+function minutesBetween(from: string | null, to: string | null): number | null {
   if (from === null || to === null) return null;
-  return toMinutes(Date.parse(to) - Date.parse(from));
+  return msToMinutes(Date.parse(to) - Date.parse(from));
 }
 
-export function sha256Hex(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
+export const durations = { MS_PER_SECOND, msToMinutes, minutesBetween };
+
+export const hashes = {
+  sha256Hex: (text: string): string => createHash("sha256").update(text).digest("hex"),
+};

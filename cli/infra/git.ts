@@ -2,7 +2,7 @@ import path from "node:path";
 import type { ChangedFile } from "../../domain/changedFile.ts";
 import { gitFailedError } from "../../domain/errors/git.ts";
 import type { TenboxError } from "../../domain/errors/index.ts";
-import { lastNonEmpty, MS_PER_SECOND } from "../../domain/utils.ts";
+import { durations, strings } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 import { type ProcessResult, processes } from "./processes.ts";
 
@@ -140,9 +140,11 @@ async function findBranchCreated(dir: string, branch: string): Promise<string | 
   const exists = await branchExists(dir, branch);
   if (!exists) return null;
   const log = await run(["log", "-g", "--date=unix", "--format=%gd", `refs/heads/${branch}`], dir);
-  const oldest = lastNonEmpty(log.split("\n"));
+  const oldest = strings.lastNonEmptyLine(log.split("\n"));
   const seconds = oldest === undefined ? undefined : REFLOG_TIME.exec(oldest)?.[1];
-  return seconds === undefined ? null : new Date(Number(seconds) * MS_PER_SECOND).toISOString();
+  return seconds === undefined
+    ? null
+    : new Date(Number(seconds) * durations.MS_PER_SECOND).toISOString();
 }
 
 /** What the branch changed since it left `base`, from `git diff --numstat base...branch`. */

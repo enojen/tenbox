@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 import {
+  checkPlanMd,
   PLAN_MD_MAX_LINES,
   type PlanResult,
   parsePlan,
   planLines,
   readPlan,
-  validatePlan,
 } from "./plan.ts";
+
+const PLAN_FILE = "/t/.tenbox/plan.json";
 
 const example = { part: "01", title: "lists the tasks", before: "GET /tasks", after: "200 []" };
 const decision = {
@@ -35,7 +37,11 @@ test("parsePlan returns the plan result", () => {
   expect(parsePlan(json({}))).toEqual(valid);
 });
 
-test("the bad-plan message names the field", () => {
+test("readPlan returns the plan result of plan.json", () => {
+  expect(readPlan(json({}), PLAN_FILE)).toEqual(valid);
+});
+
+test("the bad-input message names the field", () => {
   expect(() => parsePlan(json({ estimated_lines: "about 300" }))).toThrow("estimated_lines: ");
 });
 
@@ -59,17 +65,17 @@ test.each([
   ["a taken option of 0", json({ decisions: [{ ...decision, taken: 0 }] })],
   ["a decision with one option", json({ decisions: [{ ...decision, options: ["a"], taken: 1 }] })],
   ["a decision without a reason", json({ decisions: [{ ...decision, reason: "" }] })],
-])("parsePlan refuses %s with bad-plan", (_name, text) => {
-  expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-plan" }));
-  expect(readPlan(text)).toBeNull();
+])("parsePlan refuses %s with bad-input, readPlan with bad-file", (_name, text) => {
+  expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
+  expect(() => readPlan(text, PLAN_FILE)).toThrow(expect.objectContaining({ code: "bad-file" }));
 });
 
-test("the bad-plan message names the grep example", () => {
+test("the bad-input message names the grep example", () => {
   const examples = [{ ...example, before: "run grep -r foo src" }];
   expect(() => parsePlan(json({ examples }))).toThrow("run grep -r foo src");
 });
 
-test("the bad-plan message names the unknown part of an example", () => {
+test("the bad-input message names the unknown part of an example", () => {
   expect(() => parsePlan(json({ examples: [{ ...example, part: "09" }] }))).toThrow("09");
 });
 
@@ -80,31 +86,27 @@ test("a word that only contains grep is allowed", () => {
 
 const planMd = (lines: number): string => "line\n".repeat(lines);
 
-test("validatePlan returns the plan result when plan.md is at the limit", () => {
-  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: planMd(PLAN_MD_MAX_LINES) };
+test("checkPlanMd accepts a plan.md at the limit", () => {
   expect(PLAN_MD_MAX_LINES).toBe(60);
-  expect(validatePlan(texts)).toEqual(valid);
+  expect(() => checkPlanMd({ dir: "/t/.tenbox", planMd: planMd(PLAN_MD_MAX_LINES) })).not.toThrow();
 });
 
-test("validatePlan refuses a plan.md over the limit with bad-plan naming plan.md and the limit", () => {
-  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: planMd(PLAN_MD_MAX_LINES + 1) };
-  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "bad-plan" }));
-  expect(() => validatePlan(texts)).toThrow("plan.md has 61 lines; the limit is 60");
+test("checkPlanMd refuses a plan.md over the limit with bad-file naming plan.md and the limit", () => {
+  const texts = { dir: "/t/.tenbox", planMd: planMd(PLAN_MD_MAX_LINES + 1) };
+  expect(() => checkPlanMd(texts)).toThrow(expect.objectContaining({ code: "bad-file" }));
+  expect(() => checkPlanMd(texts)).toThrow(
+    "/t/.tenbox/plan.md is not valid: 61 lines; the limit is 60",
+  );
 });
 
-test("validatePlan counts a last line without a newline", () => {
-  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: `${planMd(60)}last` };
-  expect(() => validatePlan(texts)).toThrow("plan.md has 61 lines");
+test("checkPlanMd counts a last line without a newline", () => {
+  const texts = { dir: "/t/.tenbox", planMd: `${planMd(60)}last` };
+  expect(() => checkPlanMd(texts)).toThrow("61 lines");
 });
 
-test("validatePlan refuses a missing plan.md with no-plan", () => {
-  const texts = { dir: "/t/.tenbox", plan: json({}), planMd: null };
-  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "no-plan" }));
-});
-
-test("validatePlan refuses a plan that breaks the schema with bad-plan", () => {
-  const texts = { dir: "/t/.tenbox", plan: json({ examples: "x" }), planMd: planMd(1) };
-  expect(() => validatePlan(texts)).toThrow(expect.objectContaining({ code: "bad-plan" }));
+test("checkPlanMd refuses a missing plan.md with no-plan", () => {
+  const texts = { dir: "/t/.tenbox", planMd: null };
+  expect(() => checkPlanMd(texts)).toThrow(expect.objectContaining({ code: "no-plan" }));
 });
 
 test("planLines lists the parts, the examples, the decisions with the taken option and the questions", () => {
@@ -197,13 +199,13 @@ test.each([
     "an unknown tier",
     [group(1, ["01"], []), { ...group(2, ["02"], [1]), recipe: { ...recipe, tier: "slow" } }],
   ],
-])("parsePlan refuses groups with %s with bad-plan", (_name, groups) => {
+])("parsePlan refuses groups with %s with bad-input, readPlan with bad-file", (_name, groups) => {
   const text = json({ groups });
-  expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-plan" }));
-  expect(readPlan(text)).toBeNull();
+  expect(() => parsePlan(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
+  expect(() => readPlan(text, PLAN_FILE)).toThrow(expect.objectContaining({ code: "bad-file" }));
 });
 
-test("the bad-plan message names the part that is in no group", () => {
+test("the bad-input message names the part that is in no group", () => {
   expect(() => parsePlan(json({ groups: [group(1, ["01"], [])] }))).toThrow("02");
 });
 
@@ -221,9 +223,9 @@ test("parsePlan keeps the kind of the plan", () => {
   expect(parsePlan(json({ kind: "small" })).kind).toBe("small");
 });
 
-test("parsePlan refuses an unknown kind with bad-plan", () => {
+test("parsePlan refuses an unknown kind with bad-input", () => {
   expect(() => parsePlan(json({ kind: "tiny" }))).toThrow(
-    expect.objectContaining({ code: "bad-plan" }),
+    expect.objectContaining({ code: "bad-input" }),
   );
 });
 

@@ -1,8 +1,10 @@
 import path from "node:path";
+import { z } from "zod";
 import { type RunAgent, roundOfLabel, type WorkflowRun } from "../../../domain/runs.ts";
-import { isPlainObject, MS_PER_SECOND, parseObject } from "../../../domain/utils.ts";
+import { durations } from "../../../domain/utils.ts";
 import { env } from "../env.ts";
 import { files } from "../files.ts";
+import { claudeFiles } from "./claudeFiles.ts";
 import { readTranscript, type Transcript } from "./transcripts.ts";
 
 /*
@@ -26,11 +28,61 @@ export interface ResumableRun {
   session: string;
 }
 
-type Json = Record<string, unknown>;
-
 const NON_ALPHANUMERIC = /[^a-zA-Z0-9]/g;
 const RUN_FILE = /^wf_.+\.json$/;
 const AGENT_TYPE = "workflow_agent";
+const STARTED_TYPE = "started";
+
+/** One agent of a run file's `workflowProgress`; its times and counts are missing while it runs. */
+const AgentEntrySchema = z.object({
+  type: z.literal(AGENT_TYPE),
+  agentId: z.string(),
+  label: z.string(),
+  model: z.string(),
+  startedAt: z.number(),
+  phaseTitle: z.string().optional(),
+  agentType: z.string().optional(),
+  durationMs: z.number().optional(),
+  tokens: z.number().optional(),
+  toolCalls: z.number().optional(),
+});
+
+type AgentEntry = z.infer<typeof AgentEntrySchema>;
+
+/** Any other entry, such as a `workflow_phase`: not read. */
+const OtherEntrySchema = z.object({ type: z.string().refine((type) => type !== AGENT_TYPE) });
+
+const ProgressEntrySchema = z.union([AgentEntrySchema, OtherEntrySchema]);
+
+type ProgressEntry = z.infer<typeof ProgressEntrySchema>;
+
+/** `workflows/wf_*.json`; `runId`, `scriptPath` and `args` are missing in Claude Code 2.1.303. */
+const RunFileSchema = z.object({
+  workflowName: z.string(),
+  startTime: z.number(),
+  durationMs: z.number(),
+  runId: z.string().optional(),
+  scriptPath: z.string().optional(),
+  args: z.unknown().optional(),
+  workflowProgress: z.array(ProgressEntrySchema),
+});
+
+type RunFile = z.infer<typeof RunFileSchema>;
+
+/** `agent-<agentId>.meta.json` of a run dir: only the role is read. */
+const AgentMetaSchema = z.object({ agentType: z.string() });
+
+/** A `started` line of a run dir's `journal.jsonl`: one per agent, sometimes twice. */
+const StartedLineSchema = z.object({
+  type: z.literal(STARTED_TYPE),
+  agentId: z.string(),
+  label: z.string(),
+});
+
+/** Any other journal line, such as `result`: not read. */
+const OtherLineSchema = z.object({ type: z.string().refine((type) => type !== STARTED_TYPE) });
+
+const JournalLineSchema = z.union([StartedLineSchema, OtherLineSchema]);
 
 /** Claude Code's rule: every non-alphanumeric char of the working directory becomes `-`. */
 export const projectDir = (claudeDir: string, cwd: string): string =>
@@ -61,8 +113,8 @@ async function findLastRun(cwd: string, workflow: string): Promise<ResumableRun 
   let last: ResumableRun | null = null;
   let lastStart = Number.NEGATIVE_INFINITY;
   for (const runFile of runFiles) {
-    const json = await readJson(runFile);
-    if (json?.workflowName !== workflow || typeof json.startTime !== "number") continue;
+    const json = await claudeFiles.find(RunFileSchema, runFile);
+    if (json?.workflowName !== workflow) continue;
     const run = toResumable(json, runFile);
     if (run === null || json.startTime <= lastStart) continue;
     last = run;
@@ -72,9 +124,9 @@ async function findLastRun(cwd: string, workflow: string): Promise<ResumableRun 
 }
 
 /** Null when the run file has no `runId` or `scriptPath`. */
-function toResumable(json: Json, runFile: string): ResumableRun | null {
+function toResumable(json: RunFile, runFile: string): ResumableRun | null {
   const { runId, scriptPath, args } = json;
-  if (typeof runId !== "string" || typeof scriptPath !== "string") return null;
+  if (runId === undefined || scriptPath === undefined) return null;
   return { runId, scriptPath, args, session: path.basename(path.dirname(path.dirname(runFile))) };
 }
 
@@ -91,24 +143,21 @@ async function listRunFiles(dir: string): Promise<string[]> {
   return runFiles;
 }
 
-/** Null when the file is not a finished run. */
+/** Null when the run file is missing or does not fit. */
 async function readRun(file: string): Promise<WorkflowRun | null> {
-  const json = await readJson(file);
+  const json = await claudeFiles.find(RunFileSchema, file);
   if (json === null) return null;
   const { workflowName, startTime, durationMs } = json;
-  if (typeof workflowName !== "string") return null;
-  if (typeof startTime !== "number" || typeof durationMs !== "number") return null;
-  const progress = Array.isArray(json.workflowProgress) ? json.workflowProgress : [];
   const transcripts = transcriptDir(file);
   const agents: RunAgent[] = [];
-  for (const entry of progress.filter(isAgentEntry)) {
+  for (const entry of json.workflowProgress.filter(isAgentEntry)) {
     const agent = await toFinishedAgent({ workflow: workflowName, entry, transcripts });
     agents.push(agent);
   }
   // Claude Code 2.1.303 writes no agent entries: the run dir has them.
   if (agents.length === 0) {
     const fromDir = await readRunDirAgents({ workflow: workflowName, runDir: transcripts });
-    agents.push(...fromDir.agents);
+    agents.push(...(fromDir?.agents ?? []));
   }
   return {
     workflow: workflowName,
@@ -128,26 +177,25 @@ function transcriptDir(runFile: string): string {
 
 interface AgentSource {
   workflow: string;
-  entry: Json;
+  entry: AgentEntry;
   transcripts: string;
 }
 
 async function toFinishedAgent(source: AgentSource): Promise<RunAgent> {
   const { workflow, entry, transcripts } = source;
-  const { startedAt, durationMs, agentId } = entry;
-  const label = text(entry.label);
+  const { startedAt, durationMs, agentId, label } = entry;
   const transcript = await readAgentTranscript(transcripts, agentId);
   const usage = transcript?.usage ?? null;
   return {
     workflow,
     label,
-    phase: text(entry.phaseTitle),
-    role: text(entry.agentType),
-    model: text(entry.model),
-    started: typeof startedAt === "number" ? isoTime(startedAt) : null,
-    seconds: typeof durationMs === "number" ? Math.round(durationMs / MS_PER_SECOND) : null,
-    tokens: count(entry.tokens),
-    tool_calls: count(entry.toolCalls),
+    phase: entry.phaseTitle ?? null,
+    role: entry.agentType ?? null,
+    model: entry.model,
+    started: isoTime(startedAt),
+    seconds: durationMs === undefined ? null : Math.round(durationMs / durations.MS_PER_SECOND),
+    tokens: entry.tokens ?? null,
+    tool_calls: entry.toolCalls ?? null,
     round: roundOfLabel(label),
     calls: usage?.calls ?? null,
     input: usage?.input ?? null,
@@ -157,24 +205,13 @@ async function toFinishedAgent(source: AgentSource): Promise<RunAgent> {
   };
 }
 
-function readAgentTranscript(transcripts: string, agentId: unknown): Promise<Transcript | null> {
-  if (typeof agentId !== "string") return Promise.resolve(null);
+function readAgentTranscript(transcripts: string, agentId: string): Promise<Transcript | null> {
   return readTranscript(path.join(transcripts, `agent-${agentId}.jsonl`));
 }
 
-const isAgentEntry = (entry: unknown): entry is Json =>
-  isPlainObject(entry) && entry.type === AGENT_TYPE;
-
-const count = (value: unknown): number | null => (typeof value === "number" ? value : null);
-
-const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
+const isAgentEntry = (entry: ProgressEntry): entry is AgentEntry => entry.type === AGENT_TYPE;
 
 const isoTime = (ms: number): string => new Date(ms).toISOString();
-
-async function readJson(file: string): Promise<Json | null> {
-  const content = await files.read(file);
-  return content === null ? null : parseObject(content);
-}
 
 /** `<session>/subagents/workflows/<run>` dirs with no `<session>/workflows/<run>.json`. */
 async function listUnfinishedDirs(dir: string): Promise<string[]> {
@@ -204,9 +241,10 @@ async function listSessionUnfinishedDirs(input: SessionDir): Promise<string[]> {
 /** Null without a script (the workflow name), a journal or any agent time. */
 async function readUnfinishedRun(runDir: string): Promise<WorkflowRun | null> {
   const workflow = await findWorkflowName(runDir);
-  const journal = await files.read(path.join(runDir, "journal.jsonl"));
-  if (workflow === null || journal === null) return null;
-  const { agents, ends } = await readRunDirAgents({ workflow, runDir });
+  if (workflow === null) return null;
+  const fromDir = await readRunDirAgents({ workflow, runDir });
+  if (fromDir === null) return null;
+  const { agents, ends } = fromDir;
   const starts = agents.map((agent) => Date.parse(agent.started ?? ""));
   if (starts.length === 0) return null;
   const startMs = Math.min(...starts);
@@ -226,15 +264,18 @@ interface RunDirAgents {
   ends: number[];
 }
 
-/** The agents of a run dir: the journal's `started` lines, the metas and the transcripts. */
+/** The agents of a run dir: the journal's `started` lines, the metas and the transcripts; null without a journal. */
 async function readRunDirAgents(input: {
   workflow: string;
   runDir: string;
-}): Promise<RunDirAgents> {
+}): Promise<RunDirAgents | null> {
   const { workflow, runDir } = input;
-  const journal = await files.read(path.join(runDir, "journal.jsonl"));
+  const journal = await claudeFiles.findLines(
+    JournalLineSchema,
+    path.join(runDir, "journal.jsonl"),
+  );
+  if (journal === null) return null;
   const result: RunDirAgents = { agents: [], ends: [] };
-  if (journal === null) return result;
   for (const started of startedAgents(journal)) {
     const agent = await toUnfinishedAgent({ workflow, runDir, started });
     if (agent === null) continue;
@@ -255,19 +296,15 @@ async function findWorkflowName(runDir: string): Promise<string | null> {
   return script === undefined ? null : script.slice(0, -suffix.length);
 }
 
-interface StartedAgent {
-  agentId: string;
-  label: string | null;
-}
+type JournalLine = z.infer<typeof JournalLineSchema>;
+type StartedLine = z.infer<typeof StartedLineSchema>;
 
 /** One entry per agent: the `started` lines of the journal, the first of each `agentId`. */
-function startedAgents(journal: string): StartedAgent[] {
-  const byId = new Map<string, StartedAgent>();
-  for (const line of journal.split("\n")) {
-    const entry = parseObject(line);
-    if (entry?.type !== "started" || typeof entry.agentId !== "string") continue;
-    if (!byId.has(entry.agentId))
-      byId.set(entry.agentId, { agentId: entry.agentId, label: text(entry.label) });
+function startedAgents(journal: JournalLine[]): StartedLine[] {
+  const byId = new Map<string, StartedLine>();
+  for (const line of journal) {
+    if (!("agentId" in line) || byId.has(line.agentId)) continue;
+    byId.set(line.agentId, line);
   }
   return [...byId.values()];
 }
@@ -275,7 +312,7 @@ function startedAgents(journal: string): StartedAgent[] {
 interface UnfinishedSource {
   workflow: string;
   runDir: string;
-  started: StartedAgent;
+  started: StartedLine;
 }
 
 interface UnfinishedAgent {
@@ -290,16 +327,17 @@ async function toUnfinishedAgent(source: UnfinishedSource): Promise<UnfinishedAg
   if (transcript === null || transcript.firstAt === null || transcript.lastAt === null) return null;
   const startMs = Date.parse(transcript.firstAt);
   const endMs = Date.parse(transcript.lastAt);
-  const meta = await readJson(path.join(runDir, `agent-${started.agentId}.meta.json`));
+  const metaFile = path.join(runDir, `agent-${started.agentId}.meta.json`);
+  const meta = await claudeFiles.find(AgentMetaSchema, metaFile);
   const { usage } = transcript;
   const agent: RunAgent = {
     workflow,
     label: started.label,
     phase: null,
-    role: text(meta?.agentType),
+    role: meta?.agentType ?? null,
     model: transcript.model,
     started: isoTime(startMs),
-    seconds: Math.round((endMs - startMs) / MS_PER_SECOND),
+    seconds: Math.round((endMs - startMs) / durations.MS_PER_SECOND),
     tokens: null,
     tool_calls: null,
     round: roundOfLabel(started.label),

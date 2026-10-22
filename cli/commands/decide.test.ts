@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { sha256Hex } from "../../domain/utils.ts";
+import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -107,11 +107,11 @@ describe("tenbox decide", () => {
     ["not an array", '{"answer":"x"}'],
     ["a blank answer", '[{"answer":" "}]'],
     ["a missing answer", '[{"question":"Other?"}]'],
-  ])("--json with %s is bad-decisions and writes nothing", async (_name, json) => {
+  ])("--json with %s is bad-input and writes nothing", async (_name, json) => {
     const run = await decide("--json", json);
     const started = await bgCalls();
     expect(started).toEqual([]);
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-decisions"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-input"]);
     const written = await files.exists(decisionsFile);
     expect(written).toBe(false);
   });
@@ -197,11 +197,11 @@ describe("tenbox decide with a plan decision", () => {
     expect([after, written]).toEqual([before, false]);
   });
 
-  test("a taken outside the options is bad-decisions and writes nothing", async () => {
+  test("a taken outside the options is bad-input and writes nothing", async () => {
     await writePlan();
     const before = await files.read(planJsonFile());
     const run = await withJson([{ decision: "Where the list", taken: 3 }]);
-    expect([run.code, run.json.code]).toEqual([1, "bad-decisions"]);
+    expect([run.code, run.json.code]).toEqual([1, "bad-input"]);
     const after = await files.read(planJsonFile());
     const written = await files.exists(decisionsFile);
     expect([after, written]).toEqual([before, false]);
@@ -221,7 +221,7 @@ describe("tenbox decide with a plan decision", () => {
     await withJson(TAKE);
     const run = await tenbox(["approved", "T-1"], project.mainDir, fake.env);
     const text = await files.read(planJsonFile());
-    expect([run.code, run.json.plan_sha]).toEqual([0, sha256Hex(text ?? "")]);
+    expect([run.code, run.json.plan_sha]).toEqual([0, hashes.sha256Hex(text ?? "")]);
   });
 
   test("a plan that was not approved gets no approved.json", async () => {

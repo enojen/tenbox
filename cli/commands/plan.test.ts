@@ -82,19 +82,19 @@ describe("tenbox plan done", () => {
     ["a taken option above the options", withJson({ decisions: [{ ...decision, taken: 3 }] })],
     ["an example of an unknown part", withJson({ examples: [{ ...example, part: "09" }] })],
     ["an example with grep", withJson({ examples: [{ ...example, after: "grep -r foo src" }] })],
-  ])("%s is bad-plan and writes nothing", async (_name, args) => {
+  ])("%s is bad-input and writes nothing", async (_name, args) => {
     const run = await planDone(...args);
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-input"]);
     const written = await files.exists(planJson);
     expect(written).toBe(false);
   });
 
-  test("a plan.md over the limit is bad-plan, names plan.md and the limit, and writes nothing", async () => {
+  test("a plan.md over the limit is bad-file, names plan.md and the limit, and writes nothing", async () => {
     await files.write(planMd, "# plan\n".repeat(PLAN_MD_LIMIT + 1));
     const run = await planDone(...withJson({}));
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
     expect(run.json.error).toContain(
-      `plan.md has ${PLAN_MD_LIMIT + 1} lines; the limit is ${PLAN_MD_LIMIT}`,
+      `plan.md is not valid: ${PLAN_MD_LIMIT + 1} lines; the limit is ${PLAN_MD_LIMIT}`,
     );
     const written = await files.exists(planJson);
     expect(written).toBe(false);
@@ -172,11 +172,11 @@ describe("tenbox plan done", () => {
     expect(JSON.parse(text ?? "null").groups).toEqual(groups);
   });
 
-  test("a part in no group is bad-plan and writes nothing", async () => {
+  test("a part in no group is bad-input and writes nothing", async () => {
     const recipe = { model: "sonnet", effort: "low", lenses: [], tier: "fast" };
     const groups = [{ id: 1, name: "feat: a", parts: ["01"], needs: [], recipe }];
     const run = await planDone(...withJson({ groups }));
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-plan"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-input"]);
     const written = await files.exists(planJson);
     expect(written).toBe(false);
   });

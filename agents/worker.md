@@ -81,7 +81,7 @@ with no change of behaviour needs no new test; the existing tests must still pas
 - Do not change `plan.md`, `decisions.md` or another part's file.
 - A script under `machines/` gets no new file, variable or option whose only user is a
   test. Test a script through the behaviour it already has.
-- When the plan says the proof is by hand on Hetzner, record that proof in the part file's
+- When the plan says the proof is by hand on the cluster, record that proof in the part file's
   `result:` line, write no test for it, and return `proofs: []`.
 - Do not start the full stack or any service. Unit tests run in the worktree.
 - Do not spend turns on refactors or improvements the part does not ask for.

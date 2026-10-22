@@ -9,7 +9,7 @@ import { waitTimeoutError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { planFile } from "../../domain/plan.ts";
 import { checksFile, roundDir, roundNumbers, roundsDir, tenboxDir } from "../../domain/task.ts";
-import { MS_PER_SECOND } from "../../domain/utils.ts";
+import { durations } from "../../domain/utils.ts";
 import { builds } from "../application/builds.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
@@ -60,7 +60,7 @@ interface TimedPoll<T> {
 /** Checks once a second until `check` returns a value; `wait-timeout` after the timeout. */
 async function pollOrTimeout<T>(poll: TimedPoll<T>): Promise<T> {
   const { what, timeoutSeconds, check } = poll;
-  const deadlineMs = Date.now() + timeoutSeconds * MS_PER_SECOND;
+  const deadlineMs = Date.now() + timeoutSeconds * durations.MS_PER_SECOND;
   const found = await pollUntil({ check, deadlineMs });
   if (found === null) throw waitTimeoutError(what, timeoutSeconds);
   return found;
@@ -88,7 +88,7 @@ async function waitForFile(input: WaitInput & { kind: WaitFileKind }): Promise<T
 }
 
 /** The moment this process started: a file written after it counts as a change of the wait. */
-const processStartMs = (): number => Date.now() - process.uptime() * MS_PER_SECOND;
+const processStartMs = (): number => Date.now() - process.uptime() * durations.MS_PER_SECOND;
 
 /**
  * Returns at the first change after the process started: a `rounds/N/checks.json` (status
@@ -120,11 +120,12 @@ interface RoundChangeInput {
 
 async function findChange(input: RoundChangeInput): Promise<WaitRoundResult | null> {
   const { id, dir, since } = input;
-  const buildChanged = await changedSince(buildFile(dir), since);
-  const text = await files.read(buildFile(dir));
-  const build = buildChanged && text !== null ? readBuild(text) : null;
+  const file = buildFile(dir);
+  const buildChanged = await changedSince(file, since);
+  const text = await files.read(file);
+  const build = buildChanged && text !== null ? readBuild(text, file) : null;
   if (build !== null) {
-    return { ok: true, task: id, round: build.round, status: build.status, file: buildFile(dir) };
+    return { ok: true, task: id, round: build.round, status: build.status, file };
   }
   const names = await files.list(roundsDir(dir));
   for (const round of roundNumbers(names).reverse()) {

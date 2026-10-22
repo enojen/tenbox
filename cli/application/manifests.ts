@@ -1,8 +1,9 @@
 import path from "node:path";
+import { errorMessage } from "../../domain/errors/index.ts";
 import { manifestError, manifestNotCommittedError } from "../../domain/errors/manifest.ts";
 import { newProjectId, type ProjectId, projectId } from "../../domain/ids.ts";
 import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifest.ts";
-import { errorMessage, isPlainObject } from "../../domain/utils.ts";
+import { objects } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 
@@ -25,7 +26,7 @@ async function ensureId(mainDir: string): Promise<ProjectId> {
   const file = path.join(mainDir, "tenbox.yaml");
   const text = await files.read(file);
   const value = text === null ? null : parseYaml(file, text);
-  const existing = isPlainObject(value) ? value.id : undefined;
+  const existing = objects.isRecord(value) ? value.id : undefined;
   if (typeof existing === "string") return projectId(existing);
   const id = newProjectId();
   const separator = text === null || text === "" || text.endsWith("\n") ? "" : "\n";
@@ -42,7 +43,7 @@ async function requireCommitted(mainDir: string, base: string): Promise<void> {
 
 function rejectLocalId(layer: ManifestLayer): void {
   if (path.basename(layer.file) === "tenbox.yaml") return;
-  if (!isPlainObject(layer.value) || !("id" in layer.value)) return;
+  if (!objects.isRecord(layer.value) || !("id" in layer.value)) return;
   throw manifestError(`${layer.file}: id belongs in tenbox.yaml`);
 }
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { kubeconfigError, noKubeconfigError, templateError } from "../../domain/errors/tools.ts";
-import { isPlainObject } from "../../domain/utils.ts";
+import { objects } from "../../domain/utils.ts";
 import { files } from "./files.ts";
 import { type Endpoint, type EndpointTls, http } from "./http.ts";
 
@@ -156,7 +156,7 @@ async function readTemplate(input: TemplateInput): Promise<KubeObject> {
   const text = await files.read(file);
   if (text === null) throw templateError(file, "missing");
   const value = parseYaml(text);
-  if (!isPlainObject(value)) throw templateError(file, "not a YAML mapping");
+  if (!objects.isRecord(value)) throw templateError(file, "not a YAML mapping");
   return fillObject(value, placeholders(fields));
 }
 
@@ -178,7 +178,7 @@ function placeholders(fields: TemplateFields): Placeholders {
 function fillValue(value: unknown, fields: Placeholders): unknown {
   if (typeof value === "string") return fillText(value, fields);
   if (Array.isArray(value)) return value.map((item) => fillValue(item, fields));
-  if (isPlainObject(value)) return fillObject(value, fields);
+  if (objects.isRecord(value)) return fillObject(value, fields);
   return value;
 }
 

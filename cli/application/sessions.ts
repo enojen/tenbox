@@ -1,7 +1,7 @@
+import { failedState } from "../../domain/errors/index.ts";
 import { noSessionError, sessionBusyError } from "../../domain/errors/tasks.ts";
 import { noCommandError } from "../../domain/errors/tools.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { failedState } from "../../domain/utils.ts";
 import {
   type BackgroundSession,
   type ClaudeResume,

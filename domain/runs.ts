@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MS_PER_SECOND, minutesBetween, toMinutes } from "./utils.ts";
+import { durations } from "./utils.ts";
 
 /* The plan and build workflow runs of one task, read from Claude Code's session files. */
 
@@ -164,12 +164,12 @@ function latestEnd(runs: WorkflowRun[]): string | null {
 
 function sumMinutes(runs: WorkflowRun[]): number | null {
   if (runs.length === 0) return null;
-  return toMinutes(runs.reduce((sum, run) => sum + run.durationMs, 0));
+  return durations.msToMinutes(runs.reduce((sum, run) => sum + run.durationMs, 0));
 }
 
 /** Null when a plan run ended after the build started: there was no wait then. */
 function waitMinutes(timeline: RunTimeline): number | null {
-  const minutes = minutesBetween(timeline.plan_end, timeline.build_start);
+  const minutes = durations.minutesBetween(timeline.plan_end, timeline.build_start);
   return minutes !== null && minutes < 0 ? null : minutes;
 }
 
@@ -224,10 +224,10 @@ function spanMinutes(agents: RunAgent[]): number | null {
   for (const { started, seconds } of agents) {
     if (started === null || seconds === null) continue;
     const start = Date.parse(started);
-    spans.push([start, start + seconds * MS_PER_SECOND]);
+    spans.push([start, start + seconds * durations.MS_PER_SECOND]);
   }
   if (spans.length === 0) return null;
   const first = Math.min(...spans.map(([start]) => start));
   const last = Math.max(...spans.map(([, end]) => end));
-  return toMinutes(last - first);
+  return durations.msToMinutes(last - first);
 }

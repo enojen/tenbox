@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { issueLines } from "./errors/index.ts";
 import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
-import { deepMerge, isPlainObject, issueLines } from "./utils.ts";
+import { objects } from "./utils.ts";
 
 /** The trackers Tenbox has an adapter for; `none` is no tracker. */
 export const TRACKER_KIND = { none: "none", linear: "linear", clickup: "clickup" } as const;
@@ -65,12 +66,12 @@ export const CHECK_TIER = { fast: "fast", full: "full" } as const;
 export const CHECK_TIERS = Object.values(CHECK_TIER);
 
 function isTiered(value: Record<string, unknown>): boolean {
-  return CHECK_TIERS.some((tier) => isPlainObject(value[tier]));
+  return CHECK_TIERS.some((tier) => objects.isRecord(value[tier]));
 }
 
 /** The flat form `{ name: cmd }` is the `fast` tier. */
 function toTiers(value: unknown): unknown {
-  if (!isPlainObject(value) || isTiered(value)) return value;
+  if (!objects.isRecord(value) || isTiered(value)) return value;
   return { fast: value };
 }
 
@@ -97,26 +98,11 @@ const ChecksSchema = z.preprocess(
 /** Where Tenbox sends the one-line notifications; without `ntfy` it sends none. */
 const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
 
-/** Where `tenbox machine run` runs a command: a Job on the cluster, or a `machine.yml` run. */
-export const MACHINE_KIND = { k8s: "k8s", hetzner: "hetzner" } as const;
-
 /** The tenyard directory with `job.yaml` and `pvc.yaml`; `~/` is the home directory. */
 const DEFAULT_TEMPLATE = "~/tenyard/task";
 
-/** The short form `machine: hetzner` is `{ kind: hetzner }`. */
-function toMachineObject(value: unknown): unknown {
-  return typeof value === "string" ? { kind: value } : value;
-}
-
-const MachineSchema = z.preprocess(
-  toMachineObject,
-  z
-    .object({
-      kind: z.enum(MACHINE_KIND).default(MACHINE_KIND.k8s),
-      template: z.string().min(1).default(DEFAULT_TEMPLATE),
-    })
-    .strict(),
-);
+/** Where `tenbox machine run` finds the Job templates. */
+const MachineSchema = z.object({ template: z.string().min(1).default(DEFAULT_TEMPLATE) }).strict();
 
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 const ManifestSchema = z.object({
@@ -156,11 +142,27 @@ export interface ManifestLayer {
   value: unknown;
 }
 
-/** A layer in the long forms of `checks:` and `machine:`, so a short and a long layer merge. */
+/** The one key whose assignment sets an object's prototype instead of a property. */
+const PROTO_KEY = "__proto__";
+
+/** Merge b over a: objects key by key, arrays and scalars replaced; `__proto__` is skipped. */
+export function deepMerge(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    if (k === PROTO_KEY) continue;
+    const prev = out[k];
+    out[k] = objects.isRecord(prev) && objects.isRecord(v) ? deepMerge(prev, v) : v;
+  }
+  return out;
+}
+
+/** A layer in the long form of `checks:`, so a short and a long layer merge. */
 function withLongForms(value: Record<string, unknown>): Record<string, unknown> {
   const out = { ...value };
   if ("checks" in value) out.checks = toTiers(value.checks);
-  if ("machine" in value) out.machine = toMachineObject(value.machine);
   return out;
 }
 
@@ -169,7 +171,7 @@ export function mergeManifest(layers: ManifestLayer[]): Manifest {
   let merged: Record<string, unknown> = {};
   for (const layer of layers) {
     if (layer.value === null || layer.value === undefined) continue;
-    if (!isPlainObject(layer.value))
+    if (!objects.isRecord(layer.value))
       throw manifestError(`${layer.file}: expected a YAML mapping at the top`);
     merged = deepMerge(merged, withLongForms(layer.value));
   }

@@ -1,4 +1,4 @@
-import { parseObject } from "../../domain/utils.ts";
+import { jsons, objects } from "../../domain/utils.ts";
 
 /** One POST the fake got: its path and its JSON body. */
 interface NtfyPost {
@@ -22,8 +22,11 @@ export function startFakeNtfy(): FakeNtfy {
     port: 0,
     async fetch(request) {
       const text = await request.text();
-      const body = parseObject(text);
-      posts.push({ path: new URL(request.url).pathname, body });
+      const body = jsons.parse(text);
+      posts.push({
+        path: new URL(request.url).pathname,
+        body: objects.isRecord(body) ? body : null,
+      });
       return Response.json({ id: "x" });
     },
   });

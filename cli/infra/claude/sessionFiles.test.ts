@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { cp } from "node:fs/promises";
 import path from "node:path";
+import { captureStderr } from "../../test/stderr.ts";
 import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
 import { env } from "../env.ts";
 import { files } from "../files.ts";
@@ -70,7 +71,15 @@ async function writeRun(): Promise<void> {
         toolCalls: 14,
         promptPreview: MARKER,
       },
-      { type: "workflow_agent", label: "round 1: checks", agentId: "a2" },
+      // A running agent: no duration and no counts yet.
+      {
+        type: "workflow_agent",
+        label: "round 1: checks",
+        phaseTitle: "Build",
+        agentId: "a2",
+        model: "claude-haiku-4-5",
+        startedAt: STARTED_MS,
+      },
     ],
   };
   await files.write(path.join(sessionDir, "workflows", "wf_1.json"), JSON.stringify(run));
@@ -117,10 +126,10 @@ test("reads a run with its agents and their usage, without prompt or result text
     {
       workflow: "tenbox-build",
       label: "round 1: checks",
-      phase: null,
+      phase: "Build",
       role: null,
-      model: null,
-      started: null,
+      model: "claude-haiku-4-5",
+      started: "2026-01-01T00:00:00.000Z",
       seconds: null,
       tokens: null,
       tool_calls: null,
@@ -146,7 +155,15 @@ async function writeRunFile(fields: RunFileFields): Promise<void> {
   const { session, runId, workflowName, startTime } = fields;
   const dir = path.join(projectDir(env().claudeDir, CWD), session, "workflows");
   const scriptPath = path.join(dir, "scripts", `${workflowName}-${runId}.js`);
-  const run = { runId, workflowName, startTime, scriptPath, args: `args of ${runId}` };
+  const run = {
+    runId,
+    workflowName,
+    startTime,
+    durationMs: 1,
+    scriptPath,
+    args: `args of ${runId}`,
+    workflowProgress: [],
+  };
   await files.write(path.join(dir, `${runId}.json`), JSON.stringify(run));
 }
 
@@ -293,6 +310,28 @@ test("a run dir whose run file exists is read once, as finished", async () => {
   const runs = await claudeSessions.listRuns(CWD);
   expect(runs).toHaveLength(1);
   expect(runs?.[0]?.finished).toBe(true);
+});
+
+test("a run file, a journal line or a meta that does not fit gives one warning each and is passed by", async () => {
+  await writeUnfinishedRun("wf_2", UNFINISHED);
+  const runDir = path.join(sessionDir, "subagents", "workflows", "wf_2");
+  const journal = path.join(runDir, "journal.jsonl");
+  const meta = path.join(runDir, "agent-a2.meta.json");
+  const runFile = path.join(sessionDir, "workflows", "wf_9.json");
+  const lines = await files.read(journal);
+  await files.write(journal, `${lines}${JSON.stringify({ type: "started" })}\n`);
+  await files.write(meta, JSON.stringify({ agentType: 2 }));
+  await files.write(runFile, JSON.stringify({ workflowName: "tenbox-build", durationMs: 1 }));
+  const read = await captureStderr(() => claudeSessions.listRuns(CWD));
+  expect(read.value?.map((run) => run.agents.map((agent) => agent.role))).toEqual([
+    ["worker", null],
+  ]);
+  const warnings = read.stderr.trimEnd().split("\n");
+  expect(warnings).toEqual([
+    expect.stringContaining(`warning: ${runFile}: `),
+    `warning: ${journal}: 1 line(s) skipped`,
+    expect.stringContaining(`warning: ${meta}: agentType: `),
+  ]);
 });
 
 test("an unfinished run without its script or without a timestamp is skipped", async () => {

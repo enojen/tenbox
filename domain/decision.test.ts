@@ -55,8 +55,8 @@ test.each([
   ["a missing answer", '[{"question":"q"}]'],
   ["a blank answer", '[{"answer":"  "}]'],
   ["a newline in the answer", '[{"answer":"a\\nb"}]'],
-])("parseDecisions refuses %s with bad-decisions", (_name, text) => {
-  expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-decisions" }));
+])("parseDecisions refuses %s with bad-input", (_name, text) => {
+  expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
 test("parseDecisions returns the items", () => {
@@ -77,8 +77,8 @@ test.each([
   ["a taken of 0", '[{"decision":"Where","taken":0}]'],
   ["a taken that is text", '[{"decision":"Where","taken":"2"}]'],
   ["a blank decision", '[{"decision":" ","taken":1}]'],
-])("parseDecisions refuses %s with bad-decisions", (_name, text) => {
-  expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-decisions" }));
+])("parseDecisions refuses %s with bad-input", (_name, text) => {
+  expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
 const card = (title: string) => ({
@@ -114,10 +114,8 @@ test.each([
   );
 });
 
-test("a taken outside the options is bad-decisions and names the card", () => {
+test("a taken outside the options is bad-input and names the card", () => {
   const items = [{ decision: "Where", taken: 3 }];
-  expect(() => takeOptions(plan, items)).toThrow(
-    expect.objectContaining({ code: "bad-decisions" }),
-  );
+  expect(() => takeOptions(plan, items)).toThrow(expect.objectContaining({ code: "bad-input" }));
   expect(() => takeOptions(plan, items)).toThrow("Where the list lives");
 });

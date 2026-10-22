@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
-import { sha256Hex } from "../../domain/utils.ts";
+import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import {
@@ -99,15 +99,18 @@ describe("tenbox build", () => {
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
-  test("an approved plan.json that is no longer valid is no-plan and starts nothing", async () => {
+  test("an approved plan.json that is no longer valid is bad-file and starts nothing", async () => {
     await setup();
     const old = JSON.stringify({ ...planResult(), examples: undefined, criteria: [] });
     await files.write(planJsonFile(), old);
     const approvedJson = path.join(path.dirname(planJsonFile()), "approved.json");
-    await files.writeJson(approvedJson, { at: new Date().toISOString(), plan_sha: sha256Hex(old) });
+    await files.writeJson(approvedJson, {
+      at: new Date().toISOString(),
+      plan_sha: hashes.sha256Hex(old),
+    });
     const built = await run("build", "T-1");
     const prompts = await bgPrompts();
-    expect([built.code, built.json.code]).toEqual([1, "no-plan"]);
+    expect([built.code, built.json.code]).toEqual([1, "bad-file"]);
     expect(built.json.error).toContain("plan.json");
     expect(prompts).toEqual([]);
   });
@@ -454,9 +457,9 @@ describe("tenbox build done", () => {
     ["a round that is not whole", withJson({ round: 1.5 })],
     ["a proof with a blank test", withJson({ proofs: [{ ...proof("t"), test: " " }] })],
     ["text that is not JSON", ["--json", "not json"]],
-  ])("%s is bad-build and writes nothing", async (_name, args) => {
+  ])("%s is bad-input and writes nothing", async (_name, args) => {
     const run = await buildDone(...args);
-    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-build"]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-input"]);
     const buildExists = await files.exists(buildJson);
     const proofsExist = await files.exists(proofsJson);
     expect([buildExists, proofsExist]).toEqual([false, false]);
@@ -513,9 +516,9 @@ describe("tenbox build done", () => {
     expect(written.deadline).toBeNull();
   });
 
-  test("a card whose recommended option is not one of its options is bad-build and writes nothing", async () => {
+  test("a card whose recommended option is not one of its options is bad-input and writes nothing", async () => {
     const run = await buildDone(...withJson({ status: "needs-you", decision: card(true, 3) }));
-    expect([run.code, run.json.code]).toEqual([1, "bad-build"]);
+    expect([run.code, run.json.code]).toEqual([1, "bad-input"]);
     const buildExists = await files.exists(buildJson);
     expect(buildExists).toBe(false);
   });
@@ -529,13 +532,13 @@ describe("tenbox build done", () => {
   });
 
   test.each([undefined, "foo"])(
-    "a card with kind %p is bad-build and writes nothing",
+    "a card with kind %p is bad-input and writes nothing",
     async (kind) => {
       const { kind: _kind, ...rest } = card(true);
       const decision = kind === undefined ? rest : { ...rest, kind };
       const run = await buildDone(...withJson({ status: "needs-you", decision }));
       const buildExists = await files.exists(buildJson);
-      expect([run.code, run.json.code, buildExists]).toEqual([1, "bad-build", false]);
+      expect([run.code, run.json.code, buildExists]).toEqual([1, "bad-input", false]);
     },
   );
 

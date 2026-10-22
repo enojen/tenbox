@@ -1,7 +1,9 @@
 import path from "node:path";
-import { parseObject } from "../../../domain/utils.ts";
+import { z } from "zod";
+import { strings } from "../../../domain/utils.ts";
 import { env } from "../env.ts";
 import { files } from "../files.ts";
+import { claudeFiles } from "./claudeFiles.ts";
 
 /** Where a Claude Code session of claude.ai/code opens. */
 const SESSION_URL = "https://claude.ai/code/";
@@ -14,6 +16,13 @@ interface LinkedSession {
   startedAt: number;
   bridgeSessionId: string;
 }
+
+/** `bridgeSessionId` is null without Remote Control, and missing in older Claude Code. */
+const SessionFileSchema = z.object({
+  cwd: z.string(),
+  startedAt: z.number(),
+  bridgeSessionId: z.string().nullish(),
+});
 
 /** The link of the newest session started in `cwd`; null without one. Read at each call. */
 async function find(cwd: string): Promise<string | null> {
@@ -35,12 +44,11 @@ interface SessionRead {
   cwd: string;
 }
 
-/** Null when the file is another cwd's or has no `bridgeSessionId`. */
+/** Null when the file is another cwd's, has no `bridgeSessionId` or does not fit. */
 async function readSession(input: SessionRead): Promise<LinkedSession | null> {
-  const content = await files.read(input.file);
-  const json = content === null ? null : parseObject(content);
+  const json = await claudeFiles.find(SessionFileSchema, input.file);
   if (json === null || json.cwd !== input.cwd) return null;
   const { bridgeSessionId, startedAt } = json;
-  if (typeof bridgeSessionId !== "string" || bridgeSessionId === "") return null;
-  return { bridgeSessionId, startedAt: typeof startedAt === "number" ? startedAt : 0 };
+  if (!strings.isNotBlank(bridgeSessionId)) return null;
+  return { bridgeSessionId, startedAt };
 }

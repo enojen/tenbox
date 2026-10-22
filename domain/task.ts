@@ -1,11 +1,12 @@
 import path from "node:path";
 import { z } from "zod";
+import { badFileError } from "./errors/tasks.ts";
 import type { TaskId } from "./ids.ts";
 import { type TaskKind, TaskKindSchema } from "./kind.ts";
 import { type TrackerKind, TrackerKindSchema } from "./manifest.ts";
 import type { PlanResult } from "./plan.ts";
 import type { TrackerComment } from "./tracker.ts";
-import { parseObject } from "./utils.ts";
+import { jsons } from "./utils.ts";
 
 export interface Task {
   id: TaskId;
@@ -41,10 +42,11 @@ const GroupStartSchema = z.object({ start: z.string() });
 /** Where a group branch left its needs; `tenbox pr` replays only the commits after `start`. */
 export type GroupStart = z.infer<typeof GroupStartSchema>;
 
-/** The start in `group.json` text; null when it is not a JSON object or does not match. */
-export function readGroupStart(text: string): GroupStart | null {
-  const parsed = GroupStartSchema.safeParse(parseObject(text));
-  return parsed.success ? parsed.data : null;
+/** The start in the text of `group.json`; `bad-file` when it is not JSON or does not match. */
+export function readGroupStart(text: string, file: string): GroupStart {
+  const result = jsons.check(GroupStartSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }
 export const groupWorktreeDir = (taskWorktree: string, group: number): string =>
   `${taskWorktree}-${group}`;
@@ -136,10 +138,11 @@ export function docsPlanOf(t: Task): PlanResult {
   };
 }
 
-/** The task in `task.json` text; null when it is not a JSON object or does not match. */
-export function readTaskFile(text: string): TaskFile | null {
-  const parsed = TaskFileSchema.safeParse(parseObject(text));
-  return parsed.success ? parsed.data : null;
+/** The task in the text of `task.json`; `bad-file` when it is not JSON or does not match. */
+export function readTaskFile(text: string, file: string): TaskFile {
+  const result = jsons.check(TaskFileSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }
 
 /** The round numbers among directory names, lowest first; other names are left out. */

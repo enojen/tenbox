@@ -48,17 +48,25 @@ test("taskFileOf keeps the title and gives a task without url a null url", () =>
   expect(taskFileOf({ ...task, url: "https://x/T-1" }, undefined).url).toBe("https://x/T-1");
 });
 
-test("readTaskFile reads task.json and gives null for anything else", () => {
+test("readTaskFile reads task.json and refuses anything else with bad-file", () => {
   const file: TaskFile = { id: "T-1", title: "y", status: "todo", tracker: "none", url: null };
-  expect(readTaskFile(JSON.stringify(file))).toEqual(file);
-  expect(readTaskFile('{"id":"T-1"}')).toBeNull();
-  expect(readTaskFile("not json")).toBeNull();
+  const at = "/t/.tenbox/task.json";
+  expect(readTaskFile(JSON.stringify(file), at)).toEqual(file);
+  expect(() => readTaskFile('{"id":"T-1"}', at)).toThrow(
+    expect.objectContaining({ code: "bad-file" }),
+  );
+  expect(() => readTaskFile("not json", at)).toThrow(expect.objectContaining({ code: "bad-file" }));
 });
 
-test("readGroupStart reads group.json and gives null for anything else", () => {
-  expect(readGroupStart('{"start":"abc123"}')).toEqual({ start: "abc123" });
-  expect(readGroupStart('{"start":1}')).toBeNull();
-  expect(readGroupStart("not json")).toBeNull();
+test("readGroupStart reads group.json and refuses anything else with bad-file", () => {
+  const at = "/t/.tenbox/groups/2/group.json";
+  expect(readGroupStart('{"start":"abc123"}', at)).toEqual({ start: "abc123" });
+  expect(() => readGroupStart('{"start":1}', at)).toThrow(
+    expect.objectContaining({ code: "bad-file" }),
+  );
+  expect(() => readGroupStart("not json", at)).toThrow(
+    expect.objectContaining({ code: "bad-file" }),
+  );
 });
 
 test("renderTaskMd appends the comments in order, each with author and date", () => {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { errorMessage, failedState } from "../../domain/errors/index.ts";
 import {
   dirtyBeforeCloseError,
   inTaskWorktreeError,
@@ -11,7 +12,6 @@ import { type Project, taskDir, taskWorktreeDir } from "../../domain/project.ts"
 import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
 import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
-import { errorMessage, failedState } from "../../domain/utils.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";

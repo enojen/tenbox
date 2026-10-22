@@ -3,7 +3,6 @@ import type { TaskId } from "../../domain/ids.ts";
 import { type StatsProof, trimProof } from "../../domain/proof.ts";
 import { type RunAgent, type RunMark, summarizeRuns } from "../../domain/runs.ts";
 import {
-  checksPassed,
   countPlan,
   countPoints,
   countReview,
@@ -19,12 +18,13 @@ import {
   type TaskStats,
 } from "../../domain/stats.ts";
 import { checksFile, roundDir, roundNumbers, roundsDir } from "../../domain/task.ts";
-import { minutesBetween } from "../../domain/utils.ts";
+import { durations } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { builds } from "./builds.ts";
+import { checks } from "./checks.ts";
 import { parts } from "./parts.ts";
 import { plans } from "./plans.ts";
 import { tasks } from "./tasks.ts";
@@ -78,7 +78,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     minutes: {
       ...summary.minutes,
       ...prMinutes(summary.timeline.build_end, input.pr),
-      total: minutesBetween(opened, closed),
+      total: durations.minutesBetween(opened, closed),
     },
     plan,
     rounds,
@@ -114,8 +114,9 @@ interface FoundStats {
 /** The agents and runs of `stats.json` when the task is closed, else of the worktree's session files; a `stats.json` of another schema is skipped. */
 async function get(source: StatsSource): Promise<FoundStats> {
   const { id, taskDir, taskWorktree } = source;
-  const text = await readText(taskDir);
-  const recorded = text === null ? null : readStatsRecord(text);
+  const file = taskDir === null ? null : statsFile(taskDir);
+  const text = await readText(file);
+  const recorded = file === null || text === null ? null : readStatsRecord(text, file);
   if (recorded !== null) return { from: "stats.json", ...recorded };
   const runs = await claudeSessions.listRuns(taskWorktree);
   const summary = summarizeRuns(runs, null);
@@ -124,15 +125,15 @@ async function get(source: StatsSource): Promise<FoundStats> {
   return { from: "sessions", agents, runs: summary.runs };
 }
 
-function readText(dir: string | null): Promise<string | null> {
-  if (dir === null) return Promise.resolve(null);
-  return files.read(statsFile(dir));
+function readText(file: string | null): Promise<string | null> {
+  if (file === null) return Promise.resolve(null);
+  return files.read(file);
 }
 
 function prMinutes(buildEnd: string | null, pr: PrTimes | null): PrMinutes {
   return {
-    review: minutesBetween(buildEnd, pr?.createdAt ?? null),
-    wait_merge: minutesBetween(pr?.createdAt ?? null, pr?.mergedAt ?? null),
+    review: durations.minutesBetween(buildEnd, pr?.createdAt ?? null),
+    wait_merge: durations.minutesBetween(pr?.createdAt ?? null, pr?.mergedAt ?? null),
   };
 }
 
@@ -144,8 +145,8 @@ async function readRounds(dir: string): Promise<StatsRound[]> {
   const names = await files.list(roundsDir(dir));
   const rounds: StatsRound[] = [];
   for (const number of roundNumbers(names)) {
-    const text = await files.read(checksFile(roundDir(dir, number)));
-    rounds.push({ number, checks_passed: checksPassed(text) });
+    const result = await checks.find(checksFile(roundDir(dir, number)));
+    rounds.push({ number, checks_passed: result?.ok ?? null });
   }
   return rounds;
 }

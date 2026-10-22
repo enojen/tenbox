@@ -10,8 +10,8 @@ export interface ReportPr {
 /** The newest round that has a `checks.json`, with what it says. */
 export interface ReportChecks {
   round: number;
-  ok: boolean | null;
-  summary: string | null;
+  ok: boolean;
+  summary: string;
 }
 
 /** The state of one task, read from its files, its background session and its PR. */
