@@ -7,8 +7,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    # Our own machine; GitHub hosted minutes are used up.
-    runs-on: [self-hosted, tenbox-ci]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

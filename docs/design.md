@@ -15,7 +15,7 @@ around them:
 - **Gates**: you approve the plan and the result; GitHub CI decides if the code merges.
 
 > **This is the target design, not today's behaviour.** What is built and how it runs today
-> is in the [README](../README.md); where the two differ, the README describes the code.
+> is in the [reference](reference.md); where the two differ, the reference describes the code.
 > Tenbox grows out of [devbox](../../devbox/README.md): `wtport`, `wtbase`, `heavy`, Caddy
 > `p<port>` links and the `/task-start` / `/task-close` skills.
 >

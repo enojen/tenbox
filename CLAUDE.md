@@ -2,11 +2,11 @@
 
 Tenbox: a thin layer on top of Claude Code that runs one tracker task through plan,
 build, check, review, try and merge with workflows and custom subagents. Read
-`README.md` first: it describes what is built today, and every statement in it must be true
-of the code. Where code and README disagree, fix one of them in the same change.
+`docs/reference.md` first: it describes what is built today, and every statement in it must be true
+of the code. Where code and reference disagree, fix one of them in the same change.
 `docs/design.md` is the target design for later phases; it is not today's behaviour, so
 never change it to match the code. When a task builds a piece of it, describe that piece in
-the README.
+`docs/reference.md`.
 
 ## Status
 
