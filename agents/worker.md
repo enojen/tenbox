@@ -37,7 +37,7 @@ it: Bash goes back to the session directory after each call.
    the build. Fix what you broke. Do not silence a failing test or lower a lint rule.
 5. Commit when the checks pass. One commit per part is normal; more is fine. Message:
    `<task id>: <part title>` on the first line, then what and why. Do not push. Do not
-   rebase, merge or switch branches; the integrator does that.
+   rebase, merge or switch branches.
 6. After your last commit, run the `tenbox part done` command from your prompt with the hash
    of that commit in `--commit`. It checks that the commit exists, is on `HEAD`, is new, touches
    your part's files and leaves nothing of them uncommitted, as after a failed commit hook.
