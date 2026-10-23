@@ -16,22 +16,17 @@ around them:
 
 > **This is the target design, not today's behaviour.** What is built and how it runs today
 > is in the [reference](reference.md); where the two differ, the reference describes the code.
-> Tenbox grows out of [devbox](../../devbox/README.md): `wtport`, `wtbase`, `heavy`, Caddy
+> Tenbox grows out of devbox, an earlier private setup: `wtport`, `wtbase`, `heavy`, Caddy
 > `p<port>` links and the `/task-start` / `/task-close` skills.
->
-> Visual references: [`docs/tenbox-flow.html`](tenbox-flow.html) (the steps),
-> [`docs/tenbox-mockup.html`](tenbox-mockup.html) (a later panel),
-> [`docs/tenbox-avatars.html`](tenbox-avatars.html) (panel skins). They were drawn for an
-> earlier multi-session design. Where they disagree with this README, this page wins.
 
 ## The idea in one picture
 
 ```
 Linear task TEN-301
    │
-   │  tenbox start TEN-301        worktree + branch + tmux session with one claude
+   │  tenbox start TEN-301        worktree + branch + one background claude session
    ▼
-┌─ claude session "tenbox-TEN-301" (tmux, cwd = task worktree) ───────────────────────┐
+┌─ claude session "tenbox-TEN-301" (claude --bg, cwd = task worktree) ─────────────────┐
 │                                                                                     │
 │  /tenbox-plan TEN-301    workflow: planner agents → .tenbox/plan.md                  │
 │        │                                                                            │
@@ -75,18 +70,8 @@ What workflows cannot do, and how Tenbox handles it:
 | The script cannot touch files or run commands | Agents run `tenbox ...` commands; the script only coordinates |
 | You cannot chat with one agent inside a run | Talk to the task session between runs; stop or restart single agents in `/workflows` |
 | Every step is done by an LLM, so a step could be faked | The hard gate is GitHub CI with branch protection, not an agent's report |
-| Resume works only in the same session (`resumeFromRunId`, longest unchanged prefix of `agent()` calls) | Keep the task session alive in tmux; a new session reruns the workflow, and agents reread `.tenbox/` so finished parts are skipped by the planner, not by the cache |
+| Resume works only in the same session (`resumeFromRunId`, longest unchanged prefix of `agent()` calls) | Keep the task session alive; a new session reruns the workflow, and agents reread `.tenbox/` so finished parts are skipped by the planner, not by the cache |
 | No `Date.now()`, `Math.random()` or `new Date()` in a script (they break resume) | Timestamps come from `tenbox` command output, never from the script |
-
-Checked against the Claude Code docs (sub-agents, workflows, worktrees, hooks, mods) on
-2026-10-07: every frontmatter field and script function used in this README exists;
-`pipeline` stages receive `(prevResult, item, index)`; `agentType` composes with
-`schema`; hooks run inside subagents with `agent_id` and `agent_type` and can deny a tool
-call (exit 2 or `permissionDecision: "deny"`); `SubagentStart` and `SubagentStop` exist.
-
-Considered and dropped: a custom daemon with an MCP `spawn_agent` tool and one tmux
-session per agent (workflows already do this, with resume), the Claude Agent SDK (API key
-auth only), self-hosted E2B (needs a cluster and `/dev/kvm`).
 
 ## The steps
 
@@ -114,9 +99,9 @@ CI and QA already read the code. What only you can judge is whether the product 
 Three rules keep step 7 small:
 
 1. **Small PRs, decided at plan time.** `budget.max_pr_lines` in `tenbox.yaml` (default
-   400). A plan that exceeds it is split into stacked PRs, `feat/TEN-301-1`,
-   `feat/TEN-301-2`, one Linear sub-issue each, merged in order. You approve the split
-   at the plan gate, so you never meet a 2000-line PR at the end.
+   400). A plan that exceeds it is split into groups, one PR each, every one from `main`;
+   no stacked PRs. You approve the split at the plan gate, so you never meet a 2000-line
+   PR at the end.
 2. **An attention list, not a diff.** The reviewer panel marks the hunks that need a human
    eye in `review.json` (`attention`), and `tenbox pr` puts them at the top of the PR
    body with a one-line reason. What counts as attention is a rule, not a judgement:
@@ -126,8 +111,6 @@ Three rules keep step 7 small:
    read the attention hunks, check that `rounds/N/qa/` shows what the criteria ask for.
    Product decisions were already taken in `decisions.md` at step 2; step 7 only asks
    "is this what I expected?".
-
-The step-by-step page with commands: [`docs/tenbox-flow.html`](tenbox-flow.html).
 
 ## Where things run
 
@@ -140,7 +123,7 @@ to `tenbox close`. See [Machines](#machines).
 cluster tenyard (k3s)                       one node today; more nodes while tasks wait
 ├ Job task-ten-301-<MMDD-HHMMSS>            one tenbox command; gone 10 minutes after it ends
 │  └ pod: the box image                     ghcr.io/enojen/tenbox-box
-│     ├ /home/tenzel → volume task-ten-301  10 GB · exists per task
+│     ├ /home/tenbox → volume task-ten-301  10 GB · exists per task
 │     │  ├ wt/my-app/main/             clone of the project, made on the first run
 │     │  ├ wt/my-app/TEN-301/          task worktree, branch feat/TEN-301
 │     │  ├ .tenbox/<project id>/TEN-301/    the task's shared memory
@@ -300,32 +283,9 @@ one subscription limit.
 
 ## Tracker
 
-Tasks come from Linear today and may come from ClickUp tomorrow. Nothing in Tenbox knows
-which, except one adapter in the CLI:
-
-```ts
-interface Tracker {
-  getTask(id): { id, title, description, url, status }
-  updateStatus(id, status: 'in_progress' | 'in_review' | 'done')
-  addComment(id, text)
-  createSubtask(parent, title, description): { id }
-}
-```
-
-`cli/tracker/linear.ts` and `cli/tracker/clickup.ts` implement it over each REST API (the
-CLI cannot use MCP). The manifest picks one:
-
-```yaml
-tracker: { kind: linear, team: TEN }          # ids look like TEN-301
-tracker: { kind: clickup, list: 901234567 }   # ids look like 86abc123
-```
-
-The API key lives in `tenbox.local.yaml`. The task id is the only thing that leaks out:
-branch `feat/<id>`, worktree `~/wt/<project>/<id>`, tmux `tenbox-<id>`, compose project
-`tenbox-<id>`. The branch and tmux names are templates under `names:` in `tenbox.yaml`
-(`branch: feat/{id}`, `tmux: tenbox-{id}` by default); the worktree path is fixed.
-`tenbox start <id> --title "..."` works with no tracker at all, for trying Tenbox on a
-scratch project.
+The Linear and ClickUp adapters are built (see the reference). The target adds
+`createSubtask(parent, title, description)` to the `Tracker` port, so that `tenbox` can
+create the subtasks the planner proposes. The compose project of a task is `tenbox-<id>`.
 
 ## Roles: `.claude/agents/`
 
@@ -342,36 +302,15 @@ gets them; a project can override one in its own `.claude/agents/`.
 | `qa` | Black-box tester. Tests one acceptance criterion against the sandbox. Never reads code. | Bash + Playwright MCP; code reads blocked by hook |
 | `runner` | Runs one `tenbox` command and returns its JSON unchanged. | `model: sonnet`, `effort: low`, Bash only |
 
-Example:
-
-```markdown
----
-name: reviewer
-description: Reviews a Tenbox task diff against its plan through one lens. Never edits.
-disallowedTools: Edit, Write, NotebookEdit
-model: sonnet
-effort: medium
----
-You review `git diff main...HEAD` against `.tenbox/plan.md` and `.tenbox/decisions.md`.
-Use only the lens you are given. Report must_fix items only when the plan, the spec or
-correctness requires them. Everything else is nice_to_have.
-```
-
 ## Shared memory: `.tenbox/`
 
-Agents in one run do not talk to each other. They share files in the task worktree:
+Agents in one run do not talk to each other. They share the task files (see the
+reference). The target adds two things per round:
 
 ```
-.tenbox/
-├ task.md               from Linear, written by tenbox start
-├ plan.md               planner: steps, parts, acceptance criteria, spec changes
-├ questions.md          open questions for you
-├ decisions.md          answered questions; every agent reads this first
-├ parts/01-cancel-api.md  one file per part: owner, status, files, result
-└ rounds/2/
-  ├ checks.json         tenbox check
-  ├ review.json         merged reviewer panel result: must_fix, nice_to_have, attention
-  └ qa/                 one report per criterion + evidence (requests, screenshots, logs)
+.tenbox/rounds/2/
+├ review.json           merged reviewer panel result: must_fix, nice_to_have, attention
+└ qa/                   one report per criterion + evidence (requests, screenshots, logs)
 ```
 
 The `attention` part of `review.json`, what goes to the top of the PR body:
@@ -384,117 +323,32 @@ The `attention` part of `review.json`, what goes to the top of the PR body:
 ]
 ```
 
-A part file:
+## The workflows
 
-```markdown
-# 01 · Cancel endpoint
-status: done            # todo | doing | done | blocked
-files: src/order/*
-acceptance:
-- POST /orders/{id}/cancel returns 200 and sets status=cancelled
-- an already cancelled order returns 409
-result: endpoint + 6 unit tests, commit 4e1f0a2
-```
+`/tenbox-plan`, `/tenbox-build` and `/tenbox-close` are built (see the reference). The
+target changes two of them:
 
-## The workflows: `~/tenbox/workflows/`
-
-Linked into `~/.claude/workflows/` so they run as `/tenbox-plan`, `/tenbox-build`,
-`/tenbox-close` in every project. Input comes through `args`, for example
-`Run /tenbox-build on TEN-301`.
-
-### `/tenbox-plan`
-
-1. One planner reads the task and the code and writes `plan.md` and the part files,
-   with the least code that does the task.
-2. Questions it cannot settle go to `questions.md`, sorted by kind.
-3. Returns the plan summary and the open questions. You answer and approve between runs.
-
-### `/tenbox-build` (sketch)
-
-```js
-export const meta = {
-  name: 'tenbox-build',
-  description: 'Build, check, review and try one Tenbox task until it passes',
-  phases: [{ title: 'Build' }, { title: 'Checks' }, { title: 'Review' }, { title: 'Try' }],
-}
-
-// PARTS, BUILT, CHECKS, REVIEW, PR, SANDBOX, CRITERIA, QA: JSON schemas, see schemas/
-const task = args.task
-const MAX_ROUNDS = args.maxRounds || 3
-let feedback = args.feedback || ''
-let result = { status: 'failed' }
-
-for (let round = 1; round <= MAX_ROUNDS; round++) {
-  phase('Build')
-  const parts = await agent(`Task ${task}, round ${round}. Read .tenbox/plan.md and .tenbox/parts/. Feedback: ${feedback || 'none'}. Return the parts still to build.`, { agentType: 'planner', schema: PARTS })
-  const parallelParts = parts.items.length > 1
-  await pipeline(parts.items, p =>
-    agent(`Build part ${p.id} of ${task}: ${p.goal}`, { agentType: 'worker', schema: BUILT, ...(parallelParts ? { isolation: 'worktree' } : {}) }))
-  if (parallelParts) await agent(`Merge the worker branches for ${task} into feat/${task}.`, { agentType: 'integrator', schema: MERGED })
-
-  phase('Checks')
-  const checks = await agent(`Run \`tenbox check ${task} --round ${round}\` and return its JSON.`, { agentType: 'runner', schema: CHECKS })
-  if (!checks.ok) { feedback = checks.summary; continue }
-
-  phase('Review')
-  const lenses = ['correctness', 'fit to plan and OpenAPI spec', 'security and data safety']
-  const reviews = await parallel(lenses.map(l => () =>
-    agent(`Review feat/${task} through this lens: ${l}`, { agentType: 'reviewer', schema: REVIEW, phase: 'Review' })))
-  const mustFix = reviews.filter(Boolean).flatMap(r => r.must_fix)
-  const attention = reviews.filter(Boolean).flatMap(r => r.attention)   // merged into rounds/N/review.json, PR body top
-  await agent(`Run \`tenbox pr ${task} --draft --round ${round}\` and return its JSON.`, { agentType: 'runner', schema: PR })
-  if (mustFix.length) { feedback = mustFix.join('\n'); continue }
-
-  phase('Try')
-  const sandbox = await agent(`Run \`tenbox sandbox up ${task} --profile try\` and return its JSON.`, { agentType: 'runner', schema: SANDBOX })
-  const criteria = await agent(`List the acceptance criteria in .tenbox/plan.md.`, { agentType: 'planner', schema: CRITERIA })
-  const tried = await pipeline(criteria.items,
-    c => agent(`Test against ${sandbox.links.api}: ${c.text}`, { agentType: 'qa', schema: QA }),
-    (r, c) => r.pass ? r : agent(`Independently re-test against ${sandbox.links.api}: ${c.text}`, { agentType: 'qa', schema: QA }))
-  const failed = tried.filter(r => !r || !r.pass)
-  if (failed.length) { feedback = failed.map(f => f ? f.finding : 'QA agent failed').join('\n'); continue }
-
-  result = { status: 'ready-for-you', round, commit: sandbox.commit, links: sandbox.links }
-  break
-}
-return result
-```
-
-Any agent can return `questions`. When a question is blocking, the script returns early
-with `status: 'needs-you'` and the questions. You answer them, then run `/tenbox-build`
-again; finished agents come back from the cache.
-
-### `/tenbox-close`
-
-Waits for green CI, squash-merges the PR, runs `tenbox close`, writes the Linear work-log
-comment, and proposes project-wide decisions for the project `CLAUDE.md`.
+- **`/tenbox-build` gets the Try phase** after Review: `tenbox sandbox up` pins the
+  commit, the planner lists the acceptance criteria, one `qa` agent tests each criterion
+  against the sandbox, and a failure is re-tested by a second, independent `qa` agent
+  before it counts. Failed criteria become the feedback of the next round. Parts that run
+  in parallel get their own worktrees (`isolation: 'worktree'`), and the `integrator`
+  merges them into the task branch.
+- **`/tenbox-close`** waits for green CI, squash-merges the PR, writes the tracker
+  work-log comment, and proposes project-wide decisions for the project `CLAUDE.md`.
 
 ## The CLI: `tenbox`
 
-TypeScript on Bun. Deterministic work an agent should call, not reinvent. Every command
-prints JSON so a `runner` agent can return it unchanged.
+The commands still to build:
 
 | Command | Does |
 |---|---|
-| `tenbox start <id> [--title ...]` | Worktree + branch from `main`, `.tenbox/` with `task.md` from the tracker (or `--title`), tmux session with `claude` |
-| `tenbox check <TEN-xx>` | Runs the manifest checks; `wtbase` keeps only new failures; writes `checks.json` |
 | `tenbox sandbox up <TEN-xx> --profile try` | Pins `HEAD`, builds from that commit, `compose up`, seeds, waits for health, prints links |
 | `tenbox sandbox stop/down <TEN-xx>` | Pause (keep volumes) or remove |
-| `tenbox pr <TEN-xx> [--ready]` | Refuse a dirty worktree or a branch with no commits ahead of the manifest `base`, push the branch, then create the PR (a draft; `--ready` marks it ready) or update the open one. The body holds the latest round's checks summary, then the whole `plan.md` folded |
-| `tenbox close <TEN-xx> [--force]` | Sandbox down, worktrees and branch removed, tmux killed, `.tenbox/` archived with a `stats.json` (timeline, minutes, plan, rounds, code size, and each workflow agent with its model, seconds and tokens; numbers and labels only) |
-| `tenbox ls` | All tasks: step, round, sandbox up or not, links |
 | `tenbox init` | Claude Code reads the repo (lockfiles, `package.json`, compose files) and writes a draft `tenbox.yaml`; the CLI never guesses a project's tooling itself |
 | `tenbox validate` | Checks `tenbox.yaml`: schema, kinds, `${...}` references, `depends_on` cycles |
 
-Environment variables:
-
-| Variable | Does |
-|---|---|
-| `TENBOX_WT_ROOT` | The worktree root; default `~/wt` |
-| `WTBASE_DIR` | Where baselines are kept; default `<worktree root>/.baselines` |
-| `WTBASE_PATTERN` | The failure pattern when the manifest has none |
-| `CLAUDE_CONFIG_DIR` | The Claude Code config directory; default `~/.claude` |
-| `TENBOX_DEBUG=1` | Logs every spawned command to stderr and prints a stack for every error, not only internal ones |
+`tenbox close` also takes the sandbox down, and `tenbox list` shows whether it is up.
 
 ## Project manifest: `tenbox.yaml`
 
@@ -565,7 +419,7 @@ failure_pattern: "(^|\\s)FAILED(\\s|$)"   # optional: what a failing line looks 
 
 locked: [openapi.yaml, e2e/, tenbox.yaml]
 budget: { max_rounds: 3, max_parallel_workers: 3, max_pr_lines: 400 }
-names: { branch: "feat/{id}", tmux: "tenbox-{id}" }   # optional; these are the defaults
+names: { branch: "feat/{id}" }          # optional; this is the default
 base: main                               # optional: the branch tasks start from and merge into
 ```
 
@@ -648,20 +502,9 @@ a failure is re-tested by a second, independent one before it counts.
 
 ## Questions and decisions
 
-A workflow cannot ask you anything mid-run, so questions are collected and returned:
-
-| kind | Who answers | Example |
-|---|---|---|
-| `technical` | the planner, recorded in `decisions.md` | which file, which library, naming |
-| `product` | **you** | business rule, what the user sees |
-| `contract` | **you** | OpenAPI change, breaking change |
-| `risk` | **you** | data deletion, migration, secrets, paid services |
-
-Rules for agents: if the task does not decide it, do not guess. Blocking questions end
-the run with `needs-you`. Non-blocking questions continue with a stated default that you
-can overrule. Every answer goes to `decisions.md`, which every agent reads first, so
-nobody asks twice. Decisions that apply to the whole project are proposed for the project
-`CLAUDE.md` at close, after you approve.
+Plan questions, plan decisions and decision cards are built (see the reference). The
+target adds one step: decisions that apply to the whole project are proposed for the
+project `CLAUDE.md` at close, after you approve.
 
 ## Gates
 
@@ -725,26 +568,12 @@ arrive for workflow agents the way the docs say they do for subagents.
 Optional, after the workflows work. Hooks post events to a small Bun server; a React +
 shadcn page at `p3999` shows every task session on one screen: step, round, sandbox
 links, questions waiting for you. Calm by default: it moves only when a state changes.
-Ideas for its look are in the mockups.
 
 ## Repository layout
 
-```
-~/tenbox/
-├ cli/          tenbox CLI (Bun, TypeScript); cli/tracker/ holds the Linear and ClickUp adapters
-├ agents/       planner.md, worker.md, integrator.md, reviewer.md, qa.md, runner.md
-├ workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
-├ hooks/        locked-paths, qa-no-code
-├ schemas/      tenbox.yaml JSON Schema, agent output schemas
-├ machines/     k8s/ (the box image), login/ (the login sync to the Secrets)
-├ pane/         later: the live pane plugin
-├ panel/        later
-└ docs/         flow page and mockups
-```
-
-`tenbox install` symlinks every file of `agents/` into `~/.claude/agents/` and of
-`workflows/` into `~/.claude/workflows/`. It is idempotent and never overwrites a foreign
-file. Registering the hooks in `~/.claude/settings.json` comes in a later phase.
+The target adds `agents/integrator.md` and `agents/qa.md`, `hooks/` (locked-paths,
+qa-no-code; `tenbox install` registers them in `~/.claude/settings.json`), `schemas/`
+(the `tenbox.yaml` JSON Schema), `pane/` (the live pane plugin) and `panel/`.
 
 ## Roadmap
 
@@ -779,8 +608,6 @@ file. Registering the hooks in `~/.claude/settings.json` comes in a later phase.
   computer. If it does, the Secret copy has to flow both ways.
 - Long checks and the idle exit: a box ends after one idle minute of its claude sessions;
   it must not end in the middle of a long `tenbox check`. Start conservative.
-- Stacked PRs: how `tenbox pr` sets the base branch, how CI runs on each PR, and how
-  `/tenbox-close` merges them in order and rebases the rest. Decide before phase 2.
 - `max_pr_lines`: whether tests and generated files count. Start with everything except
   lockfiles and generated clients; adjust after the first few tasks.
 - Check output: `failure_pattern` and regexes today. Test runners (bun, vitest, jest,

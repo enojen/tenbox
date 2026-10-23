@@ -189,7 +189,7 @@ rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, 
 machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR
             on every merge), login/ (the claude.ai login sync from your computer to the Secrets
             of the box)
-docs/       design.md (the target design), flow page and mockups
+docs/       design.md (the target design), reference.md, the icon
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```
 
