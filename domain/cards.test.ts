@@ -19,7 +19,7 @@ import {
 const AT = "2026-10-22T09:06:00Z";
 const FILE = "cards/0002-question.json";
 
-/* The cards of docs/cards-scenario-2026-10-22.md, as the code reads them. */
+/* The cards of the card model scenario, as the code reads them. */
 
 const task = {
   id: 1,
