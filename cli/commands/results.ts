@@ -1,6 +1,6 @@
 import type { AUTO_ANSWER_STATE } from "../../domain/answers.ts";
 import type { Approval } from "../../domain/approvals.ts";
-import type { DecisionCard } from "../../domain/cards.ts";
+import type { DecisionCard } from "../../domain/builds.ts";
 import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
