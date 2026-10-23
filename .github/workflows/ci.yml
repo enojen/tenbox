@@ -3,6 +3,8 @@ name: ci
 on:
   pull_request:
   workflow_dispatch:
+  push:
+    branches-ignore: [main]
 # A new push to the same branch cancels the run still going for the old one.
 concurrency:
   group: ci-${{ github.ref }}
