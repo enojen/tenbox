@@ -395,7 +395,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
 machines/     the box image (k8s/) and the login sync (login/); see machines/README.md
-docs/         design.md (the target design), flow page and mockups
+docs/         design.md (the target design), reference.md, the icon
 ```
 
 CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on each pull request, on our own

@@ -1,5 +1,5 @@
 # The tenbox box image for a Kubernetes pod (TEN-460): Ubuntu, bun, gh, claude, this
-# repo at /opt/tenbox. /home/tenzel is the task volume.
+# repo at /opt/tenbox. /home/tenbox is the task volume.
 # Build it with the box workflow, or by hand (machines/README.md): the context is
 # machines/k8s and holds only the git bundle.
 FROM ubuntu:24.04
@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends gh \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --shell /bin/bash tenzel \
-  && echo 'tenzel ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tenzel && chmod 440 /etc/sudoers.d/tenzel
+RUN useradd --create-home --shell /bin/bash tenbox \
+  && echo 'tenbox ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tenbox && chmod 440 /etc/sudoers.d/tenbox
 
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash && bun --version
 
@@ -32,8 +32,8 @@ RUN mkdir -p /opt/claude && HOME=/opt/claude bash -c "curl -fsSL https://claude.
 COPY .build/tenbox.bundle /tmp/tenbox.bundle
 RUN git clone --quiet --branch "$TENBOX_BRANCH" /tmp/tenbox.bundle /opt/tenbox \
   && git -C /opt/tenbox remote set-url origin https://github.com/enojen/tenbox.git \
-  && rm /tmp/tenbox.bundle && chown -R tenzel:tenzel /opt/tenbox \
-  && cd /opt/tenbox && sudo -u tenzel -H bun install --frozen-lockfile \
+  && rm /tmp/tenbox.bundle && chown -R tenbox:tenbox /opt/tenbox \
+  && cd /opt/tenbox && sudo -u tenbox -H bun install --frozen-lockfile \
   && printf '#!/bin/sh\nexec /usr/local/bin/bun /opt/tenbox/cli/main.ts "$@"\n' > /usr/local/bin/tenbox \
   && chmod 755 /usr/local/bin/tenbox \
   && install -m 755 /opt/tenbox/machines/k8s/boot.sh /usr/local/bin/tenbox-boot \
