@@ -1,11 +1,10 @@
-import path from "node:path";
 import { z } from "zod";
-import { BUILD_STATUS, type BuildResult, type Unproven } from "./build.ts";
-import type { ChangedFile } from "./changedFile.ts";
-import { badFileError } from "./errors/tasks.ts";
-import { partIdOf } from "./part.ts";
-import type { PlanResult } from "./plan.ts";
-import type { StatsProof } from "./proof.ts";
+import { BUILD_STATUS, type BuildResult, type Unproven } from "./builds.ts";
+import type { DiffFile } from "./diffs.ts";
+import { badFileError } from "./errors/index.ts";
+import { partIdOf } from "./parts.ts";
+import type { PlanResult } from "./plans.ts";
+import type { StatsProof } from "./proofs.ts";
 import {
   type RunAgent,
   RunAgentSchema,
@@ -18,9 +17,6 @@ import { jsons } from "./utils.ts";
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
 export const STATS_SCHEMA = 6;
-
-/** `stats.json` in a task dir. */
-export const statsFile = (dir: string): string => path.join(dir, "stats.json");
 
 const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";
@@ -124,7 +120,7 @@ export function countReview(build: BuildResult | null): StatsReview | null {
   };
 }
 
-export function sumCode(changed: ChangedFile[]): StatsCode {
+export function sumCode(changed: DiffFile[]): StatsCode {
   const total: StatsCode = { added: 0, removed: 0, files: changed.length, test_added: 0 };
   for (const file of changed) {
     total.added += file.added;

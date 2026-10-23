@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
-import { CARD_KIND } from "../../domain/build.ts";
-import type { Group } from "../../domain/group.ts";
+import { CARD_KIND } from "../../domain/cards.ts";
+import type { Group } from "../../domain/groups.ts";
 
 const WORKFLOW = path.join(import.meta.dir, "..", "..", "workflows", "tenbox-build.js");
 const WORKER_ROLE = path.join(import.meta.dir, "..", "..", "agents", "worker.md");

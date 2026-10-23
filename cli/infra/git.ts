@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { ChangedFile } from "../../domain/changedFile.ts";
+import type { DiffFile } from "../../domain/diffs.ts";
 import { gitFailedError } from "../../domain/errors/git.ts";
 import type { TenboxError } from "../../domain/errors/index.ts";
 import { durations, strings } from "../../domain/utils.ts";
@@ -23,7 +23,7 @@ export const git = {
   findBranch,
   findConfig,
   findBranchCreated,
-  listChangedFiles,
+  listDiffFiles,
   listGeneratedFiles,
   findCommonDir,
   findMainDir,
@@ -148,7 +148,7 @@ async function findBranchCreated(dir: string, branch: string): Promise<string | 
 }
 
 /** What the branch changed since it left `base`, from `git diff --numstat base...branch`. */
-async function listChangedFiles(dir: string, base: string, branch: string): Promise<ChangedFile[]> {
+async function listDiffFiles(dir: string, base: string, branch: string): Promise<DiffFile[]> {
   const numstat = await run(["diff", "--numstat", `${base}...${branch}`], dir);
   const lines = numstat.split("\n").filter((line) => line !== "");
   return lines.map(parseNumstatLine);
@@ -167,7 +167,7 @@ async function listGeneratedFiles(dir: string, paths: string[]): Promise<string[
 }
 
 /** `added<TAB>removed<TAB>path`; a binary file shows `-` for both counts. */
-function parseNumstatLine(line: string): ChangedFile {
+function parseNumstatLine(line: string): DiffFile {
   const [added = "", removed = "", ...rest] = line.split("\t");
   return { added: lineCount(added), removed: lineCount(removed), path: rest.join("\t") };
 }

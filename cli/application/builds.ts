@@ -1,7 +1,7 @@
 import { addDeadline } from "../../domain/answers.ts";
-import { type BuildResult, buildFile, parseBuild, readBuild } from "../../domain/build.ts";
-import { trimProof } from "../../domain/proof.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { type BuildResult, parseBuild, readBuild } from "../../domain/builds.ts";
+import { trimProof } from "../../domain/proofs.ts";
+import { buildFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 import { proofs } from "./proofs.ts";
 

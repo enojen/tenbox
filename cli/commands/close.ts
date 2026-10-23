@@ -5,13 +5,16 @@ import {
   inTaskWorktreeError,
   mergeCommitError,
   unmergedError,
-} from "../../domain/errors/tasks.ts";
-import { type TaskId, taskBranch } from "../../domain/ids.ts";
-import { TRACKER_KIND } from "../../domain/manifest.ts";
-import { type Project, taskDir, taskWorktreeDir } from "../../domain/project.ts";
-import { costComment, type PrTimes, statsFile, type TaskStats } from "../../domain/stats.ts";
-import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
+} from "../../domain/errors/prs.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import { TRACKER_KIND } from "../../domain/manifests.ts";
+import { taskBranch } from "../../domain/names.ts";
+import type { Project } from "../../domain/projects.ts";
+import { costComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
+import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
+import { taskWorktreeDir } from "../../domain/worktrees.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";

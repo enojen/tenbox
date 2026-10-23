@@ -1,4 +1,4 @@
-import type { MembershipType } from "../../../domain/membership.ts";
+import type { MembershipType } from "../../../domain/memberships.ts";
 import type { Queryable } from "../db/index.ts";
 import { memberships } from "../db/schema.ts";
 

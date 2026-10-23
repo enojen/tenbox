@@ -17,6 +17,18 @@ export function noBaseError(base: string, reason: string): TenboxError {
   return new TenboxError(`base ${base} ${reason}; pass --base <branch>`, "no-base");
 }
 
+/** A Tenbox file that is not JSON or does not fit its schema. */
+
+export function badFileError(file: string, issues: string[]): TenboxError {
+  return new TenboxError(`${file} is not valid: ${issues.join("; ")}`, "bad-file", issues);
+}
+
+/** A JSON input from stdin or an argument that does not fit its schema. */
+
+export function badInputError(what: string, issues: string[]): TenboxError {
+  return new TenboxError(`${what} is not valid: ${issues.join("; ")}`, "bad-input", issues);
+}
+
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** One line per zod issue, `path: message`; `(root)` for the value itself. */

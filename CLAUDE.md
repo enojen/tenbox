@@ -61,6 +61,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | round | One pass of build, checks and review inside `/tenbox-build`. |
 | part | One piece of a task's plan with its own files; one part file each in `.tenbox/parts/`. |
 | feedback | What a failed round passes to the next one: new failures or must-fix items. |
+| diff | The files a branch changed against its base, from `git diff --numstat`: path, added and removed lines per file; a kind limits its files and lines (`DiffFile`). |
 | kind | A task's flow depth, `docs`, `small`, `normal` or `large`: a preset of review lenses, check tier, review rounds and diff limits; `normal` when a plan names none (`TaskKind`, `KIND_PRESETS`). |
 | plan result | What the planner returns and `tenbox plan done` saves as `plan.json`: kind, summary, estimated lines, parts `{ id, difficulty }`, examples, plan decisions, lenses, questions, groups (`PlanResult`). |
 | example | One before and after of a part in `plan.json`: `{ part, title, before, after }`; `title` names the worker test that proves it. |
@@ -111,6 +112,9 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
   `projects.find()`, `worktrees.open()`. A module is one file, or a folder whose `index.ts`
   exports the module object; other modules import only that. A function name does not repeat
   the module name.
+- `domain/` is flat: one file per glossary concept, with the plural name of its application
+  module (`domain/plans.ts` ↔ `application/plans.ts`). The file takes the bare noun: a
+  qualified concept (auto answer, group worktree, new failure) lives in the file of its noun.
 - Errors come from named functions in `domain/errors/<kind>.ts`, never `new TenboxError(`
   elsewhere (`rules/errors-from-domain`).
 - No `JSON.parse(JSON.stringify(x))`: copy with `structuredClone` (`rules/no-json-roundtrip`).
@@ -157,8 +161,10 @@ The roles carry the general code shape rules (`agents/worker.md`). For this repo
 
 ```
 domain/     pure code: ids, failure lines, manifest schema, events, the Tracker port,
-            errors/ (`index.ts`: `TenboxError`; one file per kind: auth, usage, users, projects, git, tools,
-            manifest, tasks; HTTP status lives in server/routes/)
+            taskDirs.ts (every path under ~/.tenbox), errors/ (`index.ts`: `TenboxError`,
+            bad-file, bad-input; one file per kind: auth, usage, users, projects, git, tools,
+            manifest; a task's errors by phase: tasks, plans, builds, prs, stats; HTTP status
+            lives in server/routes/)
 cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   commands/     one file per CLI command, named after it; results.ts is their JSON output
   application/  use cases, and one module per glossary concept, named in the plural

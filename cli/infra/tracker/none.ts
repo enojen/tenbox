@@ -1,5 +1,5 @@
 import { noTrackerError } from "../../../domain/errors/tools.ts";
-import { TRACKER_KIND } from "../../../domain/manifest.ts";
+import { TRACKER_KIND } from "../../../domain/manifests.ts";
 import type { Tracker, TrackerTask } from "../../../domain/tracker.ts";
 
 /** No tracker configured: `tenbox start <id> --title "..."` is the only way in. */

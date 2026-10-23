@@ -31,7 +31,7 @@ const LENSES = {
   contract: { text: 'API and other contract changes, backwards compatibility' },
 }
 
-// Copy of BUILD_STATUS in domain/build.ts (a workflow cannot import TypeScript).
+// Copy of BUILD_STATUS in domain/builds.ts (a workflow cannot import TypeScript).
 const BUILD_STATUS = {
   readyForYou: 'ready-for-you',
   needsYou: 'needs-you',

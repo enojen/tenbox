@@ -1,4 +1,4 @@
-import { parseDecisions } from "../../domain/decision.ts";
+import { parseDecisions } from "../../domain/decisions.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { decisions } from "../application/decisions.ts";
 import { worktrees } from "../application/worktrees/index.ts";

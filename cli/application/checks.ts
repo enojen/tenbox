@@ -1,6 +1,6 @@
-import { type CheckOutcome, type CheckResult, readCheckResult } from "../../domain/check.ts";
+import { type CheckOutcome, type CheckResult, readCheckResult } from "../../domain/checks.ts";
 import { compareWithBaseline, findFlaky, parseFailures } from "../../domain/failures.ts";
-import type { Project } from "../../domain/project.ts";
+import type { Project } from "../../domain/projects.ts";
 import { elapsedMs } from "../infra/clock.ts";
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";

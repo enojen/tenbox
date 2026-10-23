@@ -1,4 +1,4 @@
-import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
+import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import type { Tracker } from "../../../domain/tracker.ts";
 import { clickupTracker } from "./clickup.ts";
 import { linearTracker } from "./linear.ts";

@@ -1,5 +1,4 @@
 import { usageError } from "./errors/usage.ts";
-import type { Names } from "./manifest.ts";
 
 /** A tracker task id such as `TEN-301` or `86abc123`. Validated once, at the edge. */
 export type TaskId = string & { readonly __brand: "TaskId" };
@@ -59,28 +58,4 @@ const SHORT_SHA_LENGTH = 7;
 
 export function shortSha(sha: string): string {
   return sha.slice(0, SHORT_SHA_LENGTH);
-}
-
-/**
- * Every name derived from a task is built here. The templates come from `names:` in
- * `tenbox.yaml`; `taskId()` and `NamesSchema` together keep the results safe.
- */
-export function taskBranch(names: Names, id: TaskId): string {
-  return fillName(names.branch, id);
-}
-
-/** True when `branch` is what `names.branch` makes of some task id. */
-export function isTaskBranch(names: Names, branch: string): boolean {
-  const [prefix = "", suffix = ""] = names.branch.split("{id}");
-  if (!branch.startsWith(prefix) || !branch.endsWith(suffix)) return false;
-  return isSafeName(branch.slice(prefix.length, branch.length - suffix.length));
-}
-
-/** The `claude -n` name of the task's background sessions. */
-export function sessionName(names: Names, id: TaskId): string {
-  return fillName(names.session, id);
-}
-
-function fillName(template: string, id: TaskId): string {
-  return template.replace("{id}", id);
 }

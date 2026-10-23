@@ -7,16 +7,17 @@ import {
   groupTiers,
   type KindPlan,
   parseBuild,
-  uniqueFiles,
-} from "../../domain/build.ts";
-import type { ChangedFile } from "../../domain/changedFile.ts";
+} from "../../domain/builds.ts";
+import { type DiffFile, mergeDiffs } from "../../domain/diffs.ts";
+import { checkFailedError } from "../../domain/errors/builds.ts";
 import { errorMessage } from "../../domain/errors/index.ts";
-import { checkFailedError } from "../../domain/errors/tasks.ts";
-import { sessionName, type TaskId, taskBranch } from "../../domain/ids.ts";
-import { CHECK_TIER, type Manifest } from "../../domain/manifest.ts";
+import { groupBranch, groupWorktreeDir } from "../../domain/groups.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import { CHECK_TIER, type Manifest } from "../../domain/manifests.ts";
+import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
-import type { PlanResult } from "../../domain/plan.ts";
-import { groupBranch, groupWorktreeDir, tenboxDir } from "../../domain/task.ts";
+import type { PlanResult } from "../../domain/plans.ts";
+import { tenboxDir } from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
@@ -135,12 +136,12 @@ interface TaskDiffInput {
 }
 
 /** What the group branches changed against the base, generated files out, each path once. */
-async function listTaskDiff(input: TaskDiffInput): Promise<ChangedFile[]> {
+async function listTaskDiff(input: TaskDiffInput): Promise<DiffFile[]> {
   const { id, taskWorktree, plan, manifest } = input;
   const branch = taskBranch(manifest.names, id);
   const groupIds = plan?.groups?.map((group) => group.id) ?? [1];
   const branches = groupIds.map((group) => (group === 1 ? branch : groupBranch(branch, group)));
-  const diffs: ChangedFile[][] = [];
+  const diffs: DiffFile[][] = [];
   for (const groupBranchName of branches) {
     const diff = await listBranchDiff({
       taskWorktree,
@@ -149,7 +150,7 @@ async function listTaskDiff(input: TaskDiffInput): Promise<ChangedFile[]> {
     });
     diffs.push(diff);
   }
-  return uniqueFiles(diffs);
+  return mergeDiffs(diffs);
 }
 
 interface BranchDiffInput {
@@ -159,11 +160,11 @@ interface BranchDiffInput {
 }
 
 /** What the branch changed since it left the base, without generated files; empty without it. */
-async function listBranchDiff(input: BranchDiffInput): Promise<ChangedFile[]> {
+async function listBranchDiff(input: BranchDiffInput): Promise<DiffFile[]> {
   const { taskWorktree, base, branch } = input;
   const exists = await git.branchExists(taskWorktree, branch);
   if (!exists) return [];
-  const changed = await git.listChangedFiles(taskWorktree, base, branch);
+  const changed = await git.listDiffFiles(taskWorktree, base, branch);
   const paths = changed.map((file) => file.path);
   const generated = await git.listGeneratedFiles(taskWorktree, paths);
   return changed.filter((file) => !generated.includes(file.path));

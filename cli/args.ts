@@ -2,7 +2,7 @@ import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { errorMessage } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { type TaskId, taskId } from "../domain/ids.ts";
-import { CHECK_TIER, CHECK_TIERS, type CheckTier } from "../domain/manifest.ts";
+import { CHECK_TIER, CHECK_TIERS, type CheckTier } from "../domain/manifests.ts";
 import { strings } from "../domain/utils.ts";
 
 type OptionValue = string | boolean | Array<string | boolean> | undefined;

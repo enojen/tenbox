@@ -1,7 +1,7 @@
 import { noBaseError } from "../../domain/errors/index.ts";
-import { partNotCommittedError, unknownPartError } from "../../domain/errors/tasks.ts";
+import { partNotCommittedError, unknownPartError } from "../../domain/errors/plans.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { tenboxDir } from "../../domain/taskDirs.ts";
 import { groups } from "../application/groups.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";

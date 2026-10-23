@@ -1,6 +1,11 @@
-import { BUILD_STATUS, type BuildResult, CARD_KIND, type DecisionCard } from "./build.ts";
+import { BUILD_STATUS, type BuildResult } from "./builds.ts";
+import { type DecisionCard, isAutoAllowed } from "./cards.ts";
+import { answeredError, noDecisionError } from "./errors/builds.ts";
 import type { TaskId } from "./ids.ts";
 import { jsons, objects } from "./utils.ts";
+
+/* An answer: the option a person chose on a decision card, or the recommended one once
+ * the deadline of an `auto` card passed (an auto answer). */
 
 /** What `/tenbox-build` gets in its args: only that round's worker of that part sees it. */
 interface WorkflowAnswer {
@@ -10,36 +15,12 @@ interface WorkflowAnswer {
   text: string;
 }
 
-/** How `tenbox answer --auto` ends. */
-export const AUTO_ANSWER_STATE = { answered: "answered", skipped: "skipped" } as const;
-
-/** Kinds Tenbox never auto-answers, whatever `auto` says. */
-const NEVER_AUTO: readonly DecisionCard["kind"][] = CARD_KIND.filter(
-  (kind) => kind !== "scope" && kind !== "other",
-);
-
-/** 30 minutes: a card that may be auto-answered waits this long for a person. */
-const AUTO_ANSWER_MS = 1_800_000;
-
-/** True when the card has `auto` and its kind is not never-auto. */
-export function isAutoAllowed(card: DecisionCard): boolean {
-  return card.auto && !NEVER_AUTO.includes(card.kind);
-}
-
-/** The card's `deadline`: `now` + 30 minutes when auto is allowed, else null; no key without a card. */
-export function addDeadline(result: BuildResult, now: Date): BuildResult {
-  const { decision } = result;
-  if (decision === undefined) return result;
-  const deadline = isAutoAllowed(decision)
-    ? new Date(now.getTime() + AUTO_ANSWER_MS).toISOString()
-    : null;
-  return { ...result, deadline };
-}
-
-/** A card that `tenbox answer --auto` may answer: its deadline and its recommended option. */
-export interface AutoCard {
-  deadline: string;
-  recommended: number;
+/** A card that waits for an answer, with the round and the part of the blocked worker. */
+export interface OpenCard {
+  result: BuildResult;
+  card: DecisionCard;
+  round: number;
+  part: string;
 }
 
 /** One answer on a card, for its `decisions.md` line. */
@@ -62,6 +43,17 @@ export interface RunAnswer {
 /** Added to the `decisions.md` line of an answer no person chose. */
 const AUTO_NOTE = "(auto: no answer in 30 min)";
 
+/** The card to answer; `no-decision` without a `needs-you` card, `answered` once answered. */
+export function getOpenCard(result: BuildResult | null, id: string): OpenCard {
+  const card = result?.decision;
+  const part = result?.part;
+  if (result?.status !== BUILD_STATUS.needsYou || card === undefined || part === undefined) {
+    throw noDecisionError(id);
+  }
+  if (result.answered !== undefined) throw answeredError(id, result.answered.option);
+  return { result, card, round: result.round, part };
+}
+
 /** One `decisions.md` line: the card title and the chosen option. */
 export function answerNote(note: AnswerNote): string {
   const { card, option, text, auto } = note;
@@ -75,6 +67,28 @@ export function argsWithAnswer(input: RunAnswer): object {
   const parsed = typeof runArgs === "string" ? jsons.parse(runArgs) : runArgs;
   const base = objects.isRecord(parsed) ? parsed : { task: id };
   return { ...base, answer };
+}
+
+/** How `tenbox answer --auto` ends. */
+export const AUTO_ANSWER_STATE = { answered: "answered", skipped: "skipped" } as const;
+
+/** 30 minutes: a card that may be auto-answered waits this long for a person. */
+const AUTO_ANSWER_MS = 1_800_000;
+
+/** A card that `tenbox answer --auto` may answer: its deadline and its recommended option. */
+export interface AutoCard {
+  deadline: string;
+  recommended: number;
+}
+
+/** The card's `deadline`: `now` + 30 minutes when auto is allowed, else null; no key without a card. */
+export function addDeadline(result: BuildResult, now: Date): BuildResult {
+  const { decision } = result;
+  if (decision === undefined) return result;
+  const deadline = isAutoAllowed(decision)
+    ? new Date(now.getTime() + AUTO_ANSWER_MS).toISOString()
+    : null;
+  return { ...result, deadline };
 }
 
 /** The open, unanswered `needs-you` card with `auto`; null for anything else. */

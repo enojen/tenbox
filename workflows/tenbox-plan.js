@@ -12,7 +12,7 @@ const DEEP_MODEL = 'fable'
 
 const LENSES = ['security', 'contract']
 
-// From the shortest flow to the longest, as in domain/kind.ts.
+// From the shortest flow to the longest, as in domain/kinds.ts.
 const KINDS = ['docs', 'small', 'normal', 'large']
 
 // One PR of the task; `needs` holds smaller group ids, an empty list branches off the base.

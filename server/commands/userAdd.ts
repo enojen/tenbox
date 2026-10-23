@@ -4,7 +4,7 @@ import {
   findMembershipType,
   MEMBERSHIP_TYPES,
   type MembershipType,
-} from "../../domain/membership.ts";
+} from "../../domain/memberships.ts";
 import type { NewUser } from "../application/users.ts";
 
 const DEFAULT_TYPE: MembershipType = "member";

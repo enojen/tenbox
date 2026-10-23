@@ -1,23 +1,24 @@
 import path from "node:path";
-import { buildFile } from "../../domain/build.ts";
-import type { CheckResult, CheckRun } from "../../domain/check.ts";
+import type { CheckResult, CheckRun } from "../../domain/checks.ts";
 import { noHeadError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { CHECK_TIER, type CheckTier } from "../../domain/manifest.ts";
+import { CHECK_TIER, type CheckTier } from "../../domain/manifests.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
-import type { Project } from "../../domain/project.ts";
+import type { Project } from "../../domain/projects.ts";
+import { currentRound, nextRound } from "../../domain/rounds.ts";
 import {
+  buildFile,
+  checkLogFile,
+  checkLogsDir,
   checksFile,
   checksFullFile,
-  currentRound,
-  groupDir,
-  nextRound,
+  groupRoot,
   roundDir,
   roundsDir,
   tenboxDir,
-} from "../../domain/task.ts";
+} from "../../domain/taskDirs.ts";
 import { checks } from "../application/checks.ts";
 import { groups } from "../application/groups.ts";
 import { manifests } from "../application/manifests.ts";
@@ -125,9 +126,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
     taskWorktree,
   });
   const setup = await getChecks(project.mainDir, taskWorktree, input.tier);
-  const roundsRoot =
-    group === 1 ? tenboxDir(taskWorktree) : groupDir(tenboxDir(taskWorktree), group);
-  const { number, dir } = await ensureRound(roundsRoot, input);
+  const { number, dir } = await ensureRound(groupRoot(taskWorktree, group), input);
   const { head, baseSha } = await getCommits(cwd, base);
   const timeoutMs = input.timeoutMs;
   return {
@@ -172,7 +171,7 @@ async function ensureRound(roundsRoot: string, input: CheckInput): Promise<Round
   const fallback = input.tier === CHECK_TIER.full ? currentRound(existing) : nextRound(existing);
   const number = input.round ?? fallback;
   const dir = roundDir(roundsRoot, number);
-  await files.mkdir(path.join(dir, "checks"));
+  await files.mkdir(checkLogsDir(dir));
   return { number, dir };
 }
 
@@ -192,7 +191,7 @@ async function runCheck(round: Round, check: NamedCheck): Promise<CheckRun> {
   const { project, cwd, pattern, baseSha, timeoutMs } = round;
   const request = { ...check, project, cwd, pattern, baseSha, timeoutMs };
   const { outcome, output } = await checks.run(request);
-  const logFile = path.join(round.dir, "checks", `${check.name}.log`);
+  const logFile = checkLogFile(round.dir, check.name);
   await files.write(logFile, output);
   return { ...outcome, log: path.relative(round.taskWorktree, logFile) };
 }

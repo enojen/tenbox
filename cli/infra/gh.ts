@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
-import { bodyHasLine, type CiCheck, parseCiChecks } from "../../domain/pr.ts";
+import { bodyHasLine, type CiCheck, parseCiChecks } from "../../domain/prs.ts";
 import { jsons } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
 

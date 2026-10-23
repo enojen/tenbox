@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts";
-import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifest.ts";
+import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import {
   type CommentRequest,
   oldestFirst,

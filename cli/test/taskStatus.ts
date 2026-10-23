@@ -1,4 +1,4 @@
-import { readTaskFile } from "../../domain/task.ts";
+import { readTaskFile } from "../../domain/tasks.ts";
 import { files } from "../infra/files.ts";
 
 /** The `status` in a `task.json` file; null when it is missing. */

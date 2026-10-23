@@ -1,8 +1,10 @@
 import path from "node:path";
 import { noWorktreeError } from "../../../domain/errors/tasks.ts";
-import { type TaskId, taskBranch } from "../../../domain/ids.ts";
-import type { Manifest } from "../../../domain/manifest.ts";
-import { taskWorktreeDir } from "../../../domain/project.ts";
+import type { TaskId } from "../../../domain/ids.ts";
+import type { Manifest } from "../../../domain/manifests.ts";
+import { taskBranch } from "../../../domain/names.ts";
+import { tenboxDir } from "../../../domain/taskDirs.ts";
+import { taskWorktreeDir } from "../../../domain/worktrees.ts";
 import { env } from "../../infra/env.ts";
 import { files } from "../../infra/files.ts";
 import { git } from "../../infra/git.ts";
@@ -53,7 +55,7 @@ async function worktreeUnderWtRoot(lookup: WorktreeLookup, id: TaskId): Promise<
   const projects = await files.list(lookup.wtRoot);
   for (const project of projects) {
     const taskWorktree = taskWorktreeDir(lookup.wtRoot, project, id);
-    const started = await files.isDir(path.join(taskWorktree, ".tenbox"));
+    const started = await files.isDir(tenboxDir(taskWorktree));
     if (started) return taskWorktree;
   }
   return null;

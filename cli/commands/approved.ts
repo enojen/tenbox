@@ -1,5 +1,6 @@
 import type { TaskId } from "../../domain/ids.ts";
-import { approvedFile, TASK_STATE, tenboxDir } from "../../domain/task.ts";
+import { approvedFile, tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { approvals } from "../application/approvals.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";

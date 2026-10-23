@@ -1,8 +1,8 @@
-import path from "node:path";
 import { noRepoError } from "../../domain/errors/git.ts";
 import type { ProjectId } from "../../domain/ids.ts";
-import type { Manifest } from "../../domain/manifest.ts";
-import { type Project, projectDir, projectName } from "../../domain/project.ts";
+import type { Manifest } from "../../domain/manifests.ts";
+import { type Project, projectName } from "../../domain/projects.ts";
+import { projectDir, projectFile } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { manifests } from "./manifests.ts";
@@ -35,6 +35,6 @@ interface ProjectRecord {
 
 /** Writes `project.json` in the project's folder under `tenboxHome`; the name can change. */
 async function save(tenboxHome: string, record: ProjectRecord): Promise<void> {
-  const file = path.join(projectDir(tenboxHome, record.id), "project.json");
+  const file = projectFile(projectDir(tenboxHome, record.id));
   await files.writeJson(file, record);
 }

@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { BUILD_STATUS } from "./build.ts";
+import { BUILD_STATUS } from "./builds.ts";
 import { BaselineSourceSchema } from "./failures.ts";
-import { PlanPartSchema } from "./plan.ts";
-import { PR_STATE } from "./pr.ts";
+import { PlanPartSchema } from "./plans.ts";
+import { PR_STATE } from "./prs.ts";
 
 const EVENT_SCHEMA_VERSION = 1;
 

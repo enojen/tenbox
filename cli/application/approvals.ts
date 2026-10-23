@@ -1,12 +1,12 @@
-import { type Approval, readApproval } from "../../domain/approval.ts";
+import { type Approval, readApproval } from "../../domain/approvals.ts";
 import {
   noPlanResultError,
   notApprovedError,
   planChangedError,
-} from "../../domain/errors/tasks.ts";
+} from "../../domain/errors/plans.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { checkPlanMd, planFile, readPlan } from "../../domain/plan.ts";
-import { approvedFile, planMdFile, tenboxDir } from "../../domain/task.ts";
+import { checkPlanMd, readPlan } from "../../domain/plans.ts";
+import { approvedFile, planFile, planMdFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 

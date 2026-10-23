@@ -1,6 +1,7 @@
-import { noStatsError, oldStatsError } from "../../domain/errors/tasks.ts";
+import { noStatsError, oldStatsError } from "../../domain/errors/stats.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { type StatsProof, trimProof } from "../../domain/proof.ts";
+import { type StatsProof, trimProof } from "../../domain/proofs.ts";
+import { roundNumbers } from "../../domain/rounds.ts";
 import { type RunAgent, type RunMark, summarizeRuns } from "../../domain/runs.ts";
 import {
   countPlan,
@@ -13,11 +14,10 @@ import {
   STATS_SCHEMA,
   type StatsCode,
   type StatsRound,
-  statsFile,
   sumCode,
   type TaskStats,
 } from "../../domain/stats.ts";
-import { checksFile, roundDir, roundNumbers, roundsDir } from "../../domain/task.ts";
+import { checksFile, roundDir, roundsDir, statsFile } from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
@@ -155,7 +155,7 @@ async function readCode(input: StatsInput): Promise<StatsCode | null> {
   const { mainDir, taskWorktree, base, branch } = input;
   const exists = await git.branchExists(mainDir, branch);
   if (!exists) return null;
-  const changed = await git.listChangedFiles(mainDir, base, branch);
+  const changed = await git.listDiffFiles(mainDir, base, branch);
   const hasWorktree = await files.isDir(taskWorktree);
   const attrDir = hasWorktree ? taskWorktree : mainDir;
   const generated = await git.listGeneratedFiles(

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
-import { TASK_KINDS, type TaskKind } from "../domain/kind.ts";
+import { TASK_KINDS, type TaskKind } from "../domain/kinds.ts";
 import { durations, strings } from "../domain/utils.ts";
 import {
   type ArgSpec,

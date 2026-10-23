@@ -5,7 +5,7 @@ import {
   parseFailures,
 } from "../../domain/failures.ts";
 import { shortSha } from "../../domain/ids.ts";
-import type { Project } from "../../domain/project.ts";
+import type { Project } from "../../domain/projects.ts";
 import { type BaselineKey, baselineStore } from "../infra/baselineStore.ts";
 import { log } from "../infra/env.ts";
 import { git } from "../infra/git.ts";

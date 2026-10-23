@@ -1,15 +1,10 @@
-import { groupMergeConflictError, unknownGroupError } from "../../domain/errors/tasks.ts";
-import { type TaskId, taskBranch } from "../../domain/ids.ts";
-import type { Manifest } from "../../domain/manifest.ts";
-import type { Project } from "../../domain/project.ts";
-import {
-  groupBranch,
-  groupDir,
-  groupFile,
-  groupWorktreeDir,
-  readGroupStart,
-  tenboxDir,
-} from "../../domain/task.ts";
+import { groupMergeConflictError, unknownGroupError } from "../../domain/errors/builds.ts";
+import { groupBranch, groupWorktreeDir, readGroupStart } from "../../domain/groups.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import type { Manifest } from "../../domain/manifests.ts";
+import { taskBranch } from "../../domain/names.ts";
+import type { Project } from "../../domain/projects.ts";
+import { groupDir, groupFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { plans } from "./plans.ts";

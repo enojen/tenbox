@@ -73,7 +73,7 @@ test("findBranchCreated is the branch creation time, not the commit time", async
   expect(Date.now() - Date.parse(created ?? "")).toBeLessThan(60_000);
 });
 
-test("findBranchCreated reads the reflog; listChangedFiles lists the branch changes", async () => {
+test("findBranchCreated reads the reflog; listDiffFiles lists the branch changes", async () => {
   await git.run(["branch", "feat/x"], project.mainDir);
   const created = await git.findBranchCreated(project.mainDir, "feat/x");
   const missing = await git.findBranchCreated(project.mainDir, "feat/none");
@@ -84,7 +84,7 @@ test("findBranchCreated reads the reflog; listChangedFiles lists the branch chan
   await files.write(path.join(project.mainDir, "c.bin"), "\0\0");
   await git.run(["add", "b.txt", "c.bin"], project.mainDir);
   await git.run(["commit", "-q", "-m", "b"], project.mainDir);
-  const changed = await git.listChangedFiles(project.mainDir, "main", "feat/x");
+  const changed = await git.listDiffFiles(project.mainDir, "main", "feat/x");
   expect(changed).toEqual([
     { added: 2, removed: 0, path: "b.txt" },
     { added: 0, removed: 0, path: "c.bin" },

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { countParts, type PartCounts, partIdOf, readPartStatus } from "../../domain/part.ts";
-import { partsDir } from "../../domain/task.ts";
+import { countParts, type PartCounts, partIdOf, readPartStatus } from "../../domain/parts.ts";
+import { partsDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 
 /** Parts: the part files in `<dir>/parts/`, one per piece of the plan. */

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { MEMBERSHIP_TYPES } from "../../../domain/membership.ts";
+import { MEMBERSHIP_TYPES } from "../../../domain/memberships.ts";
 
 const MEMBERSHIP_TYPE_LIST = MEMBERSHIP_TYPES.map((type) => `'${type}'`).join(", ");
 

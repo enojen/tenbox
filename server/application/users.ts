@@ -1,6 +1,6 @@
 import { userExistsError } from "../../domain/errors/users.ts";
 import { newUserId } from "../../domain/ids.ts";
-import type { MembershipType } from "../../domain/membership.ts";
+import type { MembershipType } from "../../domain/memberships.ts";
 import type { Db, Queryable } from "../infra/db/index.ts";
 import { membershipsRepository } from "../infra/repositories/memberships.ts";
 import type { Organization } from "../infra/repositories/organizations.ts";

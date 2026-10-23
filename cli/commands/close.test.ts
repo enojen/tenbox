@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, rm } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
-import { taskDir } from "../../domain/project.ts";
+import { taskDir } from "../../domain/taskDirs.ts";
 import { manifests } from "../application/manifests.ts";
 import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";

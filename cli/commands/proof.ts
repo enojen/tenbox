@@ -1,8 +1,8 @@
-import { unknownPartError } from "../../domain/errors/tasks.ts";
+import { unknownPartError } from "../../domain/errors/plans.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { isProof, type StatsProof, trimProof } from "../../domain/proof.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { isProof, type StatsProof, trimProof } from "../../domain/proofs.ts";
+import { tenboxDir } from "../../domain/taskDirs.ts";
 import { parts } from "../application/parts.ts";
 import { proofs } from "../application/proofs.ts";
 import { worktrees } from "../application/worktrees/index.ts";

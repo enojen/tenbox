@@ -1,6 +1,7 @@
 import type { TaskId } from "../../domain/ids.ts";
-import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
 import { reportUsage } from "../../domain/runs.ts";
+import { taskDir } from "../../domain/taskDirs.ts";
+import { taskWorktreeDir } from "../../domain/worktrees.ts";
 import { projects } from "../application/projects.ts";
 import { stats } from "../application/stats.ts";
 import { env } from "../infra/env.ts";

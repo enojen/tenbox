@@ -1,16 +1,17 @@
 import path from "node:path";
-import { noPlanResultError } from "../../domain/errors/tasks.ts";
-import { checkPlanMd, type PlanResult, parsePlan, planFile, readPlan } from "../../domain/plan.ts";
+import { noPlanResultError } from "../../domain/errors/plans.ts";
 import {
+  checkPlanMd,
   DOCS_PART_FILE,
   docsPlanOf,
-  partsDir,
-  planMdFile,
+  type PlanResult,
+  parsePlan,
+  readPlan,
   renderDocsPart,
   renderDocsPlanMd,
-  type Task,
-  tenboxDir,
-} from "../../domain/task.ts";
+} from "../../domain/plans.ts";
+import { partsDir, planFile, planMdFile, tenboxDir } from "../../domain/taskDirs.ts";
+import type { Task } from "../../domain/tasks.ts";
 import { files } from "../infra/files.ts";
 import { tasks } from "./tasks.ts";
 

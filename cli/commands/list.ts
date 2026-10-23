@@ -1,4 +1,4 @@
-import { reportLine } from "../../domain/statusReport.ts";
+import { reportLine } from "../../domain/statusReports.ts";
 import { statusReports } from "../application/statusReports.ts";
 import { log } from "../infra/env.ts";
 import type { ListResult } from "./results.ts";

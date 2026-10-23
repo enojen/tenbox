@@ -1,4 +1,4 @@
-import type { CheckResult } from "../../domain/check.ts";
+import type { CheckResult } from "../../domain/checks.ts";
 
 /** A `checks.json` of round 1 with no checks; `fields` replace the defaults. */
 export function checkResult(fields: Partial<CheckResult>): CheckResult {

@@ -1,8 +1,9 @@
-import { answerNote, argsWithAnswer } from "../../domain/answers.ts";
-import { getOpenCard, getOption } from "../../domain/build.ts";
+import { answerNote, argsWithAnswer, getOpenCard } from "../../domain/answers.ts";
+import { getOption } from "../../domain/cards.ts";
 import { noRunError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
+import { tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { resumePrompt } from "../infra/claude/background.ts";
 import { claudeSessions } from "../infra/claude/sessionFiles.ts";
 import { files } from "../infra/files.ts";

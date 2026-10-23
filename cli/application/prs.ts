@@ -1,5 +1,5 @@
 import type { TaskId } from "../../domain/ids.ts";
-import { groupLine } from "../../domain/pr.ts";
+import { groupLine } from "../../domain/prs.ts";
 import { type GroupPr, gh } from "../infra/gh.ts";
 
 interface PrLookup {

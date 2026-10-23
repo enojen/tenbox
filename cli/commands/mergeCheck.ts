@@ -1,9 +1,9 @@
-import type { CheckOutcome } from "../../domain/check.ts";
+import type { CheckOutcome } from "../../domain/checks.ts";
 import { mergeConflictError, newFailuresError } from "../../domain/errors/git.ts";
 import { noBaseError } from "../../domain/errors/index.ts";
 import { noChecksError } from "../../domain/errors/manifest.ts";
-import { isTaskBranch } from "../../domain/ids.ts";
-import type { Project } from "../../domain/project.ts";
+import { isTaskBranch } from "../../domain/names.ts";
+import type { Project } from "../../domain/projects.ts";
 import { checks } from "../application/checks.ts";
 import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";

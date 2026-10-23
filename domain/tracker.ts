@@ -1,4 +1,4 @@
-import type { TrackerKind } from "./manifest.ts";
+import type { TrackerKind } from "./manifests.ts";
 
 /** The two statuses Tenbox sets on a tracker task. */
 export const TASK_STATUS = { inProgress: "in_progress", done: "done" } as const;

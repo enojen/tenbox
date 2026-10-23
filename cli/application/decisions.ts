@@ -2,13 +2,11 @@ import {
   applyDecisions,
   type DecideItem,
   type Decision,
-  decisionsFile,
   isDecisionTaken,
   type OptionsTaken,
-  questionsFile,
   takeOptions,
-} from "../../domain/decision.ts";
-import { tenboxDir } from "../../domain/task.ts";
+} from "../../domain/decisions.ts";
+import { decisionsFile, questionsFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 import { approvals } from "./approvals.ts";
 import { plans } from "./plans.ts";

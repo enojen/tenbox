@@ -1,7 +1,9 @@
-import { sessionName, type TaskId, taskBranch } from "../../domain/ids.ts";
-import type { TaskKind } from "../../domain/kind.ts";
-import { taskDir, taskWorktreeDir } from "../../domain/project.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import type { TaskKind } from "../../domain/kinds.ts";
+import { sessionName, taskBranch } from "../../domain/names.ts";
+import { taskDir } from "../../domain/taskDirs.ts";
 import { TASK_STATUS } from "../../domain/tracker.ts";
+import { taskWorktreeDir } from "../../domain/worktrees.ts";
 import { manifests } from "../application/manifests.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";

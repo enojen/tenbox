@@ -3,7 +3,7 @@ import { realpath, utimes } from "node:fs/promises";
 import path from "node:path";
 import { failureLine } from "../../domain/failures.ts";
 import { taskId } from "../../domain/ids.ts";
-import type { CheckTier } from "../../domain/manifest.ts";
+import type { CheckTier } from "../../domain/manifests.ts";
 import { baselineStore } from "../infra/baselineStore.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";

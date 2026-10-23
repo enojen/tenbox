@@ -1,7 +1,8 @@
 import type { TaskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
-import { planFile, planLines } from "../../domain/plan.ts";
-import { TASK_STATE, tenboxDir } from "../../domain/task.ts";
+import { planLines } from "../../domain/plans.ts";
+import { planFile, tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { notifications } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
 import { tasks } from "../application/tasks.ts";

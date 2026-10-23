@@ -1,15 +1,18 @@
-import type { CheckResult } from "../../domain/check.ts";
+import type { CheckResult } from "../../domain/checks.ts";
 import {
   checksStaleError,
   ciFailedError,
   ciTimeoutError,
   dirtyBeforePrError,
   noCommitsError,
-} from "../../domain/errors/tasks.ts";
+} from "../../domain/errors/prs.ts";
 import { ghNoPrError } from "../../domain/errors/tools.ts";
-import { type TaskId, taskBranch } from "../../domain/ids.ts";
-import type { Manifest } from "../../domain/manifest.ts";
+import { groupBranch } from "../../domain/groups.ts";
+import type { TaskId } from "../../domain/ids.ts";
+import type { Manifest } from "../../domain/manifests.ts";
+import { taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
+import type { Project } from "../../domain/projects.ts";
 import {
   CI_STATE,
   type CiCheck,
@@ -19,18 +22,16 @@ import {
   groupLine,
   prBody,
   prTitle,
-} from "../../domain/pr.ts";
-import type { Project } from "../../domain/project.ts";
+} from "../../domain/prs.ts";
+import { roundNumbers } from "../../domain/rounds.ts";
 import {
   checksFile,
-  groupBranch,
-  groupDir,
+  groupRoot,
   planMdFile,
   roundDir,
-  roundNumbers,
   roundsDir,
   tenboxDir,
-} from "../../domain/task.ts";
+} from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { checks } from "../application/checks.ts";
 import { groups } from "../application/groups.ts";
@@ -272,9 +273,6 @@ export async function assertChecked(input: CheckedInput): Promise<void> {
   throw checksStaleError({ id, group, checked, head: head ?? "unknown" });
 }
 
-const groupTaskDir = (taskWorktree: string, group: number): string =>
-  group === 1 ? tenboxDir(taskWorktree) : groupDir(tenboxDir(taskWorktree), group);
-
 async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   const { id } = run.input;
   const dir = tenboxDir(run.taskWorktree);
@@ -293,7 +291,7 @@ export async function findLatestChecks(
   taskWorktree: string,
   group: number,
 ): Promise<CheckResult | null> {
-  const dir = groupTaskDir(taskWorktree, group);
+  const dir = groupRoot(taskWorktree, group);
   const names = await files.list(roundsDir(dir));
   const latest = roundNumbers(names).at(-1);
   if (latest === undefined) return null;

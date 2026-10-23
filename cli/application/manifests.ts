@@ -2,7 +2,8 @@ import path from "node:path";
 import { errorMessage } from "../../domain/errors/index.ts";
 import { manifestError, manifestNotCommittedError } from "../../domain/errors/manifest.ts";
 import { newProjectId, type ProjectId, projectId } from "../../domain/ids.ts";
-import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifest.ts";
+import { type Manifest, type ManifestLayer, mergeManifest } from "../../domain/manifests.ts";
+import { overrideFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { objects } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
@@ -56,7 +57,7 @@ function manifestPaths(mainDir: string, taskWorktree?: string): string[] {
   if (taskWorktree !== mainDir) {
     paths.push(path.join(taskWorktree, "tenbox.local.yaml"));
   }
-  paths.push(path.join(taskWorktree, ".tenbox", "override.yaml"));
+  paths.push(overrideFile(tenboxDir(taskWorktree)));
   return paths;
 }
 

@@ -1,6 +1,5 @@
-import path from "node:path";
 import { type AutoCard, autoCardOf } from "../../domain/answers.ts";
-import { tenboxDir } from "../../domain/task.ts";
+import { autoAnswerLog, tenboxDir } from "../../domain/taskDirs.ts";
 import { log } from "../infra/env.ts";
 import { pollUntil } from "../infra/poll.ts";
 import { processes } from "../infra/processes.ts";
@@ -9,9 +8,6 @@ import { builds } from "./builds.ts";
 
 /** Automatic continue: the recommended option, once a card's deadline passed with no answer. */
 export const autoAnswers = { run, save };
-
-/** In the task dir: the output of the background `tenbox answer --auto`. */
-const TIMER_LOG = "auto-answer.log";
 
 /** One card being watched in a `.tenbox` dir. */
 interface CardWatch {
@@ -23,7 +19,7 @@ interface CardWatch {
 async function run(target: AnswerTarget): Promise<void> {
   const card = await findCard(tenboxDir(target.taskWorktree));
   if (card === null) return;
-  const logFile = path.join(tenboxDir(target.taskWorktree), TIMER_LOG);
+  const logFile = autoAnswerLog(tenboxDir(target.taskWorktree));
   const args = ["answer", target.id, "--auto"];
   processes.runSelf({ args, cwd: target.taskWorktree, logFile });
 }

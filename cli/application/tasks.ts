@@ -1,19 +1,15 @@
 import { failedState } from "../../domain/errors/index.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import type { TaskKind } from "../../domain/kind.ts";
-import { TRACKER_KIND } from "../../domain/manifest.ts";
+import type { TaskKind } from "../../domain/kinds.ts";
+import { TRACKER_KIND } from "../../domain/manifests.ts";
+import { partsDir, roundsDir, taskFile, taskMdFile, tenboxDir } from "../../domain/taskDirs.ts";
 import {
-  partsDir,
   readTaskFile,
   renderTaskMd,
-  roundsDir,
   type Task,
   type TaskFile,
-  taskFile,
   taskFileOf,
-  taskMdFile,
-  tenboxDir,
-} from "../../domain/task.ts";
+} from "../../domain/tasks.ts";
 import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
 import { files } from "../infra/files.ts";
 

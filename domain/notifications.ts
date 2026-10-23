@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BUILD_STATUS, type BuildStatus } from "./build.ts";
+import { BUILD_STATUS, type BuildStatus } from "./builds.ts";
 import type { TaskId } from "./ids.ts";
 import { jsons } from "./utils.ts";
 
