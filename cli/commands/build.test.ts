@@ -400,6 +400,45 @@ describe("tenbox build done", () => {
       expect(calls).toContain('"--draft"');
     });
 
+    test("after an answered card the resumed run's ready-for-you stores each unproven item once", async () => {
+      const first = { part: "01", reason: "no test for the empty list" };
+      const second = { part: "02", reason: "no test for the sort" };
+      await checkedTask();
+      const needsYou = await buildDone(
+        "--json",
+        JSON.stringify({
+          status: "needs-you",
+          round: 1,
+          proofs: [],
+          attention: [],
+          nice_to_have: [],
+          unproven: [first],
+          decision: card(false),
+        }),
+      );
+      expect([needsYou.code, needsYou.json.ok]).toEqual([0, true]);
+      // Writes `answered` into build.json as `tenbox answer` does (`builds.update`).
+      const asked = await readJson(buildJson);
+      const answered = { option: 1, at: new Date().toISOString(), auto: false };
+      await files.writeJson(buildJson, { ...asked, answered });
+      // The resumed run replays the cached round 1 reviewers, so its unproven list holds the first again.
+      const resumed = await buildDone(
+        "--json",
+        JSON.stringify({
+          status: "ready-for-you",
+          round: 2,
+          proofs: [],
+          attention: [],
+          nice_to_have: [],
+          unproven: [first, second],
+        }),
+      );
+      expect([resumed.code, resumed.json.ok]).toEqual([0, true]);
+      const saved = await readJson(buildJson);
+      expect(saved).toMatchObject({ status: "ready-for-you" });
+      expect(saved).toMatchObject({ unproven: [first, second] });
+    });
+
     test("a failing gh keeps build.json and gives pr.ok false", async () => {
       await installGh(FAILING_GH);
       await checkedTask();

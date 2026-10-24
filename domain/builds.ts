@@ -116,6 +116,16 @@ export type BuildStatus = BuildResult["status"];
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
 export type Unproven = BuildResult["unproven"][number];
 
+/**
+ * The unproven items `build.json` keeps: the earlier result's first, then the new ones. After an
+ * answered card the new result comes from the same run, resumed, which replays every earlier
+ * review and so holds the earlier items again.
+ */
+export function keptUnproven(earlier: BuildResult | null, result: BuildResult): Unproven[] {
+  if (earlier === null || earlier.answered !== undefined) return result.unproven;
+  return [...earlier.unproven, ...result.unproven];
+}
+
 /** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {
   const result = jsons.check(BuildResultSchema, text);

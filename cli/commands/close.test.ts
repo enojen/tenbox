@@ -3,6 +3,7 @@ import { chmod, rm } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { taskDir } from "../../domain/taskDirs.ts";
+import { jsons } from "../../domain/utils.ts";
 import { manifests } from "../application/manifests.ts";
 import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
@@ -29,6 +30,32 @@ const PLAN_RESULT = JSON.stringify({
   lenses: [],
   questions: [],
 });
+
+/** A round 1 `checks.json` as `tenbox check` wrote it before TEN-388 (`tier`) and TEN-409 (`flaky`). */
+const OLD_CHECKS = {
+  ok: true,
+  task: "T-1",
+  round: 1,
+  worktree: "/wt/demo/T-1",
+  commit: "c",
+  base: { ref: "main", sha: "b" },
+  checks: [
+    {
+      name: "unit",
+      cmd: "bun test",
+      exit_code: 0,
+      duration_ms: 10,
+      timed_out: false,
+      failures: 0,
+      new_failures: [],
+      fixed: [],
+      baseline: { sha: "b", source: "exact", failures: 0 },
+      log: ".tenbox/rounds/1/unit.log",
+    },
+  ],
+  summary: "all pass",
+  file: ".tenbox/rounds/1/checks.json",
+};
 
 let project: TempProject;
 let taskWorktree: string;
@@ -98,6 +125,16 @@ describe("tenbox close", () => {
     await closeT1("--force");
     const closed = await status();
     expect([refused, closed]).toEqual(["started", "closed"]);
+  });
+
+  test("an invalid task.json stops the close before it removes anything", async () => {
+    await setup();
+    await files.write(path.join(kept, "task.json"), "{ not json\n");
+    const run = await closeT1();
+    const worktreeExists = await files.exists(taskWorktree);
+    expect(worktreeExists).toBe(true);
+    expect(run.json).toMatchObject({ ok: false, code: "bad-file" });
+    expect(run.code).toBe(1);
   });
 
   test("a worktree folder deleted by hand still closes and the branch is deleted", async () => {
@@ -620,6 +657,29 @@ describe("tenbox close", () => {
     expect(run.json).toMatchObject({ ok: true, comment: { state: "skipped" } });
   });
 
+  test("a task started with --title gets no tracker call on close, also with tracker linear", async () => {
+    /** Not a Linear key: any request made with it is refused, so no real issue can change. */
+    const fakeKey = "lin_api_FAKE-not-a-key";
+    project = await makeTempProject({
+      "tenbox.yaml": "project: demo\ntracker: { kind: linear }\n",
+      "a.txt": "a\n",
+    });
+    const linearEnv = { LINEAR_API_KEY: fakeKey };
+    const start = await tenbox(
+      ["start", "DEMO-1", "--title", "x", "--no-claude"],
+      project.mainDir,
+      linearEnv,
+    );
+    expect(start.code).toBe(0);
+    const taskJson = await files.read(
+      path.join(project.wtRoot, "demo", "DEMO-1", ".tenbox", "task.json"),
+    );
+    expect(taskJson).toContain('"tracker": "none"');
+    const close = await tenbox(["close", "DEMO-1"], project.mainDir, linearEnv);
+    expect(close.code).toBe(0);
+    expect(close.json.tracker).toEqual({ kind: "none", status: "skipped" });
+  });
+
   test("a tracker that fails the comment gives failed: <reason> and the close is ok", async () => {
     project = await makeTempProject({
       "tenbox.yaml": "project: demo\ntracker: { kind: clickup, api_key: bad }\n",
@@ -627,6 +687,9 @@ describe("tenbox close", () => {
     });
     taskWorktree = path.join(project.wtRoot, "demo", "T-1");
     await tenbox(["start", "T-1", "--title", "x", "--no-claude"], project.mainDir);
+    // A task from the tracker: one that `--title` made is never on it.
+    const task = { id: "T-1", title: "x", status: "started", tracker: "clickup", url: null };
+    await files.writeJson(path.join(taskWorktree, ".tenbox", "task.json"), task);
     const run = await closeT1();
     expect(run.json).toMatchObject({
       ok: true,
@@ -678,6 +741,23 @@ describe("tenbox close", () => {
     );
     expect(written.minutes.total).toBeGreaterThanOrEqual(0);
     expect(written.tenbox).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  test("a round checks.json from before tier and flaky keeps its ok in stats.json", async () => {
+    await setup();
+    const dir = path.join(taskWorktree, ".tenbox");
+    await files.writeJson(path.join(dir, "rounds", "1", "checks.json"), OLD_CHECKS);
+    await files.writeJson(path.join(dir, "rounds", "2", "checks.json"), checkResult({ round: 2 }));
+    const run = await closeT1("--force");
+    expect(run.json.stats).toEqual({ path: path.join(kept, "stats.json"), state: "written" });
+    const text = await readStatsText();
+    const written = jsons.parse(text);
+    expect(written).toMatchObject({
+      rounds: [
+        { number: 1, checks_passed: true },
+        { number: 2, checks_passed: true },
+      ],
+    });
   });
 
   test("code leaves out files marked linguist-generated", async () => {

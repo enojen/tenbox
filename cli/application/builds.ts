@@ -1,5 +1,5 @@
 import { addDeadline } from "../../domain/answers.ts";
-import { type BuildResult, parseBuild, readBuild } from "../../domain/builds.ts";
+import { type BuildResult, keptUnproven, parseBuild, readBuild } from "../../domain/builds.ts";
 import { trimProof } from "../../domain/proofs.ts";
 import { buildFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
@@ -10,14 +10,15 @@ export const builds = { save, update, find };
 
 /**
  * Writes `build.json` and returns its path; `bad-build` when the text is not a valid result.
- * The proofs go to `proofs.json`; the earlier unproven items stay first. A decision card gets
+ * The proofs go to `proofs.json`; the earlier unproven items stay first, unless
+ * the earlier card was answered (see `keptUnproven`). A decision card gets
  * its `deadline` from now.
  */
 async function save(taskWorktree: string, buildText: string): Promise<string> {
   const result = addDeadline(parseBuild(buildText), new Date());
   const earlier = await find(tenboxDir(taskWorktree));
   await proofs.appendAll(taskWorktree, result.proofs.map(trimProof));
-  const unproven = [...(earlier?.unproven ?? []), ...result.unproven];
+  const unproven = keptUnproven(earlier, result);
   const file = buildFile(tenboxDir(taskWorktree));
   await files.writeJson(file, { ...result, unproven });
   return file;
