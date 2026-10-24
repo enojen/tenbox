@@ -115,7 +115,7 @@ Points: +1 per distinct proof, -1 per `unproven` item in `build.json`, at most o
 The reviewer's sentences are not kept.
 `minutes.review` is the end of the last build run to the PR's creation; `minutes.wait_merge` is
 the PR's creation to its merge. Both come from the one `gh pr view` call of the close and are null
-without a PR and with `--force`. The time from the merge to the close is not kept. Schema 4.
+without a PR and with `--force`. The time from the merge to the close is not kept. Schema 6.
 `code` leaves out generated files: those marked `linguist-generated` in `.gitattributes`. To
 mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds it in PR diffs too.
 
@@ -401,8 +401,8 @@ machines/     the box image (k8s/) and the login sync (login/); see machines/REA
 docs/         design.md (the target design), reference.md, the icon
 ```
 
-CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on each pull request, on our own
-Linux runner (label `tenbox-ci`).
+CI (`.github/workflows/ci.yml`) runs the typecheck, the tests and knip on each pull request, and by
+hand (`workflow_dispatch`), on a GitHub-hosted `ubuntu-latest` runner.
 
 ## Machines: `machines/`
 
