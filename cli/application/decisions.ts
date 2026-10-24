@@ -26,8 +26,9 @@ export interface DecisionsSaved {
 
 /**
  * Writes nothing when a question fits other than one line (`unknown-question`), a decision other
- * than one title (`unknown-decision`), or `taken` is not an option (`bad-input`). A plan that
- * was approved is approved again, because the person who decides is the one who approves.
+ * than one title (`unknown-decision`), or `taken` is not an option (`bad-input`). A plan whose
+ * approval matches it is approved again, because the person who decides is the one who approves;
+ * a plan that changed after its approval stays `plan-changed`.
  */
 async function save(taskWorktree: string, items: DecideItem[]): Promise<DecisionsSaved> {
   const dir = tenboxDir(taskWorktree);
@@ -40,8 +41,9 @@ async function save(taskWorktree: string, items: DecideItem[]): Promise<Decision
   const texts = { decisions: decisionsText, questions: questionsText };
   const applied = applyDecisions([...answers, ...(taken?.notes ?? [])], texts);
   if (taken) {
+    const approved = await approvals.findCurrent(dir);
     await plans.update(dir, taken.plan);
-    await approvals.update(dir);
+    if (approved) await approvals.update(dir);
   }
   if (applied.added > 0) await files.write(decisionsPath, applied.decisions);
   if (applied.ticked > 0) await files.write(questionsPath, applied.questions);

@@ -106,6 +106,13 @@ describe("tenbox part done", () => {
     expect([dirty.code, dirty.json.code]).toEqual([1, "part-not-committed"]);
   });
 
+  test("part fix, the must_fix worker's part as the build workflow sends it, passes", async () => {
+    const sha = await commit("a.txt");
+    const run = await done("--part", "fix", "--commit", sha);
+    expect(run.json).toEqual({ ok: true, task: "T-1", part: "fix", commit: sha });
+    expect(run.code).toBe(0);
+  });
+
   test("a part not in plan.json is unknown-part", async () => {
     const run = await done("--part", "99");
     expect([run.code, run.json.code]).toEqual([1, "unknown-part"]);

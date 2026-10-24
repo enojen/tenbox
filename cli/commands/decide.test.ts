@@ -238,3 +238,30 @@ describe("tenbox decide with a plan decision", () => {
     expect(written).toBe(false);
   });
 });
+
+describe("tenbox decide with a plan decision on a plan changed after approve", () => {
+  beforeEach(async () => {
+    await approve();
+    await files.writeJson(planJsonFile(), { ...PLAN, summary: "v2, never approved" });
+  });
+
+  const approved = () => tenbox(["approved", "T-1"], project.mainDir, fake.env);
+
+  test("before the override the approval is plan-changed", async () => {
+    const run = await approved();
+    expect([run.code, run.json.code]).toEqual([1, "plan-changed"]);
+  });
+
+  test("after the override with --no-build the approval is still plan-changed", async () => {
+    await withJson(TAKE);
+    const run = await approved();
+    expect([run.code, run.json.code]).toEqual([1, "plan-changed"]);
+  });
+
+  test("the override with the build is plan-changed and starts no build", async () => {
+    const run = await decide("--json", JSON.stringify(TAKE));
+    const started = await bgCalls();
+    expect(started.map((call) => call.args.at(-1))).toEqual([]);
+    expect([run.code, run.json.code]).toEqual([1, "plan-changed"]);
+  });
+});

@@ -7,15 +7,21 @@ export const DEFAULT_FAILURE_PATTERN = "(^|\\s)(FAIL|\\(fail\\)|×|✕|✗)(\\s|
 /** `[8.00ms]` (bun), `in 3s` (gradle): durations differ on every run. */
 const TRAILING_DURATION = /(\s*\[\d+(\.\d+)?m?s\]|\s+in\s+\d+(\.\d+)?m?s)$/;
 
+/** `src/a.ts(10,5): error TS2322` (tsc): the position moves when a line is added above it. */
+const TSC_POSITION = /\(\d+,\d+\)(?=: error TS\d+)/;
+
 /** Long enough for a stack trace head, short enough for a PR body. */
 const MAX_REASON_LENGTH = 200;
 
 /** A line of check output in our format, so two of them compare by `===`. Made only by `failureLine`. */
 export type FailureLine = string & { readonly __brand: "FailureLine" };
 
-/** No colours, no outer spaces, no duration: the same failure looks the same on every run. */
+/** No colours, no outer spaces, no duration, no tsc position: the same failure looks the same on every run. */
 export function failureLine(raw: string): FailureLine {
-  return Bun.stripANSI(raw).trim().replace(TRAILING_DURATION, "") as FailureLine;
+  return Bun.stripANSI(raw)
+    .trim()
+    .replace(TRAILING_DURATION, "")
+    .replace(TSC_POSITION, "") as FailureLine;
 }
 
 /** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */

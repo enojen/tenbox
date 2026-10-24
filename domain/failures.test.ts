@@ -42,3 +42,11 @@ test("compareWithBaseline", () => {
     fixed: lines("a"),
   });
 });
+
+test("compareWithBaseline: a tsc error that only moved down one line is not a new failure", () => {
+  const baseline = parseFailures("src/a.ts(10,5): error TS2322: X\n", 2);
+  const current = parseFailures("src/a.ts(11,5): error TS2322: X\n", 2);
+  const { newFailures, fixed } = compareWithBaseline(baseline, current);
+  expect(newFailures).toEqual([]);
+  expect(fixed).toEqual([]);
+});
