@@ -55,6 +55,7 @@ const plan = {
   by: "planner",
   at: AT,
   taskKind: "small",
+  estimatedLines: 20,
   parts: [{ id: "01", difficulty: "easy" }],
   examples: [
     { part: "01", title: "health returns version", before: "404", after: "200 { version }" },
@@ -195,10 +196,25 @@ test("a question's deadline needs auto: true", () => {
   expect(read({ ...lockedFile, area: "scope", auto: true, deadline })).toMatchObject({ deadline });
 });
 
-test("an answer needs an option or a text", () => {
-  expect(() => read({ id: 5, kind: "answer", by: "user", at: AT, replyTo: 2 })).toThrow(
+test("an answer needs an option or a text that is not blank", () => {
+  const badFile = expect.objectContaining({ code: "bad-file" });
+  expect(() => read({ id: 5, kind: "answer", by: "user", at: AT, replyTo: 2 })).toThrow(badFile);
+  expect(() => read({ ...workerAnswer, text: "" })).toThrow(badFile);
+  expect(() => read({ ...workerAnswer, text: "   " })).toThrow(badFile);
+});
+
+test("a plan card needs the estimated lines", () => {
+  const { estimatedLines: _, ...withoutLines } = plan;
+  expect(() => read(withoutLines)).toThrow(expect.objectContaining({ code: "bad-file" }));
+});
+
+test("a reviewer gives at most three nice-to-have items", () => {
+  expect(() => read({ ...review, niceToHave: ["a", "b", "c", "d"] })).toThrow(
     expect.objectContaining({ code: "bad-file" }),
   );
+  expect(read({ ...review, niceToHave: ["a", "b", "c"] })).toMatchObject({
+    niceToHave: ["a", "b", "c"],
+  });
 });
 
 test("findCard gives null and getCard throws no-card for a missing id", () => {
@@ -228,6 +244,12 @@ test("chosenOption is the newest answer's option, else taken, else null", () => 
   expect(chosenOption([], question(versionSource))).toBe(1);
   expect(chosenOption(cards, question(lockedFile))).toBeNull();
   expect(chosenOption(cards, question(prQuestion))).toBeNull();
+});
+
+test("an answer with only a text overrides the taken option: no option counts", () => {
+  const ownWay = read({ ...workerAnswer, id: 12, replyTo: 2 });
+  expect(chosenOption([ownWay], question(versionSource))).toBeNull();
+  expect(isOpen([ownWay], question(versionSource))).toBe(false);
 });
 
 test("a question is open with no taken and no answer", () => {
