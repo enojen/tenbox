@@ -89,6 +89,8 @@ const TaskCardSchema = BaseSchema.extend({
 const PlanCardSchema = BaseSchema.extend({
   kind: z.literal(CARD_KIND.plan),
   taskKind: TaskKindSchema,
+  /** The planner's guess of the changed lines; stats compares it with the real diff. */
+  estimatedLines: z.number().int().nonnegative(),
   parts: z.array(PlanPartSchema),
   examples: z.array(ExampleSchema),
   lenses: z.array(LensSchema),
@@ -143,7 +145,7 @@ const AnswerCardSchema = BaseSchema.extend({
   kind: z.literal(CARD_KIND.answer),
   replyTo: positive,
   option: positive.optional(),
-  text: z.string().optional(),
+  text: filled.optional(),
   /** True when no person chose it: the deadline passed. */
   auto: z.boolean().optional(),
 }).refine((answer) => answer.option !== undefined || answer.text !== undefined, {
@@ -164,6 +166,9 @@ const ApprovalCardSchema = BaseSchema.extend({
   sha: filled,
 });
 
+/** The reviewer gives at most this many nice-to-have items. */
+const MAX_NICE_TO_HAVE = 3;
+
 /** An unproven change of behaviour: the part and why the reviewer saw no proof. */
 const UnprovenSchema = z.object({ part: filled, reason: filled });
 
@@ -176,8 +181,8 @@ const AgentReviewCardSchema = BaseSchema.extend({
   group: positive.optional(),
   /** Needed by the plan, the spec or correctness; a next round when not empty. */
   mustFix: z.array(filled),
-  /** At most three; does not block. */
-  niceToHave: z.array(filled),
+  /** Does not block. */
+  niceToHave: z.array(filled).max(MAX_NICE_TO_HAVE),
   /** The hunks a person must read. */
   attention: z.array(filled),
   unproven: z.array(UnprovenSchema),
@@ -230,27 +235,32 @@ export function getCard(cards: Card[], id: number): Card {
   return card;
 }
 
-/** The card of that kind with the largest id; null when there is none. */
-export function findNewest<K extends CardKind>(cards: Card[], kind: K): CardOf<K> | null {
-  const ofKind = cards.filter((card): card is CardOf<K> => card.kind === kind);
-  return ofKind.reduce<CardOf<K> | null>(
+/** The card with the largest id; null for no cards. */
+function newestOf<C extends Card>(cards: C[]): C | null {
+  return cards.reduce<C | null>(
     (newest, card) => (newest === null || card.id > newest.id ? card : newest),
     null,
   );
 }
 
+/** The card of that kind with the largest id; null when there is none. */
+export function findNewest<K extends CardKind>(cards: Card[], kind: K): CardOf<K> | null {
+  return newestOf(cards.filter((card): card is CardOf<K> => card.kind === kind));
+}
+
 /** The newest answer to that question; null when nobody answered. */
 export function findAnswer(cards: Card[], question: QuestionCard): AnswerCard | null {
-  const answers = cards.filter(
-    (card): card is AnswerCard => card.kind === CARD_KIND.answer && card.replyTo === question.id,
-  );
-  return answers.reduce<AnswerCard | null>(
-    (newest, answer) => (newest === null || answer.id > newest.id ? answer : newest),
-    null,
+  return newestOf(
+    cards.filter(
+      (card): card is AnswerCard => card.kind === CARD_KIND.answer && card.replyTo === question.id,
+    ),
   );
 }
 
-/** The option that counts, from 1: the newest answer's, else the asker's `taken`; null for none. */
+/**
+ * The option that counts, from 1: the newest answer's, else the asker's `taken`; null for none.
+ * An answer with only a text overrides `taken`: the person chose none of the options.
+ */
 export function chosenOption(cards: Card[], question: QuestionCard): number | null {
   const answer = findAnswer(cards, question);
   if (answer !== null) return answer.option ?? null;
