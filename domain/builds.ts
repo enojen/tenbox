@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { AnsweredSchema, DecisionCardSchema } from "./cards.ts";
 import { type DiffFile, diffLines } from "./diffs.ts";
 import { kindRaisedError } from "./errors/builds.ts";
 import { badFileError, badInputError } from "./errors/index.ts";
+import { usageError } from "./errors/usage.ts";
 import type { Group } from "./groups.ts";
 import {
   DEFAULT_KIND,
@@ -15,7 +15,71 @@ import {
 import { CHECK_TIER, type CheckTier } from "./manifests.ts";
 import type { PlanResult } from "./plans.ts";
 import { ProofSchema } from "./proofs.ts";
-import { jsons } from "./utils.ts";
+import { jsons, strings } from "./utils.ts";
+
+/* The decision card of a blocked worker, saved in `build.json` with `needs-you`. It lives
+ * here until the worker's question becomes a card (TEN-503). */
+
+/** One line: the card goes into a `decisions.md` bullet and a notification line. */
+const oneLine = z
+  .string()
+  .refine(strings.isNotBlank, "must not be blank")
+  .refine((text) => !text.includes("\n"), "must be one line");
+
+/** What a card is about; the worker picks the closest kind. */
+export const DECISION_KIND = [
+  "migration",
+  "data-delete",
+  "feature-delete",
+  "contract",
+  "paid-service",
+  "locked-file",
+  "scope",
+  "other",
+] as const;
+
+/** What a blocked worker asks; `recommended` is the 1-based number of one of the options. */
+const DecisionCardSchema = z
+  .object({
+    title: oneLine,
+    options: z.array(oneLine).min(1),
+    recommended: z.number().int().positive(),
+    reason: z.string(),
+    auto: z.boolean(),
+    kind: z.enum(DECISION_KIND),
+  })
+  .refine((card) => card.recommended <= card.options.length, {
+    message: "must be the number of one of the options",
+    path: ["recommended"],
+  });
+
+/** How a card was answered: the 1-based option, when, and whether no person chose it. */
+const AnsweredSchema = z.object({
+  option: z.number().int().positive(),
+  at: z.iso.datetime(),
+  auto: z.boolean(),
+});
+
+export type DecisionCard = z.infer<typeof DecisionCardSchema>;
+
+/** Kinds Tenbox never auto-answers, whatever `auto` says. */
+const NEVER_AUTO: readonly DecisionCard["kind"][] = DECISION_KIND.filter(
+  (kind) => kind !== "scope" && kind !== "other",
+);
+
+/** True when the card has `auto` and its kind is not never-auto. */
+export function isAutoAllowed(card: DecisionCard): boolean {
+  return card.auto && !NEVER_AUTO.includes(card.kind);
+}
+
+/** The text of the 1-based option; `usage` when the card has no such option. */
+export function getOption(card: DecisionCard, option: number): string {
+  const text = card.options[option - 1];
+  if (!Number.isInteger(option) || text === undefined) {
+    throw usageError(`option must be a number from 1 to ${card.options.length}`);
+  }
+  return text;
+}
 
 const UnprovenSchema = z.object({ part: z.string(), reason: z.string() });
 
@@ -51,6 +115,16 @@ export type BuildStatus = BuildResult["status"];
 
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
 export type Unproven = BuildResult["unproven"][number];
+
+/**
+ * The unproven items `build.json` keeps: the earlier result's first, then the new ones. After an
+ * answered card the new result comes from the same run, resumed, which replays every earlier
+ * review and so holds the earlier items again.
+ */
+export function keptUnproven(earlier: BuildResult | null, result: BuildResult): Unproven[] {
+  if (earlier === null || earlier.answered !== undefined) return result.unproven;
+  return [...earlier.unproven, ...result.unproven];
+}
 
 /** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {

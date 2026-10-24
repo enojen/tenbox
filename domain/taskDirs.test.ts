@@ -4,6 +4,9 @@ import {
   approvedFile,
   autoAnswerLog,
   buildFile,
+  cardFile,
+  cardMdFile,
+  cardsDir,
   checkLogFile,
   checkLogsDir,
   checksFile,
@@ -88,4 +91,12 @@ test("a group holds group.json", () => {
 test("groupRoot is the .tenbox folder for group 1 and groups/N above it", () => {
   expect(groupRoot("/wt/app/T-1", 1)).toBe("/wt/app/T-1/.tenbox");
   expect(groupRoot("/wt/app/T-1", 2)).toBe("/wt/app/T-1/.tenbox/groups/2");
+});
+
+test("a card's files sit in cards/, named by a four-digit id and the kind", () => {
+  const cards = cardsDir("/t/.tenbox");
+  expect(cards).toBe("/t/.tenbox/cards");
+  expect(cardFile(cards, { id: 1, kind: "task" })).toBe("/t/.tenbox/cards/0001-task.json");
+  expect(cardMdFile(cards, { id: 4, kind: "plan" })).toBe("/t/.tenbox/cards/0004-plan.md");
+  expect(cardFile(cards, { id: 12345, kind: "note" })).toBe("/t/.tenbox/cards/12345-note.json");
 });

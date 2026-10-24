@@ -52,7 +52,7 @@ export interface StatsPlan {
 
 export interface StatsRound {
   number: number;
-  /** Null when `checks.json` is missing or unreadable. */
+  /** Null when `checks.json` is missing. */
   checks_passed: boolean | null;
 }
 

@@ -1,49 +1,25 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
-import { CARD_KIND } from "../../domain/cards.ts";
+import { DECISION_KIND } from "../../domain/builds.ts";
 import type { Group } from "../../domain/groups.ts";
+import {
+  type AgentOptions,
+  runWorkflow,
+  type SchemaNode,
+  type ScriptedAgent,
+  WORKFLOW,
+} from "./workflow.ts";
 
-const WORKFLOW = path.join(import.meta.dir, "..", "..", "workflows", "tenbox-build.js");
 const WORKER_ROLE = path.join(import.meta.dir, "..", "..", "agents", "worker.md");
-const EXPORT_PREFIX = /^export /m;
 const KIND_ENUM = /kind: \{ enum: \[([^\]]*)\] \}/;
 const ROUND_PREFIX = /^round (\d+):/;
 const CHECK_COMMAND = /`(tenbox check[^`]*)`/;
-const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
 interface ReviewReply {
   must_fix: string[];
   nice_to_have: string[];
   attention: string[];
   unproven: { part: string; reason: string }[];
-}
-
-/** The parts of a JSON schema the tests read. */
-interface SchemaNode {
-  required?: string[];
-  properties?: Record<string, SchemaNode>;
-  items?: SchemaNode;
-  maxItems?: number;
-  pattern?: string;
-}
-
-interface AgentOptions {
-  agentType: string;
-  label: string;
-  schema?: SchemaNode;
-  model?: string;
-  effort?: string;
-}
-
-type ScriptedAgent = (prompt: string, options: AgentOptions) => Promise<unknown>;
-
-/** Runs the workflow script with a scripted agent; parallel jobs run at once. */
-async function runWorkflow(args: unknown, agent: ScriptedAgent) {
-  const script = await Bun.file(WORKFLOW).text();
-  const source = script.replace(EXPORT_PREFIX, "");
-  const run = new AsyncFunction("args", "agent", "parallel", "phase", source);
-  const parallel = (jobs: (() => Promise<unknown>)[]) => Promise.all(jobs.map((job) => job()));
-  return run(args, agent, parallel, () => {});
 }
 
 interface PlanPart {
@@ -290,15 +266,15 @@ const round1Reply: ReviewReply = {
   unproven: [],
 };
 
-test("the worker schema and the worker role name the card kinds of CARD_KIND", async () => {
+test("the worker schema and the worker role name the card kinds of DECISION_KIND", async () => {
   const script = await Bun.file(WORKFLOW).text();
   const kinds = script
     .match(KIND_ENUM)?.[1]
     ?.split(",")
     .map((kind) => kind.trim().slice(1, -1));
-  expect(kinds).toEqual([...CARD_KIND]);
+  expect(kinds).toEqual([...DECISION_KIND]);
   const role = await Bun.file(WORKER_ROLE).text();
-  for (const kind of CARD_KIND) expect(role).toContain(`\`${kind}\``);
+  for (const kind of DECISION_KIND) expect(role).toContain(`\`${kind}\``);
 });
 
 test("the reviewer schema caps nice_to_have at 3 items", async () => {
@@ -938,7 +914,7 @@ test("a partDone with no commit from the CLI counts as refused", async () => {
 });
 
 /** A run whose round 1 reviewers give must_fix items: base `fix base`, security `fix security`. */
-async function runMustFix(extra: object) {
+async function runMustFix(extra: object, worker?: ScriptedAgent) {
   const { calls, recorder } = recording(
     scripted({
       reviewer: async (_prompt, options) => {
@@ -946,6 +922,7 @@ async function runMustFix(extra: object) {
         const lens = options.label.split(" ").at(-1);
         return { ...cleanReply, must_fix: [`fix ${lens}`] };
       },
+      ...(worker && { worker }),
     }),
   );
   const result = await runWorkflow(planArgs(["01"], ["security"], extra), recorder);
@@ -973,6 +950,20 @@ test("a must_fix round runs one fix worker with every must_fix item and no plann
   expect(ofType("planner")).toEqual([]);
   expect(round2.map((call) => call.label)).toContain("round 2: security");
   expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
+});
+
+test("a refused fix commit reruns the fix worker with the must_fix items and no part file", async () => {
+  let fixes = 0;
+  const worker: ScriptedAgent = async (_prompt, options) => {
+    if (options.label.startsWith("round 2: fix")) fixes += 1;
+    const partDone = fixes === 1 ? { ok: false, error: "no commit" } : accepted();
+    return { status: "done", proofs: [], partDone, checks: green() };
+  };
+  const { round2 } = await runMustFix({ kind: "normal", reviews: 3 }, worker);
+  const retry = round2.find((call) => call.label === "round 2: fix fix");
+  expect(retry?.prompt).toContain("The commit of this part was refused: no commit");
+  expect(retry?.prompt).toContain("fix base\nfix security");
+  expect(retry?.prompt).not.toContain("in your part file");
 });
 
 const raised = {
