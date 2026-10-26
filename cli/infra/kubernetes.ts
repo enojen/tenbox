@@ -8,6 +8,7 @@ import { type Endpoint, type EndpointTls, http } from "./http.ts";
 const NAMESPACE = "tenbox";
 const JOBS_PATH = `/apis/batch/v1/namespaces/${NAMESPACE}/jobs`;
 const VOLUMES_PATH = `/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims`;
+const SECRETS_PATH = `/api/v1/namespaces/${NAMESPACE}/secrets`;
 
 /** The API server of the kubeconfig's current context and how to log in to it. */
 export interface Cluster {
@@ -26,6 +27,7 @@ export interface TemplateFields {
   /** The run stamp `MMDD-HHMMSS`. */
   run: string;
   project: string;
+  projectId: string;
   repo: string;
   image: string;
   cmd: string;
@@ -57,12 +59,20 @@ interface ObjectPost {
   object: KubeObject;
 }
 
-/** The task Jobs and volumes on the cluster, over its HTTP API. */
+/** An Opaque Secret of the namespace and its values by key. */
+interface SecretInput {
+  cluster: Cluster;
+  name: string;
+  values: Record<string, string>;
+}
+
+/** The task Jobs, volumes and Secrets on the cluster, over its HTTP API. */
 export const kubernetes = {
   readCluster,
   readTemplate,
   listJobs,
   ensureVolume,
+  saveSecret,
   createJob,
 };
 
@@ -168,6 +178,7 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__TASK__", fields.task],
     ["__RUN__", fields.run],
     ["__PROJECT__", fields.project],
+    ["__PROJECT_ID__", fields.projectId],
     ["__REPO__", fields.repo],
     ["__IMAGE__", fields.image],
     ["__CMD__", fields.cmd],
@@ -252,6 +263,22 @@ async function ensureVolume(post: ObjectPost): Promise<void> {
     schema: CreatedSchema,
     body: object,
   });
+}
+
+/** Creates the Secret, or replaces an existing one (409) whole: a key left out is removed. */
+async function saveSecret(input: SecretInput): Promise<void> {
+  const { cluster, name, values } = input;
+  const body = {
+    apiVersion: "v1",
+    kind: "Secret",
+    metadata: { name },
+    type: "Opaque",
+    stringData: values,
+  };
+  const request = { endpoint: endpoint(cluster, SECRETS_PATH), schema: CreatedSchema, body };
+  const created = await http.ensure(request);
+  if (created !== null) return;
+  await http.put({ ...request, endpoint: endpoint(cluster, `${SECRETS_PATH}/${name}`) });
 }
 
 /** Creates the Job; the API URL of the created Job. */

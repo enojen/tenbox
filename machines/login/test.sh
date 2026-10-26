@@ -45,25 +45,14 @@ setup; run; code=$?
 check "exit 0 on success" '[ "$code" = 0 ]'
 check "claude-credentials gets the login" 'grep -q "^claude-credentials credentials.json=.*SECRET-LOGIN" "$root/secrets.log"'
 check "github-token gets the token without its trailing newline" 'grep -qx "github-token token=SECRET-GHTOKEN" "$root/secrets.log"'
-check "tracker gets api_key" 'grep -qx "tracker api_key=SECRET-TRACKER" "$root/secrets.log"'
-check "ntfy gets url" 'grep -qx "ntfy url=https://ntfy.sh/SECRET-NTFY" "$root/secrets.log"'
+check "only the login and the token: tenbox.local.yaml does not become a Secret" '[ "$(cut -d " " -f 1 "$root/secrets.log" | tr "\n" " ")" = "claude-credentials github-token " ]'
 check "every kubectl call uses namespace tenbox" '! grep "^kubectl " "$root/argv.log" | grep -qv "^kubectl -n tenbox "'
 check "no secret value in any argv" '! grep -q "SECRET-" "$root/argv.log"'
 check "no secret value in the output" '! grep -q "SECRET-" "$root/out.log"'
 
-setup; printf 'tracker:\n  api_key: ""\nnotify:\n  ntfy: ""\n' > "$root/repo/tenbox.local.yaml"; run; code=$?
-check "empty values: exit 0" '[ "$code" = 0 ]'
-check "empty values: tracker and ntfy skipped" '! grep -q -e "^tracker " -e "^ntfy " "$root/secrets.log"'
-check "empty values: the other two still written" '[ "$(wc -l < "$root/secrets.log")" = 2 ]'
-
 setup; KUBECTL_FAIL=1 run; code=$?
 check "kubectl failure: exit 1" '[ "$code" = 1 ]'
 
-
 setup; mkdir "$root/tmp"; TMPDIR="$root/tmp" KUBECTL_KILL=1 run
 check "SIGTERM during kubectl: no temp file left" '[ -z "$(ls -A "$root/tmp")" ]'
-
-setup; rm "$root/repo/tenbox.local.yaml"; run; code=$?
-check "no manifest: exit 0" '[ "$code" = 0 ]'
-check "no manifest: a line says tracker and ntfy are skipped" 'grep -q "no tenbox.local.yaml at .*: tracker and ntfy skipped" "$root/out.log"'
 exit "$fails"

@@ -11,6 +11,7 @@ import {
   type TrackerTask,
 } from "../../../domain/tracker.ts";
 import { type Endpoint, http } from "../http.ts";
+import { findApiKey } from "./apiKeys.ts";
 
 const DEFAULT_NAMES = { in_progress: "in progress", done: "done" } as const;
 
@@ -60,7 +61,7 @@ interface StatusChoice {
 
 /** ClickUp over REST API v2. The key comes from `tracker.api_key` or `CLICKUP_API_KEY`. */
 export function clickupTracker(config: TrackerConfig): Tracker {
-  const apiKey = config.api_key ?? process.env.CLICKUP_API_KEY;
+  const apiKey = findApiKey(config);
   if (!apiKey) {
     const message = "ClickUp: set tracker.api_key in tenbox.local.yaml or CLICKUP_API_KEY";
     throw trackerAuthError(message);

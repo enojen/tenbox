@@ -74,6 +74,13 @@ export function templateError(file: string, reason: string): TenboxError {
   return new TenboxError(`machine template ${file}: ${reason}`, "template");
 }
 
+export function noProjectIdError(mainDir: string): TenboxError {
+  return new TenboxError(
+    `no project id in ${mainDir}/tenbox.yaml; run tenbox start once and commit tenbox.yaml`,
+    "no-project-id",
+  );
+}
+
 export function machineBusyError(task: string, jobs: string[]): TenboxError {
   return new TenboxError(
     `task ${task} still runs on the cluster: ${jobs.join(", ")}; wait until it ends`,
