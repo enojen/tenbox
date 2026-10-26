@@ -1,4 +1,4 @@
-# The tenbox box image for a Kubernetes pod (TEN-460): Ubuntu, bun, gh, claude, this
+# The tenbox box image for a Kubernetes pod (TEN-460): Ubuntu, bun, Node 24, gh, claude, this
 # repo at /opt/tenbox. /home/tenbox is the task volume.
 # Build it with the box workflow, or by hand (machines/README.md): the context is
 # machines/k8s and holds only the git bundle.
@@ -19,6 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends gh \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Node 24 for Node projects; corepack gives each project the pnpm or yarn of its packageManager.
+RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update && apt-get install -y --no-install-recommends nodejs \
+  && apt-get clean && rm -rf /var/lib/apt/lists/* \
+  && corepack enable && node --version
+
 RUN useradd --create-home --shell /bin/bash tenbox \
   && echo 'tenbox ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tenbox && chmod 440 /etc/sudoers.d/tenbox
 
@@ -38,7 +47,8 @@ RUN git clone --quiet --branch "$TENBOX_BRANCH" /tmp/tenbox.bundle /opt/tenbox \
   && chmod 755 /usr/local/bin/tenbox \
   && install -m 755 /opt/tenbox/machines/k8s/boot.sh /usr/local/bin/tenbox-boot \
   && jq -n --arg branch "$TENBOX_BRANCH" --arg ref "$TENBOX_REF" --arg bun "$(bun --version)" --arg gh "$(gh --version | head -1)" \
-       --arg claude "$(claude --version)" '{ tenbox: { branch: $branch, ref: $ref }, bun: $bun, gh: $gh, claude: $claude }' \
+       --arg node "$(node --version)" --arg claude "$(claude --version)" \
+       '{ tenbox: { branch: $branch, ref: $ref }, bun: $bun, gh: $gh, node: $node, claude: $claude }' \
        > /etc/tenbox-image.json
 
 CMD ["/usr/local/bin/tenbox-boot"]
