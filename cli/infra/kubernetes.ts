@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { issueLines } from "../../domain/errors/index.ts";
 import { kubeconfigError, noKubeconfigError, templateError } from "../../domain/errors/tools.ts";
 import { objects } from "../../domain/utils.ts";
 import { files } from "./files.ts";
@@ -33,6 +34,26 @@ export interface TemplateFields {
   cmd: string;
   /** `machine.env` of the manifest as one JSON object. */
   env: string;
+  /** The resource class and its values from tenyard `task/classes.yaml`. */
+  class: string;
+  cpu: string;
+  cpuLimit: string;
+  memory: string;
+}
+
+/** One class of tenyard `task/classes.yaml`; its RAM is both the request and the limit. */
+const ResourceClassSchema = z
+  .object({ cpu: z.string().min(1), cpu_limit: z.string().min(1), memory: z.string().min(1) })
+  .strict();
+
+const ClassesSchema = z.record(z.string(), ResourceClassSchema);
+
+type ClassResources = z.infer<typeof ResourceClassSchema>;
+
+/** One class of a classes file, by name. */
+interface ClassInput {
+  file: string;
+  name: string;
 }
 
 /** One template file and the values for its fields. */
@@ -72,6 +93,7 @@ interface SecretInput {
 export const kubernetes = {
   readCluster,
   readTemplate,
+  readClass,
   listJobs,
   ensureVolume,
   saveSecret,
@@ -172,6 +194,19 @@ async function readTemplate(input: TemplateInput): Promise<KubeObject> {
   return fillObject(value, placeholders(fields));
 }
 
+async function readClass(input: ClassInput): Promise<ClassResources> {
+  const { file, name } = input;
+  const text = await files.read(file);
+  if (text === null) throw templateError(file, "missing");
+  const parsed = ClassesSchema.safeParse(parseYaml(text));
+  if (!parsed.success) throw templateError(file, issueLines(parsed.error).join("; "));
+  const found = parsed.data[name];
+  if (found === undefined) {
+    throw templateError(file, `no class "${name}" (${Object.keys(parsed.data).join(", ")})`);
+  }
+  return found;
+}
+
 type Placeholders = [string, string][];
 
 function placeholders(fields: TemplateFields): Placeholders {
@@ -185,6 +220,10 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__IMAGE__", fields.image],
     ["__CMD__", fields.cmd],
     ["__ENV__", fields.env],
+    ["__CLASS__", fields.class],
+    ["__CPU__", fields.cpu],
+    ["__CPU_LIMIT__", fields.cpuLimit],
+    ["__MEMORY__", fields.memory],
   ];
 }
 

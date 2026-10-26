@@ -7,6 +7,7 @@ import {
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
+import { RESOURCE_CLASS, type ResourceClass } from "../../domain/machines.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
@@ -16,8 +17,9 @@ import { type Cluster, type Job, kubernetes, type TemplateFields } from "../infr
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
-const MACHINE_COMMANDS = ["start", "build", "close"] as const;
-type MachineCommand = (typeof MACHINE_COMMANDS)[number];
+const MACHINE_COMMAND = { start: "start", build: "build", close: "close" } as const;
+type MachineCommand = (typeof MACHINE_COMMAND)[keyof typeof MACHINE_COMMAND];
+const MACHINE_COMMANDS = Object.values(MACHINE_COMMAND);
 
 /** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
 const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
@@ -55,6 +57,7 @@ export const machines = { run, list };
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
   id: TaskId;
+  cmd: MachineCommand;
   words: string[];
   project: Project;
   projectId: ProjectId;
@@ -72,7 +75,7 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const { project, manifest } = await projects.get(env().cwd);
   const projectId = manifest.id;
   if (projectId === undefined) throw noProjectIdError(project.mainDir);
-  const url = await runJob({ id, words, project, projectId, manifest });
+  const url = await runJob({ id, cmd, words, project, projectId, manifest });
   return { task: id, cmd, url };
 }
 
@@ -103,8 +106,10 @@ function parseCommand(input: MachineRunInput): MachineCommand {
 function flagsFit(command: MachineCommand, flags: string[]): boolean {
   const [flag, value, ...rest] = flags;
   if (flag === undefined) return true;
-  if (command === "start") return flag === "--title" && value !== undefined && rest.length === 0;
-  if (command === "close") return flag === "--force" && value === undefined;
+  if (command === MACHINE_COMMAND.start) {
+    return flag === "--title" && value !== undefined && rest.length === 0;
+  }
+  if (command === MACHINE_COMMAND.close) return flag === "--force" && value === undefined;
   return false;
 }
 
@@ -146,6 +151,9 @@ function projectSecretValues(manifest: Manifest): Record<string, string> {
 async function templateFields(command: CommandRun): Promise<TemplateFields> {
   const { id, words, project, projectId, manifest } = command;
   const repo = await originUrl(project);
+  const name = resourceClass(command);
+  const file = path.join(homePath(manifest.machine.template), "classes.yaml");
+  const resources = await kubernetes.readClass({ file, name });
   return {
     name: id.toLowerCase().replaceAll("_", "-"),
     task: id,
@@ -156,7 +164,17 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
     env: JSON.stringify(manifest.machine.env),
+    class: name,
+    cpu: resources.cpu,
+    cpuLimit: resources.cpu_limit,
+    memory: resources.memory,
   };
+}
+
+/** `start` and `close` plan and clean up; only a build runs the project's tests. */
+function resourceClass(command: CommandRun): ResourceClass {
+  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.class;
+  return RESOURCE_CLASS.plan;
 }
 
 /** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */
