@@ -111,7 +111,11 @@ files give only times, agents and tokens. A Claude Code file (run file, journal,
 `01-users`). The same part number, test file and test name counts once, the first one.
 Points: +1 per distinct proof, -1 per `unproven` item in `build.json`, at most one per part per build round.
 The reviewer's sentences are not kept.
-`minutes.review` is the end of the last build run to the PR's creation; `minutes.wait_merge` is
+`rounds` lists the build rounds: every `rounds/N` directory, except (with a `build.json`) one whose
+`checks.json` was written after `build.json`, which is a `tenbox check` run by hand after the build;
+without `build.json` every round counts. The close comment's round count is this list.
+`minutes.review` is the end of the last build run to the PR's creation, at least 0 (`tenbox build done`
+opens the PR before the run ends); `minutes.wait_merge` is
 the PR's creation to its merge. Both come from the one `gh pr view` call of the close and are null
 without a PR and with `--force`. The time from the merge to the close is not kept. Schema 4.
 `code` leaves out generated files: those marked `linguist-generated` in `.gitattributes`. To
