@@ -13,6 +13,7 @@ import {
 } from "../../../domain/tracker.ts";
 import { graphqlQuery } from "../graphql.ts";
 import type { Endpoint } from "../http.ts";
+import { findApiKey } from "./apiKeys.ts";
 
 const ENDPOINT = "https://api.linear.app/graphql";
 
@@ -93,7 +94,7 @@ export function linearTracker(config: TrackerConfig): Tracker {
 }
 
 function linearEndpoint(config: TrackerConfig): Endpoint {
-  const apiKey = config.api_key ?? process.env.LINEAR_API_KEY;
+  const apiKey = findApiKey(config);
   if (!apiKey) {
     const message = "Linear: set tracker.api_key in tenbox.local.yaml or LINEAR_API_KEY";
     throw trackerAuthError(message);

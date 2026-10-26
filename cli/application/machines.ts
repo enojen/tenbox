@@ -1,13 +1,19 @@
 import path from "node:path";
-import { loginExpiredError, machineBusyError, noLoginError } from "../../domain/errors/tools.ts";
+import {
+  loginExpiredError,
+  machineBusyError,
+  noLoginError,
+  noProjectIdError,
+} from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
-import { type TaskId, taskId } from "../../domain/ids.ts";
+import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
 import { env } from "../infra/env.ts";
 import { git } from "../infra/git.ts";
 import { type Cluster, type Job, kubernetes, type TemplateFields } from "../infra/kubernetes.ts";
+import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
 const MACHINE_COMMANDS = ["start", "build", "close"] as const;
@@ -51,16 +57,22 @@ interface CommandRun {
   id: TaskId;
   words: string[];
   project: Project;
+  projectId: ProjectId;
   manifest: Manifest;
 }
 
-/** Refuses before the cluster is called when the command is not allowed or the login is gone. */
+/**
+ * Refuses before the cluster is called when the command is not allowed, the login is gone or the
+ * project has no id.
+ */
 async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const { id, words } = input;
   const cmd = parseCommand(input);
   await ensureLogin();
   const { project, manifest } = await projects.get(env().cwd);
-  const url = await runJob({ id, words, project, manifest });
+  const projectId = manifest.id;
+  if (projectId === undefined) throw noProjectIdError(project.mainDir);
+  const url = await runJob({ id, words, project, projectId, manifest });
   return { task: id, cmd, url };
 }
 
@@ -105,25 +117,41 @@ async function ensureLogin(): Promise<void> {
 
 /** Every Job gets the project and its origin: the box clones the project on a new volume. */
 async function runJob(command: CommandRun): Promise<string> {
-  const { id, manifest } = command;
+  const { id, manifest, projectId } = command;
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const fields = await templateFields(command);
   const dir = homePath(manifest.machine.template);
   const volume = await kubernetes.readTemplate({ file: path.join(dir, "pvc.yaml"), fields });
   const job = await kubernetes.readTemplate({ file: path.join(dir, "job.yaml"), fields });
   await ensureIdle(cluster, id);
+  const values = projectSecretValues(manifest);
+  await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
   await kubernetes.ensureVolume({ cluster, object: volume });
   return kubernetes.createJob({ cluster, object: job });
 }
 
+/**
+ * The project Secret the tenyard Job template reads, `project-<project id>`: the tracker key and
+ * the ntfy URL this computer uses for the project. A value the project lacks is left out.
+ */
+function projectSecretValues(manifest: Manifest): Record<string, string> {
+  const trackerKey = findApiKey(manifest.tracker);
+  const ntfy = manifest.notify.ntfy;
+  return {
+    ...(trackerKey === null ? {} : { tracker_api_key: trackerKey }),
+    ...(ntfy === undefined ? {} : { ntfy_url: ntfy }),
+  };
+}
+
 async function templateFields(command: CommandRun): Promise<TemplateFields> {
-  const { id, words, project } = command;
+  const { id, words, project, projectId } = command;
   const repo = await originUrl(project);
   return {
     name: id.toLowerCase().replaceAll("_", "-"),
     task: id,
     run: runStamp(new Date()),
     project: project.name,
+    projectId,
     repo,
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
