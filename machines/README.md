@@ -25,7 +25,9 @@ computer"). The access token lives hours and the refresh token days.
 
 ## Box image: `k8s/` (TEN-460)
 
-The same box as a container image, for a Kubernetes pod. The `box` workflow
+The same box as a container image, for a Kubernetes pod: Ubuntu 24.04, bun, Node 24, gh,
+claude and this repo at `/opt/tenbox`. Corepack is on, so `pnpm` and `yarn` are the version of the
+project's `packageManager` field, downloaded on first use into the volume. The `box` workflow
 (`.github/workflows/box.yml`) builds it on every push to main and pushes
 `ghcr.io/enojen/tenbox-box:<sha>` and `:latest`; a manual run from another branch pushes
 only `:<sha>` of that branch. It runs on `vars.BOX_RUNNER` (default `ubuntu-latest`) and logs
