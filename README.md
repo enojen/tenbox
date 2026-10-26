@@ -11,6 +11,19 @@ a small CLI for the steps an agent should not improvise.
 
 > Early and changing fast. Interfaces and file formats may break between commits.
 
+## Why Tenbox
+
+**Many tasks at once.** Each task gets its own worktree, branch and background Claude Code
+session, so you start the next task while the last one builds. `tenbox list` shows them all,
+and an ntfy notification reaches your phone only when a task needs you. Inside one task, the
+groups of parts that do not depend on each other build in parallel, each group as its own PR.
+Tasks can also run as Jobs on a Kubernetes cluster instead of your computer.
+
+**Proof, not claims.** Every part starts with a test that fails before the code is written;
+the build records that test and its failure as the part's proof. A reviewer marks a change of
+behaviour without a proof as unproven. Checks compare against a baseline from `main`: a failure
+that was already there does not block the task, and a new one cannot hide.
+
 ## Requirements
 
 Bun, git, the GitHub CLI (`gh`) and Claude Code, on macOS or Linux. A Linear or ClickUp
