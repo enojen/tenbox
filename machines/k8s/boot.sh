@@ -2,7 +2,8 @@
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
 # TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, TRACKER_API_KEY,
 # NTFY_URL, CLAUDE_CREDENTIALS), prepares the volume at /home/tenbox and runs the tenbox
-# command in the foreground, as tenbox, in the project's main checkout. The command may
+# command in the foreground, as tenbox, in the project's main checkout, with the project's
+# variables from TENBOX_ENV (`machine.env` of tenbox.yaml as one JSON object). The command may
 # leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
 # lives while that session works and ends once no session is left or the sessions have been
 # idle for IDLE_MINUTES (a plan that waits for approval). Exits with the command's exit
@@ -72,7 +73,17 @@ install_tenbox() {
   (cd /opt/tenbox && as_tenbox tenbox install > /dev/null)
 }
 
-# 6. After the command: stay while a claude session works.
+# 6. The project's variables as NAME=VALUE words for env. They come before HOME and PATH, so
+#    those two stay the box's.
+project_env=()
+read_project_env() {
+  mapfile -d '' -t project_env < <(
+    jq -j '(. // {}) | to_entries[] | "\(.key)=\(.value)\u0000"' <<< "${TENBOX_ENV:-null}"
+  )
+  wait $!
+}
+
+# 7. After the command: stay while a claude session works.
 sessions_json() { as_tenbox claude agents --json 2> /dev/null || echo "[]"; }
 wait_for_sessions() {
   local idle=0 sessions working
@@ -98,6 +109,7 @@ setup_claude
 setup_github
 setup_project
 install_tenbox
+read_project_env
 
 # The secrets now live in their files; the tenbox command does not get them in its env.
 unset GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
@@ -105,7 +117,7 @@ log "ready at $(date -u +%FT%TZ)"
 
 install -m 644 /dev/null /var/log/tenbox-run.log
 set +e
-sudo -u tenbox -H env HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin \
+sudo -u tenbox -H env "${project_env[@]}" HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin \
   bash -c "cd '$main' && $TENBOX_CMD" 2>&1 < /dev/null | tee -a /var/log/tenbox-run.log
 status="${PIPESTATUS[0]}"
 log "command ended with exit code $status"

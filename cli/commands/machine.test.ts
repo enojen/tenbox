@@ -44,6 +44,9 @@ spec:
             - name: TENBOX_CMD
               value: |-
                 __CMD__
+            - name: TENBOX_ENV
+              value: |-
+                __ENV__
             - name: TRACKER_API_KEY
               valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: tracker_api_key } }
       volumes:
@@ -266,6 +269,7 @@ describe("machine", () => {
       TENBOX_PROJECT: "demo",
       TENBOX_REPO: "https://github.com/o/demo.git",
       TENBOX_CMD: "tenbox build TEN-1",
+      TENBOX_ENV: "{}",
     });
     expect(jobValueFrom(job, "TRACKER_API_KEY")).toEqual({
       secretKeyRef: { name: PROJECT_SECRET, key: "tracker_api_key" },
@@ -371,6 +375,15 @@ describe("machine", () => {
     const run = await machine(args);
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
     expect(api.calls).toEqual([]);
+  });
+
+  test("machine.env reaches TENBOX_ENV as one JSON object", async () => {
+    const env = `env: { TEST_MAX_WORKERS: "1", GREETING: "it's $(x)" }`;
+    await writeManifest(`machine: { template: ${template}, ${env} }\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_MAX_WORKERS":"1","GREETING":"it's $(x)"}`);
   });
 
   test("close --force reaches TENBOX_CMD", async () => {

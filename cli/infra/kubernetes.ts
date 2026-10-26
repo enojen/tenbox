@@ -31,6 +31,8 @@ export interface TemplateFields {
   repo: string;
   image: string;
   cmd: string;
+  /** `machine.env` of the manifest as one JSON object. */
+  env: string;
 }
 
 /** One template file and the values for its fields. */
@@ -182,6 +184,7 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__REPO__", fields.repo],
     ["__IMAGE__", fields.image],
     ["__CMD__", fields.cmd],
+    ["__ENV__", fields.env],
   ];
 }
 

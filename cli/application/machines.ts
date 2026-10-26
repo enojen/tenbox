@@ -144,7 +144,7 @@ function projectSecretValues(manifest: Manifest): Record<string, string> {
 }
 
 async function templateFields(command: CommandRun): Promise<TemplateFields> {
-  const { id, words, project, projectId } = command;
+  const { id, words, project, projectId, manifest } = command;
   const repo = await originUrl(project);
   return {
     name: id.toLowerCase().replaceAll("_", "-"),
@@ -155,6 +155,7 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
     repo,
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
+    env: JSON.stringify(manifest.machine.env),
   };
 }
 
