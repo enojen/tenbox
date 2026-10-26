@@ -163,7 +163,8 @@ async function readRounds(dir: string): Promise<StatsRound[]> {
 
 async function findMtime(file: string): Promise<number | null> {
   const exists = await files.exists(file);
-  return exists ? await files.mtime(file) : null;
+  if (!exists) return null;
+  return files.mtime(file);
 }
 
 async function readCode(input: StatsInput): Promise<StatsCode | null> {

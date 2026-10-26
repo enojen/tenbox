@@ -303,8 +303,8 @@ describe("tenbox close", () => {
       const json = `{"state":"MERGED","headRefOid":"${rawHead.trim()}","createdAt":"${created}","mergedAt":"${merged}"}`;
       const bin = await ghPath(`case "$1" in\n  pr) echo '${json}';;\n  api) echo 1;;\nesac`);
       await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
-      const written = JSON.parse(await readStatsText());
-      expect(written.minutes.review).toBe(0);
+      const text = await readStatsText();
+      expect(JSON.parse(text).minutes.review).toBe(0);
     });
 
     test("without a PR review and wait_merge are null", async () => {
