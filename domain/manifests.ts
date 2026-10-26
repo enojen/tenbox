@@ -2,6 +2,7 @@ import { z } from "zod";
 import { issueLines } from "./errors/index.ts";
 import { manifestError } from "./errors/manifest.ts";
 import { isProjectId, isSafeName, projectId } from "./ids.ts";
+import { RESOURCE_CLASS } from "./machines.ts";
 import { objects } from "./utils.ts";
 
 /** The trackers Tenbox has an adapter for; `none` is no tracker. */
@@ -108,6 +109,8 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MachineSchema = z
   .object({
     template: z.string().min(1).default(DEFAULT_TEMPLATE),
+    /** The resource class of a build in the box. */
+    class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.build),
     env: z.record(z.string().regex(ENV_NAME), z.string()).default({}),
   })
   .strict();

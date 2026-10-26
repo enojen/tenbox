@@ -53,12 +53,17 @@ so the command gets only `HOME`, `PATH` and the project's variables: `TENBOX_ENV
 loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
 that session works and ends once no session is left or the sessions have been idle for
-`IDLE_MINUTES` (1; a plan that waits for approval). It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
+`IDLE_MINUTES` (1; a plan that waits for approval). Last it logs one line with what the
+container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s`, from
+`memory.peak` and `cpu.stat` of its cgroup; the peak counts the file cache too, so the real need
+is at most that. tenyard's resource classes come from these lines. It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
 
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
 reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
-`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, and posts the
+`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, with the resource
+class from `task/classes.yaml` (`plan` for `start` and `close`, `machine.class` of
+`tenbox.yaml` for `build`, default `build`), and posts the
 volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
 `tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
 the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer

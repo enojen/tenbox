@@ -18,7 +18,7 @@ import {
   sumCode,
   type TaskStats,
 } from "../../domain/stats.ts";
-import { checksFile, roundDir, roundsDir, statsFile } from "../../domain/taskDirs.ts";
+import { buildFile, checksFile, roundDir, roundsDir, statsFile } from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { claudeSessions } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
@@ -132,24 +132,39 @@ function readText(file: string | null): Promise<string | null> {
 
 function prMinutes(buildEnd: string | null, pr: PrTimes | null): PrMinutes {
   return {
-    review: durations.minutesBetween(buildEnd, pr?.createdAt ?? null),
+    review: nonNegative(durations.minutesBetween(buildEnd, pr?.createdAt ?? null)),
     wait_merge: durations.minutesBetween(pr?.createdAt ?? null, pr?.mergedAt ?? null),
   };
+}
+
+/** `tenbox build done` opens the PR inside the build run, so the PR can predate the run's end. */
+function nonNegative(minutes: number | null): number | null {
+  return minutes === null ? null : Math.max(0, minutes);
 }
 
 async function save(taskStats: TaskStats, dir: string): Promise<void> {
   await files.writeJson(statsFile(dir), taskStats);
 }
 
+/** The build rounds: a round whose `checks.json` is newer than `build.json` is a check run by hand after the build. */
 async function readRounds(dir: string): Promise<StatsRound[]> {
   const names = await files.list(roundsDir(dir));
+  const builtAt = await findMtime(buildFile(dir));
   const rounds: StatsRound[] = [];
   for (const number of roundNumbers(names)) {
     const file = checksFile(roundDir(dir, number));
+    const checkedAt = await findMtime(file);
+    if (builtAt !== null && checkedAt !== null && checkedAt > builtAt) continue;
     const text = await files.read(file);
     rounds.push({ number, checks_passed: text === null ? null : readCheckOk(text, file) });
   }
   return rounds;
+}
+
+async function findMtime(file: string): Promise<number | null> {
+  const exists = await files.exists(file);
+  if (!exists) return null;
+  return files.mtime(file);
 }
 
 async function readCode(input: StatsInput): Promise<StatsCode | null> {

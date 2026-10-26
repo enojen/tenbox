@@ -33,6 +33,9 @@ and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
 - Every CLI command prints JSON on stdout; human text goes to stderr.
 - Agent roles are Markdown with frontmatter in `agents/`; workflows are plain JavaScript
   in `workflows/`; check both against the current Claude Code docs, not memory.
+- `README.md` stays short: what Tenbox is, why, and how to start. A feature, a command or a
+  number goes to `docs/reference.md`, not to the README. If the README ever needs more, it gets
+  one "Commands" section with a line per command.
 - Do not commit unless asked.
 
 ## Glossary
@@ -92,6 +95,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
 | machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
+| resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to Linear (or none) (`Tracker`, `TrackerKind`). |
 
