@@ -6,8 +6,9 @@
 # variables from TENBOX_ENV (`machine.env` of tenbox.yaml as one JSON object). The command may
 # leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
 # lives while that session works and ends once no session is left or the sessions have been
-# idle for IDLE_MINUTES (a plan that waits for approval). Exits with the command's exit
-# code. The output is also in /var/log/tenbox-run.log.
+# idle for IDLE_MINUTES (a plan that waits for approval). Last it logs the peak RAM and the
+# CPU time of the container. Exits with the command's exit code. The output is also in
+# /var/log/tenbox-run.log.
 set -euo pipefail
 : "${TENBOX_TASK:?}" "${TENBOX_PROJECT:?}" "${TENBOX_REPO:?}" "${TENBOX_CMD:?}"
 : "${GITHUB_TOKEN:?}" "${CLAUDE_CREDENTIALS:?}"
@@ -103,6 +104,15 @@ wait_for_sessions() {
   done
 }
 
+# 8. What the box used, for the resource classes of tenyard: the peak RAM and the CPU time of
+#    its cgroup, from the boot to now.
+log_usage() {
+  local cgroup=/sys/fs/cgroup peak cpu
+  peak="$(cat "$cgroup/memory.peak" 2> /dev/null)" || { log "no memory.peak in $cgroup"; return; }
+  cpu="$(awk '$1 == "usage_usec" { print int($2 / 1000000) }' "$cgroup/cpu.stat")"
+  log "memory peak $((peak / 1048576)) MiB, cpu $cpu s"
+}
+
 log "image: $(cat /etc/tenbox-image.json)"
 prepare_home
 setup_claude
@@ -122,4 +132,5 @@ sudo -u tenbox -H env "${project_env[@]}" HOME="$home" PATH=/usr/local/bin:/usr/
 status="${PIPESTATUS[0]}"
 log "command ended with exit code $status"
 wait_for_sessions
+log_usage
 exit "$status"
