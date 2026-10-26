@@ -47,9 +47,12 @@ docker build machines/k8s --build-arg TENBOX_BRANCH=main --build-arg TENBOX_REF=
 The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TENBOX_PROJECT`,
 `TENBOX_REPO`, `TENBOX_CMD`) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
 `TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenbox`, then runs `TENBOX_CMD`
-in the foreground as `tenbox` in the project's main checkout. The command may leave a claude
-session behind (`tenbox start` and `tenbox build` do): the container then lives while that
-session works and ends once no session is left or the sessions have been idle for
+in the foreground as `tenbox` in the project's main checkout. `sudo` drops the rest of the env,
+so the command gets only `HOME`, `PATH` and the project's variables: `TENBOX_ENV` holds
+`machine.env` of `tenbox.yaml` as one JSON object, each key one variable; a key `HOME` or `PATH`
+loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
+claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
+that session works and ends once no session is left or the sessions have been idle for
 `IDLE_MINUTES` (1; a plan that waits for approval). It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
 
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It

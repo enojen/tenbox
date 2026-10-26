@@ -119,6 +119,28 @@ describe("names", () => {
   });
 });
 
+describe("machine.env", () => {
+  const load = (env: unknown) =>
+    mergeManifest([{ file: "tenbox.yaml", value: { machine: { env } } }]);
+  test("empty by default", () => {
+    expect(mergeManifest([]).machine.env).toEqual({});
+  });
+  test("a map of variable names to text", () => {
+    expect(load({ TEST_MAX_WORKERS: "1", _x: "a b" }).machine.env).toEqual({
+      TEST_MAX_WORKERS: "1",
+      _x: "a b",
+    });
+  });
+  test("a name a shell cannot set is an error", () => {
+    for (const name of ["1X", "A-B", "A B", ""]) {
+      expect(() => load({ [name]: "1" })).toThrow(/machine\.env/);
+    }
+  });
+  test("a value that is not text is an error", () => {
+    expect(() => load({ TEST_MAX_WORKERS: 1 })).toThrow(/machine\.env\.TEST_MAX_WORKERS/);
+  });
+});
+
 test("project name cannot leave the worktree root", () => {
   expect(() => mergeManifest([{ file: "tenbox.yaml", value: { project: "../x" } }])).toThrow(
     /project: letters, digits, _ and - only/,
