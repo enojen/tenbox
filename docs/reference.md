@@ -312,7 +312,7 @@ notify: { ntfy: "https://ntfy.example.com/my-private-topic" }   # optional; with
 names: { branch: "feat/{id}", session: "tenbox-{id}" }   # optional; these are the defaults; session is the claude -n name; an unknown key such as the old tmux is an error
 machine: { template: ~/tenyard/task }   # optional; the default; the directory of tenyard's job.yaml and pvc.yaml; another key is an error
 # machine: { env: { TEST_MAX_WORKERS: "1" } }   # optional; variables of the command in the box: shell names, text values
-# machine: { class: heavy }   # optional; the resource class of a build in the box, from tenyard's classes.yaml; default build
+# machine: { class: heavy }   # optional; the resource class of a build in the box: plan, build or heavy, with the numbers of tenyard's classes.yaml; default build; another name is an error
 ```
 
 **Notifications.** With `notify.ntfy` (a topic URL, `<server>/<topic>`) Tenbox publishes one text

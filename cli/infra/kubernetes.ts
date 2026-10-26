@@ -48,7 +48,7 @@ const ResourceClassSchema = z
 
 const ClassesSchema = z.record(z.string(), ResourceClassSchema);
 
-type ResourceClass = z.infer<typeof ResourceClassSchema>;
+type ClassResources = z.infer<typeof ResourceClassSchema>;
 
 /** One class of a classes file, by name. */
 interface ClassInput {
@@ -194,7 +194,7 @@ async function readTemplate(input: TemplateInput): Promise<KubeObject> {
   return fillObject(value, placeholders(fields));
 }
 
-async function readClass(input: ClassInput): Promise<ResourceClass> {
+async function readClass(input: ClassInput): Promise<ClassResources> {
   const { file, name } = input;
   const text = await files.read(file);
   if (text === null) throw templateError(file, "missing");

@@ -449,10 +449,11 @@ describe("machine", () => {
   });
 
   test("a class that classes.yaml does not have is a template error before any request", async () => {
-    await writeManifest(`machine: { template: ${template}, class: huge }\n`);
+    await files.write(path.join(template, "classes.yaml"), CLASSES.replace(/^heavy:.*\n/m, ""));
+    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
     const run = await build();
     expect([run.code, run.json.code]).toEqual([1, "template"]);
-    expect(String(run.json.error)).toContain('no class "huge"');
+    expect(String(run.json.error)).toContain('no class "heavy" (plan, build)');
     expect(api.calls).toEqual([]);
   });
 

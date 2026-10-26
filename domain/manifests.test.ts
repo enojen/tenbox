@@ -123,6 +123,8 @@ test("machine.class is build by default", () => {
   expect(mergeManifest([]).machine.class).toBe("build");
   const heavy = { file: "tenbox.yaml", value: { machine: { class: "heavy" } } };
   expect(mergeManifest([heavy]).machine.class).toBe("heavy");
+  const huge = { file: "tenbox.yaml", value: { machine: { class: "huge" } } };
+  expect(() => mergeManifest([huge])).toThrow(/machine\.class/);
 });
 
 describe("machine.env", () => {
