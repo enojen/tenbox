@@ -24,10 +24,6 @@ the build records that test and its failure as the part's proof. A reviewer mark
 behaviour without a proof as unproven. Checks compare against a baseline from `main`: a failure
 that was already there does not block the task, and a new one cannot hide.
 
-**Stats.** `tenbox close` writes `stats.json`. Its `rounds` are the build rounds: a `tenbox check`
-you run by hand after the build is not one. `minutes.review` is the time from the end of the last
-build run to the PR's creation, never below 0.
-
 ## Requirements
 
 Bun, git, the GitHub CLI (`gh`) and Claude Code, on macOS or Linux. A Linear or ClickUp
