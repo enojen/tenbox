@@ -1050,7 +1050,7 @@ describe("tenbox close build result, proofs and points", () => {
     const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000);
     const checks1 = path.join(dir, "rounds", "1", "checks.json");
     const checks2 = path.join(dir, "rounds", "2", "checks.json");
-    await files.writeJson(checks1, checkResult());
+    await files.writeJson(checks1, checkResult({}));
     await files.writeJson(checks2, checkResult({ round: 2 }));
     await writeBuild({});
     await utimes(checks1, at(100), at(100));
