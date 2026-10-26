@@ -61,7 +61,9 @@ is at most that. tenyard's resource classes come from these lines. It exits with
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
 reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
-`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, and posts the
+`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, with the resource
+class from `task/classes.yaml` (`plan` for `start` and `close`, `machine.class` of
+`tenbox.yaml` for `build`, default `build`), and posts the
 volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
 `tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
 the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer

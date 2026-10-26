@@ -33,10 +33,15 @@ metadata:
   labels: { app: tenyard, task: __TASK__ }
 spec:
   template:
+    metadata:
+      labels: { app: tenyard, task: __TASK__, class: __CLASS__ }
     spec:
       containers:
         - name: box
           image: __IMAGE__
+          resources:
+            requests: { cpu: __CPU__, memory: __MEMORY__ }
+            limits: { cpu: __CPU_LIMIT__, memory: __MEMORY__ }
           env:
             - { name: TENBOX_TASK, value: "__TASK__" }
             - { name: TENBOX_PROJECT, value: "__PROJECT__" }
@@ -52,6 +57,11 @@ spec:
       volumes:
         - name: home
           persistentVolumeClaim: { claimName: task-__NAME__ }
+`;
+
+const CLASSES = `plan: { cpu: 250m, cpu_limit: "2", memory: 1536Mi }
+build: { cpu: 500m, cpu_limit: "4", memory: 2Gi }
+heavy: { cpu: 500m, cpu_limit: "4", memory: 5Gi }
 `;
 
 const PVC_TEMPLATE = `apiVersion: v1
@@ -166,9 +176,11 @@ const JobBodySchema = z.object({
   metadata: z.object({ name: z.string(), labels: z.unknown() }),
   spec: z.object({
     template: z.object({
+      metadata: z.object({ labels: z.record(z.string(), z.string()) }),
       spec: z.object({
         containers: z.array(
           z.object({
+            resources: z.unknown(),
             env: z.array(
               z.object({
                 name: z.string(),
@@ -191,6 +203,20 @@ function jobEnv(call: ApiCall | undefined): Record<string, string> {
   return Object.fromEntries(
     entries.flatMap((e) => (e.value === undefined ? [] : [[e.name, e.value]])),
   );
+}
+
+/** The pod's class label and the resources of the box container in a posted Job. */
+function jobClass(call: ApiCall | undefined) {
+  const template = jobBody(call).spec.template;
+  return {
+    label: template.metadata.labels.class,
+    resources: template.spec.containers[0]?.resources,
+  };
+}
+
+/** The resources a class of `CLASSES` gives the box: the RAM request is its limit. */
+function classResources(cpu: string, cpuLimit: string, memory: string) {
+  return { requests: { cpu, memory }, limits: { cpu: cpuLimit, memory } };
 }
 
 /** The `valueFrom` of one env entry of the box container in a posted Job. */
@@ -244,6 +270,7 @@ describe("machine", () => {
     kubeFile = path.join(project.root, "kubeconfig");
     await files.write(path.join(template, "job.yaml"), JOB_TEMPLATE);
     await files.write(path.join(template, "pvc.yaml"), PVC_TEMPLATE);
+    await files.write(path.join(template, "classes.yaml"), CLASSES);
     await files.write(kubeFile, kubeconfig({ server: api.url, user: { token: TOKEN } }));
     await writeManifest(machineLine());
     await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
@@ -384,6 +411,62 @@ describe("machine", () => {
     expect(run.code).toBe(0);
     const job = posts().find((c) => c.path === JOBS_PATH);
     expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_MAX_WORKERS":"1","GREETING":"it's $(x)"}`);
+  });
+
+  test.each([
+    ["start", ["tenbox", "start", "TEN-1"]],
+    ["close", ["tenbox", "close", "TEN-1"]],
+  ])("%s runs in the plan class", async (_name, words) => {
+    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
+    const run = await machine(["run", "TEN-1", "--", ...words]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobClass(job)).toEqual({
+      label: "plan",
+      resources: classResources("250m", "2", "1536Mi"),
+    });
+  });
+
+  test("a build runs in the build class by default", async () => {
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobClass(job)).toEqual({
+      label: "build",
+      resources: classResources("500m", "4", "2Gi"),
+    });
+  });
+
+  test("a build runs in the class of machine.class", async () => {
+    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobClass(job)).toEqual({
+      label: "heavy",
+      resources: classResources("500m", "4", "5Gi"),
+    });
+  });
+
+  test("a class that classes.yaml does not have is a template error before any request", async () => {
+    await writeManifest(`machine: { template: ${template}, class: huge }\n`);
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "template"]);
+    expect(String(run.json.error)).toContain('no class "huge"');
+    expect(api.calls).toEqual([]);
+  });
+
+  test.each([
+    ["missing", null],
+    ["a class without memory", `build: { cpu: 500m, cpu_limit: "4" }\n`],
+  ])("a classes.yaml that is %s is a template error before any request", async (_name, text) => {
+    const file = path.join(template, "classes.yaml");
+    if (text === null) await files.remove(file);
+    else await files.write(file, text);
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "template"]);
+    expect(String(run.json.error)).toContain("classes.yaml");
+    expect(api.calls).toEqual([]);
   });
 
   test("close --force reaches TENBOX_CMD", async () => {

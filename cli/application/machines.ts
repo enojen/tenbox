@@ -19,6 +19,9 @@ import { projects } from "./projects.ts";
 const MACHINE_COMMANDS = ["start", "build", "close"] as const;
 type MachineCommand = (typeof MACHINE_COMMANDS)[number];
 
+/** `start` and `close` plan and clean up; only a build runs the project's tests. */
+const LIGHT_CLASS = "plan";
+
 /** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
 const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
 /** The label of every Job and volume of tenyard. */
@@ -55,6 +58,7 @@ export const machines = { run, list };
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
   id: TaskId;
+  cmd: MachineCommand;
   words: string[];
   project: Project;
   projectId: ProjectId;
@@ -72,7 +76,7 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const { project, manifest } = await projects.get(env().cwd);
   const projectId = manifest.id;
   if (projectId === undefined) throw noProjectIdError(project.mainDir);
-  const url = await runJob({ id, words, project, projectId, manifest });
+  const url = await runJob({ id, cmd, words, project, projectId, manifest });
   return { task: id, cmd, url };
 }
 
@@ -146,6 +150,9 @@ function projectSecretValues(manifest: Manifest): Record<string, string> {
 async function templateFields(command: CommandRun): Promise<TemplateFields> {
   const { id, words, project, projectId, manifest } = command;
   const repo = await originUrl(project);
+  const name = className(command);
+  const file = path.join(homePath(manifest.machine.template), "classes.yaml");
+  const resources = await kubernetes.readClass({ file, name });
   return {
     name: id.toLowerCase().replaceAll("_", "-"),
     task: id,
@@ -156,7 +163,16 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
     env: JSON.stringify(manifest.machine.env),
+    class: name,
+    cpu: resources.cpu,
+    cpuLimit: resources.cpu_limit,
+    memory: resources.memory,
   };
+}
+
+function className(command: CommandRun): string {
+  if (command.cmd === "build") return command.manifest.machine.class;
+  return LIGHT_CLASS;
 }
 
 /** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */

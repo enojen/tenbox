@@ -101,6 +101,9 @@ const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
 /** The tenyard directory with `job.yaml` and `pvc.yaml`; `~/` is the home directory. */
 const DEFAULT_TEMPLATE = "~/tenyard/task";
 
+/** The resource class of a build when the project names none; tenyard `task/classes.yaml`. */
+const DEFAULT_CLASS = "build";
+
 /** A name the box's `env` can set: a shell variable name. */
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -108,6 +111,7 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MachineSchema = z
   .object({
     template: z.string().min(1).default(DEFAULT_TEMPLATE),
+    class: z.string().min(1).default(DEFAULT_CLASS),
     env: z.record(z.string().regex(ENV_NAME), z.string()).default({}),
   })
   .strict();
