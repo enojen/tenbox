@@ -33,6 +33,9 @@ and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
 - Every CLI command prints JSON on stdout; human text goes to stderr.
 - Agent roles are Markdown with frontmatter in `agents/`; workflows are plain JavaScript
   in `workflows/`; check both against the current Claude Code docs, not memory.
+- `README.md` stays short: what Tenbox is, why, and how to start. A feature, a command or a
+  number goes to `docs/reference.md`, not to the README. If the README ever needs more, it gets
+  one "Commands" section with a line per command.
 - Do not commit unless asked.
 
 ## Glossary
