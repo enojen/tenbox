@@ -19,7 +19,8 @@ tracker:
 notify:
   ntfy: "https://ntfy.sh/SECRET-NTFY"
 YAML
-  # kubectl logs argv to argv.log; `create` also logs the secret and the content of its files.
+  # kubectl logs argv to argv.log; `create` also logs the secret and the content of its files,
+  # each newline as `~`, so a trailing newline in a value shows.
   cat > "$root/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
 echo "kubectl $*" >> "$STUB_DIR/argv.log"
@@ -29,7 +30,7 @@ echo "kubectl $*" >> "$STUB_DIR/argv.log"
 if [ "$3" = create ]; then
   name="$6"
   for a in "$@"; do
-    case "$a" in --from-file=*) kv="${a#--from-file=}"; echo "$name ${kv%%=*}=$(cat "${kv#*=}")" >> "$STUB_DIR/secrets.log" ;; esac
+    case "$a" in --from-file=*) kv="${a#--from-file=}"; echo "$name ${kv%%=*}=$(tr '\n' '~' < "${kv#*=}")" >> "$STUB_DIR/secrets.log" ;; esac
   done
 else cat > /dev/null; fi
 STUB
@@ -43,7 +44,7 @@ run() { bash "$root/repo/machines/login/tenbox-login-sync.sh" > "$root/out.log" 
 setup; run; code=$?
 check "exit 0 on success" '[ "$code" = 0 ]'
 check "claude-credentials gets the login" 'grep -q "^claude-credentials credentials.json=.*SECRET-LOGIN" "$root/secrets.log"'
-check "github-token gets the token" 'grep -qx "github-token token=SECRET-GHTOKEN" "$root/secrets.log"'
+check "github-token gets the token without its trailing newline" 'grep -qx "github-token token=SECRET-GHTOKEN" "$root/secrets.log"'
 check "tracker gets api_key" 'grep -qx "tracker api_key=SECRET-TRACKER" "$root/secrets.log"'
 check "ntfy gets url" 'grep -qx "ntfy url=https://ntfy.sh/SECRET-NTFY" "$root/secrets.log"'
 check "every kubectl call uses namespace tenbox" '! grep "^kubectl " "$root/argv.log" | grep -qv "^kubectl -n tenbox "'
