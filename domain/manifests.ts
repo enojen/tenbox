@@ -101,8 +101,16 @@ const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
 /** The tenyard directory with `job.yaml` and `pvc.yaml`; `~/` is the home directory. */
 const DEFAULT_TEMPLATE = "~/tenyard/task";
 
-/** Where `tenbox machine run` finds the Job templates. */
-const MachineSchema = z.object({ template: z.string().min(1).default(DEFAULT_TEMPLATE) }).strict();
+/** A name the box's `env` can set: a shell variable name. */
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Where `tenbox machine run` finds the Job templates, and the variables of the command in the box. */
+const MachineSchema = z
+  .object({
+    template: z.string().min(1).default(DEFAULT_TEMPLATE),
+    env: z.record(z.string().regex(ENV_NAME), z.string()).default({}),
+  })
+  .strict();
 
 /** `tenbox.yaml`, phase 1 subset. Keys of later phases are dropped until `tenbox validate`. */
 const ManifestSchema = z.object({
