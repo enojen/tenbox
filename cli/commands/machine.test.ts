@@ -90,7 +90,6 @@ interface FakeApi {
   calls: ApiCall[];
   /** The answer status of the PVC POST. */
   pvcStatus: number;
-  /** The answer status of the Secret POST. */
   secretStatus: number;
   /** The items of every Job list. */
   jobs: unknown[];
