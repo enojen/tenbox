@@ -21,7 +21,6 @@ write_secrets() {
   [ -s "$config/github-token" ] || { echo "no token at $config/github-token" >&2; return 1; }
   apply_secret claude-credentials --from-file=credentials.json="$file" || return 1
   echo "secret claude-credentials written"
-  # A newline at the end would stay in the env of the box and break the Authorization header.
   tr -d '[:space:]' < "$config/github-token" > "$tmp/token"
   apply_secret github-token --from-file=token="$tmp/token" || return 1
   echo "secret github-token written"
@@ -40,8 +39,7 @@ write_secrets() {
 
 umask 077
 [ -s "$file" ] || { echo "no login at $file" >&2; exit 1; }
-# The temp dir holds the token, the tracker key and the ntfy URL: gone on exit, also on a stop
-# of the service.
+# The temp dir holds the secret values: gone on exit, also on a stop of the service.
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' TERM INT
