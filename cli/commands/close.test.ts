@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, rm } from "node:fs/promises";
+import { chmod, rm, utimes } from "node:fs/promises";
 import path from "node:path";
 import { taskId } from "../../domain/ids.ts";
 import { taskDir } from "../../domain/taskDirs.ts";
@@ -284,6 +284,27 @@ describe("tenbox close", () => {
       expect(written.runs).toMatchObject([{ workflow: "tenbox-build", finished: true }]);
       expect(written.minutes).toMatchObject({ review: 10, wait_merge: 20 });
       expect(written.minutes).not.toHaveProperty("human_review");
+    });
+
+    test("a PR created before the build run ends gives review 0, not a negative number", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const rawHead = await git.run(["rev-parse", "HEAD"], taskWorktree);
+      const buildStart = Date.now();
+      await writeRun({
+        name: "wf_build",
+        workflow: "tenbox-build",
+        startMs: buildStart,
+        minutes: 3,
+      });
+      const buildEnd = buildStart + 3 * MS_PER_MINUTE;
+      const created = new Date(buildEnd - 6_000).toISOString();
+      const merged = new Date(buildEnd + 30 * MS_PER_MINUTE).toISOString();
+      const json = `{"state":"MERGED","headRefOid":"${rawHead.trim()}","createdAt":"${created}","mergedAt":"${merged}"}`;
+      const bin = await ghPath(`case "$1" in\n  pr) echo '${json}';;\n  api) echo 1;;\nesac`);
+      await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const written = JSON.parse(await readStatsText());
+      expect(written.minutes.review).toBe(0);
     });
 
     test("without a PR review and wait_merge are null", async () => {
@@ -1021,6 +1042,23 @@ describe("tenbox close build result, proofs and points", () => {
     const text = await readStatsText();
     expect(JSON.parse(text).review).toEqual({ must_fix: 0, nice_to_have: 3, attention: 2 });
     expect(text).not.toContain(MARKER);
+  });
+
+  test("a round whose checks.json is newer than build.json is not in rounds", async () => {
+    await setup();
+    const dir = path.join(taskWorktree, ".tenbox");
+    const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000);
+    const checks1 = path.join(dir, "rounds", "1", "checks.json");
+    const checks2 = path.join(dir, "rounds", "2", "checks.json");
+    await files.writeJson(checks1, checkResult());
+    await files.writeJson(checks2, checkResult({ round: 2 }));
+    await writeBuild({});
+    await utimes(checks1, at(100), at(100));
+    await utimes(path.join(dir, "build.json"), at(50), at(50));
+    await utimes(checks2, at(10), at(10));
+    await closeT1();
+    const written = await proofsOf();
+    expect(written.rounds).toEqual([{ number: 1, checks_passed: true }]);
   });
 
   test("review must_fix is null for a build result that is not ready-for-you", async () => {
