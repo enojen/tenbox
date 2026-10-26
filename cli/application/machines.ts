@@ -1,4 +1,5 @@
 import path from "node:path";
+import { COMMAND } from "../../domain/commands.ts";
 import {
   loginExpiredError,
   machineBusyError,
@@ -36,9 +37,8 @@ import { pollUntil } from "../infra/poll.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
-const MACHINE_COMMAND = { start: "start", build: "build", close: "close" } as const;
-type MachineCommand = (typeof MACHINE_COMMAND)[keyof typeof MACHINE_COMMAND];
-const MACHINE_COMMANDS = Object.values(MACHINE_COMMAND);
+const MACHINE_COMMANDS = [COMMAND.start, COMMAND.build, COMMAND.close] as const;
+type MachineCommand = (typeof MACHINE_COMMANDS)[number];
 
 /** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
 const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
@@ -211,10 +211,10 @@ function parseCommand(input: MachineRunInput): MachineCommand {
 function flagsFit(command: MachineCommand, flags: string[]): boolean {
   const [flag, value, ...rest] = flags;
   if (flag === undefined) return true;
-  if (command === MACHINE_COMMAND.start) {
+  if (command === COMMAND.start) {
     return flag === "--title" && value !== undefined && rest.length === 0;
   }
-  if (command === MACHINE_COMMAND.close) return flag === "--force" && value === undefined;
+  if (command === COMMAND.close) return flag === "--force" && value === undefined;
   return false;
 }
 
@@ -291,7 +291,7 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
 
 /** `start` and `close` plan and clean up; only a build runs the project's tests. */
 function resourceClass(command: CommandRun): ResourceClass {
-  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.class;
+  if (command.cmd === COMMAND.build) return command.manifest.machine.class;
   return RESOURCE_CLASS.plan;
 }
 
@@ -301,7 +301,7 @@ async function activeJobs(cluster: Cluster, id: TaskId): Promise<string[]> {
 }
 
 function serviceNames(command: CommandRun): string[] {
-  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.services;
+  if (command.cmd === COMMAND.build) return command.manifest.machine.services;
   return [];
 }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import type { ParseArgsOptionsConfig } from "node:util";
+import { COMMAND, COMMAND_NAMES, type CommandName } from "../domain/commands.ts";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { TASK_KINDS, type TaskKind } from "../domain/kinds.ts";
@@ -103,8 +104,8 @@ const STOP_SIGNALS = [
   ["SIGTERM", SIGTERM_EXIT_CODE],
 ] as const;
 
-const COMMANDS: Record<string, Command> = {
-  start: {
+const COMMANDS: Record<CommandName, Command> = {
+  [COMMAND.start]: {
     usage: START_USAGE,
     options: {
       title: { type: "string" },
@@ -123,7 +124,7 @@ const COMMANDS: Record<string, Command> = {
         claude: flagValue(values, "claude"),
       }),
   },
-  check: {
+  [COMMAND.check]: {
     usage: CHECK_USAGE,
     options: {
       group: { type: "string" },
@@ -143,7 +144,7 @@ const COMMANDS: Record<string, Command> = {
           (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * durations.MS_PER_SECOND,
       }),
   },
-  worktree: {
+  [COMMAND.worktree]: {
     usage: WORKTREE_USAGE,
     options: { group: { type: "string" } },
     run: (positionals, values) => {
@@ -152,7 +153,7 @@ const COMMANDS: Record<string, Command> = {
       return ensureGroupWorktree({ id: idArg(positionals, WORKTREE_USAGE), group });
     },
   },
-  "merge-check": {
+  [COMMAND.mergeCheck]: {
     usage: MERGE_CHECK_USAGE,
     options: { base: { type: "string" } },
     run: (_positionals, values) =>
@@ -161,13 +162,13 @@ const COMMANDS: Record<string, Command> = {
         timeoutMs: DEFAULT_TIMEOUT_SECONDS * durations.MS_PER_SECOND,
       }),
   },
-  close: {
+  [COMMAND.close]: {
     usage: CLOSE_USAGE,
     options: { force: { type: "boolean", default: false } },
     run: (positionals, values) =>
       closeTask({ id: idArg(positionals, CLOSE_USAGE), force: flagValue(values, "force") }),
   },
-  pr: {
+  [COMMAND.pr]: {
     usage: PR_USAGE,
     options: {
       ready: { type: "boolean", default: false },
@@ -182,7 +183,7 @@ const COMMANDS: Record<string, Command> = {
         wait: flagValue(values, "wait"),
       }),
   },
-  part: {
+  [COMMAND.part]: {
     usage: PART_USAGE,
     options: {
       part: { type: "string" },
@@ -203,7 +204,7 @@ const COMMANDS: Record<string, Command> = {
       });
     },
   },
-  proof: {
+  [COMMAND.proof]: {
     usage: PROOF_USAGE,
     options: {
       part: { type: "string" },
@@ -220,7 +221,7 @@ const COMMANDS: Record<string, Command> = {
         failure: stringValue(values, "failure"),
       }),
   },
-  decide: {
+  [COMMAND.decide]: {
     usage: DECIDE_USAGE,
     options: { json: { type: "string" }, build: { type: "boolean", default: true } },
     run: (positionals, values) => {
@@ -230,7 +231,7 @@ const COMMANDS: Record<string, Command> = {
       return decide({ id: idArg(positionals, DECIDE_USAGE), json, build });
     },
   },
-  plan: {
+  [COMMAND.plan]: {
     usage: `${PLAN_USAGE} | ${PLAN_SHOW_USAGE}`,
     options: { json: { type: "string" } },
     run: (positionals, values) => {
@@ -241,7 +242,7 @@ const COMMANDS: Record<string, Command> = {
       return planDone({ id: idArg(rest, PLAN_USAGE), json });
     },
   },
-  build: {
+  [COMMAND.build]: {
     usage: `${BUILD_USAGE} | ${BUILD_DONE_USAGE}`,
     options: { json: { type: "string" } },
     run: (positionals, values) => {
@@ -252,12 +253,12 @@ const COMMANDS: Record<string, Command> = {
       return buildDone({ id: idArg(rest, BUILD_DONE_USAGE), json });
     },
   },
-  attach: {
+  [COMMAND.attach]: {
     usage: ATTACH_USAGE,
     options: {},
     run: (positionals) => attachTask(idArg(positionals, ATTACH_USAGE)),
   },
-  hook: {
+  [COMMAND.hook]: {
     usage: HOOK_USAGE,
     options: {},
     run: (positionals) => {
@@ -266,7 +267,7 @@ const COMMANDS: Record<string, Command> = {
       return blockedHook(idArg(rest, HOOK_USAGE));
     },
   },
-  wait: {
+  [COMMAND.wait]: {
     usage: WAIT_USAGE,
     options: {
       for: { type: "string" },
@@ -282,7 +283,7 @@ const COMMANDS: Record<string, Command> = {
       });
     },
   },
-  answer: {
+  [COMMAND.answer]: {
     usage: ANSWER_USAGE,
     options: { auto: { type: "boolean", default: false } },
     run: (positionals, values) => {
@@ -294,32 +295,32 @@ const COMMANDS: Record<string, Command> = {
       return answerCard({ id, option: Number(option) });
     },
   },
-  approve: {
+  [COMMAND.approve]: {
     usage: APPROVE_USAGE,
     options: {},
     run: (positionals) => approveTask(idArg(positionals, APPROVE_USAGE)),
   },
-  approved: {
+  [COMMAND.approved]: {
     usage: APPROVED_USAGE,
     options: {},
     run: (positionals) => checkApproved(idArg(positionals, APPROVED_USAGE)),
   },
-  stats: {
+  [COMMAND.stats]: {
     usage: STATS_USAGE,
     options: {},
     run: (positionals) => showStats(idArg(positionals, STATS_USAGE)),
   },
-  status: {
+  [COMMAND.status]: {
     usage: STATUS_USAGE,
     options: {},
     run: (positionals) => showStatus(idArg(positionals, STATUS_USAGE)),
   },
-  list: {
+  [COMMAND.list]: {
     usage: LIST_USAGE,
     options: {},
     run: () => listTasks(),
   },
-  machine: {
+  [COMMAND.machine]: {
     usage: MACHINE_USAGE,
     options: { follow: { type: "boolean", default: false } },
     run: (positionals, values) => {
@@ -340,7 +341,7 @@ const COMMANDS: Record<string, Command> = {
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
     },
   },
-  task: {
+  [COMMAND.task]: {
     usage: TASK_NEW_USAGE,
     options: DRAFT_OPTIONS,
     run: (positionals, values) => {
@@ -350,7 +351,7 @@ const COMMANDS: Record<string, Command> = {
       return newTask(draftValues(values));
     },
   },
-  report: {
+  [COMMAND.report]: {
     usage: REPORT_USAGE,
     options: { ...DRAFT_OPTIONS, repo: { type: "string", default: "tenbox" } },
     run: (positionals, values) => {
@@ -358,7 +359,7 @@ const COMMANDS: Record<string, Command> = {
       return report({ ...draftValues(values), repo: repoValue(values) });
     },
   },
-  install: {
+  [COMMAND.install]: {
     usage: "tenbox install",
     options: {},
     run: () => install(),
@@ -374,8 +375,9 @@ async function main(argv: string[]): Promise<void> {
     printHelp();
     return;
   }
-  const command = COMMANDS[name];
-  if (!command) throw usageError(`unknown command: ${name}`);
+  const commandName = COMMAND_NAMES.find((c) => c === name);
+  if (commandName === undefined) throw usageError(`unknown command: ${name}`);
+  const command = COMMANDS[commandName];
   const parsed = parseCommandArgs(command, rest);
   const result = await command.run(parsed.positionals, parsed.values);
   emit(result);
