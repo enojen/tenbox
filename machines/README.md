@@ -11,14 +11,13 @@ Remote Control needs a claude.ai login; `claude setup-token` runs the model but 
 Control refuses it, and a copy of `~/.claude/.credentials.json` works. `machines/login/install.sh`
 installs a systemd user path unit on your computer that writes the file to the Secrets of the
 box whenever it changes, and once right away; `/login` on your computer is all a new account
-needs. It writes four Secrets in namespace `tenbox` of the cluster (`KUBECONFIG` from the env,
+needs. It writes two Secrets in namespace `tenbox` of the cluster (`KUBECONFIG` from the env,
 else `~/.kube/tenyard.yaml`; the API is open from the home IP only): `claude-credentials` key
-`credentials.json` from `~/.claude/.credentials.json`, `github-token` key `token` from
-`~/.config/tenbox/github-token`, `tracker` key `api_key` from `tracker.api_key` and `ntfy` key
-`url` from `notify.ntfy` of `tenbox.local.yaml` of this repository (the last two are skipped
-when empty, and when the file is missing one stderr line says so). It exits 1 when a Secret
-could not be written. A change of the token or `tenbox.local.yaml` needs
-`systemctl --user start tenbox-login-sync.service`; the path unit watches only the login.
+`credentials.json` from `~/.claude/.credentials.json`, and `github-token` key `token` from
+`~/.config/tenbox/github-token` without whitespace. It exits 1 when a Secret could not be
+written. A change of the token needs `systemctl --user start tenbox-login-sync.service`; the
+path unit watches only the login. The tracker key and the ntfy URL differ per project, so
+`tenbox machine run` writes them (below).
 Every Job reads the Secrets of the moment, so `tenbox machine run` refuses before the cluster
 when the refresh token in `~/.claude/.credentials.json` has expired ("run /login on your
 computer"). The access token lives hours and the refresh token days.
@@ -58,6 +57,10 @@ reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
 `machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, and posts the
 volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
-`tenbox` with `fetch`. It refuses with `machine-busy` while a Job of the task is active and
+`tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
+the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer
+uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API_KEY` or
+`CLICKUP_API_KEY`), and `ntfy_url` from `notify.ntfy`. A project without an `id` in its
+`tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
 does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
 volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.

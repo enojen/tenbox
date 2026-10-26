@@ -14,6 +14,10 @@ const HTTP_CONFLICT = 409;
 const TOKEN = "SECRET-TOKEN";
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
+const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
+const PROJECT_SECRET = "project-k7f3qa";
+const TRACKER_KEY = "SECRET-TRACKER-KEY";
+const NTFY_URL = "https://ntfy.sh/secret-topic";
 const JOB_NAME = /^task-ten-1-\d{4}-\d{6}$/;
 const CREATED = "2026-10-21T10:00:00Z";
 
@@ -40,6 +44,8 @@ spec:
             - name: TENBOX_CMD
               value: |-
                 __CMD__
+            - name: TRACKER_API_KEY
+              valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: tracker_api_key } }
       volumes:
         - name: home
           persistentVolumeClaim: { claimName: task-__NAME__ }
@@ -55,7 +61,8 @@ metadata:
 beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n" });
   claudeDir = path.join(project.root, "claude");
-  env = { CLAUDE_CONFIG_DIR: claudeDir };
+  // The tracker keys of the shell that runs the tests must not reach the Secret.
+  env = { CLAUDE_CONFIG_DIR: claudeDir, CLICKUP_API_KEY: "", LINEAR_API_KEY: "" };
 });
 
 afterEach(() => project.remove());
@@ -83,13 +90,21 @@ interface FakeApi {
   calls: ApiCall[];
   /** The answer status of the PVC POST. */
   pvcStatus: number;
+  secretStatus: number;
   /** The items of every Job list. */
   jobs: unknown[];
   stop(): void;
 }
 
 function startFakeApi(): FakeApi {
-  const api: FakeApi = { url: "", calls: [], pvcStatus: HTTP_CREATED, jobs: [], stop: () => {} };
+  const api: FakeApi = {
+    url: "",
+    calls: [],
+    pvcStatus: HTTP_CREATED,
+    secretStatus: HTTP_CREATED,
+    jobs: [],
+    stop: () => {},
+  };
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -100,6 +115,7 @@ function startFakeApi(): FakeApi {
       api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
       if (request.method === "GET") return Response.json({ items: api.jobs });
       if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
+      if (url.pathname === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
       return Response.json(body, { status: HTTP_CREATED });
     },
   });
@@ -109,7 +125,7 @@ function startFakeApi(): FakeApi {
 }
 
 const readBody = (request: Request): Promise<unknown> =>
-  request.method === "POST" ? request.json() : Promise.resolve(null);
+  request.method === "GET" ? Promise.resolve(null) : request.json();
 
 const base64 = (text: string) => Buffer.from(text).toString("base64");
 
@@ -149,7 +165,15 @@ const JobBodySchema = z.object({
     template: z.object({
       spec: z.object({
         containers: z.array(
-          z.object({ env: z.array(z.object({ name: z.string(), value: z.string() })) }),
+          z.object({
+            env: z.array(
+              z.object({
+                name: z.string(),
+                value: z.string().optional(),
+                valueFrom: z.unknown().optional(),
+              }),
+            ),
+          }),
         ),
       }),
     }),
@@ -158,11 +182,27 @@ const JobBodySchema = z.object({
 
 const jobBody = (call: ApiCall | undefined) => JobBodySchema.parse(call?.body);
 
-/** The env of the box container in a posted Job. */
+/** The env of the box container in a posted Job: the values, without the Secret refs. */
 function jobEnv(call: ApiCall | undefined): Record<string, string> {
   const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
-  return Object.fromEntries(entries.map((e) => [e.name, e.value]));
+  return Object.fromEntries(
+    entries.flatMap((e) => (e.value === undefined ? [] : [[e.name, e.value]])),
+  );
 }
+
+/** The `valueFrom` of one env entry of the box container in a posted Job. */
+function jobValueFrom(call: ApiCall | undefined, name: string): unknown {
+  const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
+  return entries.find((e) => e.name === name)?.valueFrom;
+}
+
+/** A Secret body, as far as the tests read it. */
+const SecretBodySchema = z.object({
+  metadata: z.object({ name: z.string() }),
+  stringData: z.record(z.string(), z.string()),
+});
+
+const secretBody = (call: ApiCall | undefined) => SecretBodySchema.parse(call?.body);
 
 interface FakeJobInput {
   name: string;
@@ -183,8 +223,13 @@ describe("machine", () => {
   let template: string;
   let kubeFile: string;
 
-  const writeManifest = (machineLine: string) =>
-    files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\n${machineLine}`);
+  const writeManifest = (lines: string) =>
+    files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\nid: k7f3qa\n${lines}`);
+
+  const machineLine = () => `machine: { template: ${template} }\n`;
+
+  const writeLocal = (text: string) =>
+    files.write(path.join(project.mainDir, "tenbox.local.yaml"), text);
 
   const build = () => machine(["run", "TEN-1", "--", "tenbox", "build", "TEN-1"]);
 
@@ -197,7 +242,7 @@ describe("machine", () => {
     await files.write(path.join(template, "job.yaml"), JOB_TEMPLATE);
     await files.write(path.join(template, "pvc.yaml"), PVC_TEMPLATE);
     await files.write(kubeFile, kubeconfig({ server: api.url, user: { token: TOKEN } }));
-    await writeManifest(`machine: { template: ${template} }\n`);
+    await writeManifest(machineLine());
     await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
     await writeLogin(Date.now() + DAY_MS);
     env.KUBECONFIG = kubeFile;
@@ -205,11 +250,11 @@ describe("machine", () => {
 
   afterEach(() => api.stop());
 
-  test("machine run on k8s posts the PVC and the Job", async () => {
+  test("machine run on k8s posts the project Secret, the PVC and the Job", async () => {
     const run = await build();
     expect(run.code).toBe(0);
-    expect(posts().map((c) => c.path)).toEqual([PVCS_PATH, JOBS_PATH]);
-    const [pvc, job] = posts();
+    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
+    const [, pvc, job] = posts();
     expect(pvc?.body).toMatchObject({
       metadata: { name: "task-ten-1", labels: { task: "TEN-1" } },
     });
@@ -222,7 +267,10 @@ describe("machine", () => {
       TENBOX_REPO: "https://github.com/o/demo.git",
       TENBOX_CMD: "tenbox build TEN-1",
     });
-    expect(posts().map((c) => c.auth)).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`]);
+    expect(jobValueFrom(job, "TRACKER_API_KEY")).toEqual({
+      secretKeyRef: { name: PROJECT_SECRET, key: "tracker_api_key" },
+    });
+    expect(posts().map((c) => c.auth)).toEqual(Array(3).fill(`Bearer ${TOKEN}`));
     expect(run.json).toEqual({
       ok: true,
       task: "TEN-1",
@@ -236,7 +284,57 @@ describe("machine", () => {
     api.pvcStatus = HTTP_CONFLICT;
     const run = await build();
     expect([run.code, run.json.ok]).toEqual([0, true]);
-    expect(posts().map((c) => c.path)).toEqual([PVCS_PATH, JOBS_PATH]);
+    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
+  });
+
+  test("the project Secret holds the tracker key and the ntfy URL of the local manifest", async () => {
+    await writeManifest(`${machineLine()}tracker: { kind: linear }\n`);
+    await writeLocal(`tracker:\n  api_key: "${TRACKER_KEY}"\nnotify:\n  ntfy: "${NTFY_URL}"\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    const secret = secretBody(posts()[0]);
+    expect(secret.metadata.name).toBe(PROJECT_SECRET);
+    expect(secret.stringData).toEqual({ tracker_api_key: TRACKER_KEY, ntfy_url: NTFY_URL });
+    expect(run.out).not.toContain(TRACKER_KEY);
+  });
+
+  test("without a key in the manifest the Secret takes the tracker's env variable", async () => {
+    await writeManifest(`${machineLine()}tracker: { kind: clickup }\n`);
+    env.CLICKUP_API_KEY = TRACKER_KEY;
+    env.LINEAR_API_KEY = "SECRET-OTHER-TRACKER";
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(secretBody(posts()[0]).stringData).toEqual({ tracker_api_key: TRACKER_KEY });
+  });
+
+  test("a project with no tracker and no ntfy gets an empty Secret, no key of the shell", async () => {
+    env.LINEAR_API_KEY = TRACKER_KEY;
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(secretBody(posts()[0]).stringData).toEqual({});
+  });
+
+  test("an existing project Secret is replaced", async () => {
+    api.secretStatus = HTTP_CONFLICT;
+    await writeLocal(`notify:\n  ntfy: "${NTFY_URL}"\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    const writes = api.calls.filter((c) => c.method !== "GET");
+    expect(writes.map((c) => [c.method, c.path])).toEqual([
+      ["POST", SECRETS_PATH],
+      ["PUT", `${SECRETS_PATH}/${PROJECT_SECRET}`],
+      ["POST", PVCS_PATH],
+      ["POST", JOBS_PATH],
+    ]);
+    expect(secretBody(writes[1]).stringData).toEqual({ ntfy_url: NTFY_URL });
+  });
+
+  test("a project without an id is no-project-id before any request", async () => {
+    await files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\n${machineLine()}`);
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "no-project-id"]);
+    expect(String(run.json.error)).toContain("tenbox.yaml");
+    expect(api.calls).toEqual([]);
   });
 
   test("machine run without a kubeconfig fails before any request", async () => {
@@ -372,7 +470,7 @@ describe("machine", () => {
     await files.write(kubeFile, kubeconfig({ server: api.url, user }));
     const run = await build();
     expect(run.code).toBe(0);
-    expect(api.calls.map((c) => c.auth)).toEqual([null, null, null]);
+    expect(api.calls.map((c) => c.auth)).toEqual([null, null, null, null]);
     expect(run.out).not.toContain(base64("KEY"));
   });
 });
