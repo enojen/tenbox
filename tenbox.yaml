@@ -8,5 +8,5 @@ checks:
   lint: bunx biome check --formatter-enabled=false cli domain server rules
   unused: bunx knip
 
-tracker: { kind: linear }
+tracker: { kind: github }
 id: xathah

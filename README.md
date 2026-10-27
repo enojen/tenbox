@@ -26,8 +26,8 @@ that was already there does not block the task, and a new one cannot hide.
 
 ## Requirements
 
-Bun, git, the GitHub CLI (`gh`) and Claude Code, on macOS or Linux. A Linear or ClickUp
-tracker is optional.
+Bun, git, the GitHub CLI (`gh`) and Claude Code, on macOS or Linux. A tracker (GitHub Issues,
+Linear or ClickUp) is optional.
 
 ## Install
 
