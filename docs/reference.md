@@ -320,7 +320,7 @@ checks:                          # name: command; tenbox check runs them all (th
 #   full: { e2e: bun test e2e }  # a name in both tiers is an error
 model: sonnet                    # optional: the --model of the task's claude session; default sonnet
 failure_pattern: "..."           # optional: a regex for a failure line; the default knows bun, vitest, jest and tsc
-tracker: { kind: linear }        # none (default), linear or clickup; api_key here or LINEAR_API_KEY / CLICKUP_API_KEY
+tracker: { kind: linear }        # none (default), linear, clickup or github; api_key here or LINEAR_API_KEY / CLICKUP_API_KEY
 # tracker: { kind: clickup, statuses: { in_progress: "doing", done: "complete" } }   # optional status names
 notify: { ntfy: "https://ntfy.example.com/my-private-topic" }   # optional; without it nothing is sent
 names: { branch: "feat/{id}", session: "tenbox-{id}" }   # optional; these are the defaults; session is the claude -n name; an unknown key such as the old tmux is an error
@@ -367,10 +367,16 @@ one named "done" (ignoring case). A project can name them with `tracker.statuses
 (`in_progress`, `done`). A name the list lacks is an error that lists the list's statuses and
 shows the setting. `tenbox start` and `tenbox close` print the real status name in `status`
 (or `skipped`, or `failed: <reason>`).
+`github`: the issues of the repository of the current directory, through `gh` and its login;
+no key. The task id is the issue number (`tenbox start 23`, branch `feat/23` unless
+`names.branch` says otherwise). In progress leaves the issue open and `status` shows `OPEN`;
+done closes it and shows `CLOSED` (an issue the merged PR closed already is not an error). A
+`gh` failure, such as an unknown number or no login, fails the command with `tracker` and
+gh's message.
 
 The `Tracker` port has `comments`: `tenbox start` appends the comments of a tracker task to `task.md`
 under `## Comments`, oldest first, each as `### <author> · <date>` and its body (top-level
-comments, one page: Linear 250, ClickUp 25 newest; `none` and `--title` have none, and a task
+comments, one page: Linear 250, ClickUp 25 newest, GitHub all; `none` and `--title` have none, and a task
 without comments gets no section). A failed read fails the start.
 
 ## Repository layout

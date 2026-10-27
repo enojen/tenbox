@@ -6,7 +6,12 @@ import { RESOURCE_CLASS } from "./machines.ts";
 import { objects } from "./utils.ts";
 
 /** The trackers Tenbox has an adapter for; `none` is no tracker. */
-export const TRACKER_KIND = { none: "none", linear: "linear", clickup: "clickup" } as const;
+export const TRACKER_KIND = {
+  none: "none",
+  linear: "linear",
+  clickup: "clickup",
+  github: "github",
+} as const;
 
 export const TrackerKindSchema = z.enum(TRACKER_KIND);
 
