@@ -635,6 +635,12 @@ describe("machine", () => {
       expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
       expect(String(run.json.error)).toContain("tenbox machine logs <id> [--follow]");
     });
+
+    test("--follow with another action is a usage error and sends no request", async () => {
+      const run = await machine(["ls", "--follow"]);
+      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+      expect(api.calls).toEqual([]);
+    });
   });
 
   test("a failed Job is completed with conclusion failure", async () => {

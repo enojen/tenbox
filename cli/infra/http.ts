@@ -70,9 +70,16 @@ async function ensure<T>(request: JsonRequest<T>): Promise<T | null> {
   return readAnswer(request, response);
 }
 
-/** GET the answer body as a text stream, with no time limit: a followed log runs as long as it runs. */
-async function stream(endpoint: Endpoint): Promise<AsyncIterable<string>> {
-  const response = await send(endpoint, { method: "GET", unlimited: true });
+/** A GET whose answer body is read as text; `unlimited` drops the timeout. */
+interface TextStream {
+  endpoint: Endpoint;
+  unlimited: boolean;
+}
+
+/** GET the answer body as a text stream; a followed log is `unlimited`, it runs as long as it runs. */
+async function stream(request: TextStream): Promise<AsyncIterable<string>> {
+  const { endpoint, unlimited } = request;
+  const response = await send(endpoint, { method: "GET", unlimited });
   if (!response.ok) {
     const text = await response.text();
     throw endpointError(endpoint, `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`);

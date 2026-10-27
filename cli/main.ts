@@ -302,12 +302,13 @@ const COMMANDS: Record<string, Command> = {
     options: { follow: { type: "boolean", default: false } },
     run: (positionals, values) => {
       const [action, ...rest] = positionals;
-      if (action === "ls" && rest.length === 0) return listMachineRuns();
+      const follow = flagValue(values, "follow");
       if (action === "logs") {
         if (rest.length > 1) throw usageError(`usage: ${MACHINE_USAGE}`);
-        const id = idArg(rest, MACHINE_USAGE);
-        return showMachineLogs({ id, follow: flagValue(values, "follow") });
+        return showMachineLogs({ id: idArg(rest, MACHINE_USAGE), follow });
       }
+      if (follow) throw usageError(`usage: ${MACHINE_USAGE}`);
+      if (action === "ls" && rest.length === 0) return listMachineRuns();
       if (action !== "run" || !hasCommandSeparator()) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });

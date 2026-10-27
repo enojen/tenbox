@@ -372,5 +372,6 @@ async function findPod(cluster: Cluster, job: string): Promise<Pod | null> {
 function streamLog(input: LogInput): Promise<AsyncIterable<string>> {
   const { cluster, pod, follow } = input;
   const query = follow ? "?follow=true" : "";
-  return http.stream(endpoint(cluster, `${PODS_PATH}/${pod}/log${query}`));
+  const apiPath = `${PODS_PATH}/${pod}/log${query}`;
+  return http.stream({ endpoint: endpoint(cluster, apiPath), unlimited: follow });
 }
