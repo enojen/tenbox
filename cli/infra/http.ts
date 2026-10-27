@@ -74,7 +74,8 @@ async function remove(endpoint: Endpoint): Promise<boolean> {
   const response = await send(endpoint, { method: "DELETE" });
   if (response.status === HTTP_NOT_FOUND) return false;
   if (response.ok) return true;
-  throw await httpFailure(endpoint, response);
+  const failure = await httpFailure(endpoint, response);
+  throw failure;
 }
 
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
@@ -85,7 +86,8 @@ async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
 async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T> {
   const { endpoint } = request;
   if (!response.ok) {
-    throw await httpFailure(endpoint, response);
+    const failure = await httpFailure(endpoint, response);
+    throw failure;
   }
   const json = await readJson(endpoint, response);
   const parsed = request.schema.safeParse(json);
