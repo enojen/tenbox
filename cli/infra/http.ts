@@ -23,7 +23,7 @@ export interface Endpoint {
   tls?: EndpointTls;
 }
 
-type HttpMethod = "GET" | "POST" | "PUT";
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 /** A request without a body; the answer must match `schema`. */
 interface JsonGet<T> {
@@ -43,7 +43,7 @@ interface HttpCall {
 }
 
 /** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
-export const http = { get, post, put, ensure };
+export const http = { get, post, put, remove, ensure };
 
 /** GET, no body. */
 function get<T>(request: JsonGet<T>): Promise<T> {
@@ -58,6 +58,14 @@ function post<T>(request: JsonRequest<T>): Promise<T> {
 /** PUT a JSON body. */
 function put<T>(request: JsonRequest<T>): Promise<T> {
   return sendJson(request, { method: "PUT", body: JSON.stringify(request.body) });
+}
+
+/** DELETE, no body; the answer is not read. */
+async function remove(endpoint: Endpoint): Promise<void> {
+  const response = await send(endpoint, { method: "DELETE" });
+  if (response.ok) return;
+  const text = await response.text();
+  throw endpointError(endpoint, `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`);
 }
 
 /** POST a JSON body; null when the server answers 409 Conflict: the object exists already. */

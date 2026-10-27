@@ -314,6 +314,13 @@ export interface MachineRunResultJson {
   url: string;
 }
 
+export interface MachineStopResult {
+  ok: true;
+  task: string;
+  /** The names of the Jobs deleted. */
+  stopped: string[];
+}
+
 export interface MachineLsResult {
   ok: true;
   runs: MachineRunRow[];

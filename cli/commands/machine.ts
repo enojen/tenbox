@@ -1,7 +1,7 @@
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { machines } from "../application/machines.ts";
-import type { MachineLsResult, MachineRunResultJson } from "./results.ts";
+import type { MachineLsResult, MachineRunResultJson, MachineStopResult } from "./results.ts";
 
 export interface MachineRunArgs {
   id: TaskId;
@@ -20,4 +20,10 @@ export async function runOnMachine(args: MachineRunArgs): Promise<MachineRunResu
 export async function listMachineRuns(): Promise<MachineLsResult> {
   const runs = await machines.list();
   return { ok: true, runs };
+}
+
+/** Ends the running Job of the task; its volume stays. */
+export async function stopMachine(id: TaskId): Promise<MachineStopResult> {
+  const stopped = await machines.stop(id);
+  return { ok: true, task: id, stopped };
 }
