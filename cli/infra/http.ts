@@ -63,9 +63,7 @@ function put<T>(request: JsonRequest<T>): Promise<T> {
 /** DELETE, no body; the answer is not read. */
 async function remove(endpoint: Endpoint): Promise<void> {
   const response = await send(endpoint, { method: "DELETE" });
-  if (response.ok) return;
-  const text = await response.text();
-  throw endpointError(endpoint, `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`);
+  if (!response.ok) await throwHttpError(endpoint, response);
 }
 
 /** POST a JSON body; null when the server answers 409 Conflict: the object exists already. */
@@ -83,15 +81,17 @@ async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
 
 async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T> {
   const { endpoint } = request;
-  if (!response.ok) {
-    const text = await response.text();
-    const detail = text.slice(0, ERROR_BODY_CHARS);
-    throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
-  }
+  if (!response.ok) await throwHttpError(endpoint, response);
   const json = await readJson(endpoint, response);
   const parsed = request.schema.safeParse(json);
   if (!parsed.success) throw endpointError(endpoint, "unexpected response");
   return parsed.data;
+}
+
+async function throwHttpError(endpoint: Endpoint, response: Response): Promise<never> {
+  const text = await response.text();
+  const detail = text.slice(0, ERROR_BODY_CHARS);
+  throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
 }
 
 export function endpointError(endpoint: Endpoint, message: string): TenboxError {
