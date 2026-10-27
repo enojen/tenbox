@@ -371,8 +371,8 @@ shows the setting. `tenbox start` and `tenbox close` print the real status name 
 no key. The task id is the issue number (`tenbox start 23`, branch `feat/23` unless
 `names.branch` says otherwise). In progress leaves the issue open and `status` shows `OPEN`;
 done closes it and shows `CLOSED` (an issue the merged PR closed already is not an error). A
-`gh` failure, such as an unknown number or no login, fails the command with `tracker` and
-gh's message.
+`gh` failure, such as an unknown number or no login, fails the command with `gh` and gh's
+message.
 
 The `Tracker` port has `comments`: `tenbox start` appends the comments of a tracker task to `task.md`
 under `## Comments`, oldest first, each as `### <author> · <date>` and its body (top-level

@@ -52,7 +52,7 @@ describe("github tracker", () => {
       }),
     );
     await expect(githubTracker.getTask("999")).rejects.toThrow(
-      "GitHub: gh issue view: Could not resolve to an issue",
+      "gh issue view failed: Could not resolve to an issue",
     );
   });
 
@@ -109,8 +109,10 @@ describe("github tracker", () => {
     ]);
   });
 
-  test("an output that does not fit is a tracker error", async () => {
+  test("an output that does not fit is a gh error", async () => {
     answer(() => ok('{"number":"x"}'));
-    await expect(githubTracker.getTask("23")).rejects.toThrow("GitHub: gh output does not fit");
+    await expect(githubTracker.getTask("23")).rejects.toThrow(
+      "gh issue view failed: output does not fit",
+    );
   });
 });

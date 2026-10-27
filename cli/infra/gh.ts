@@ -29,7 +29,33 @@ export interface GroupPr {
   branch: string;
 }
 
-/** The GitHub CLI commands Tenbox uses, run in the task worktree. */
+export const ISSUE_STATE = { open: "OPEN", closed: "CLOSED" } as const;
+
+/** The output of `gh issue view <n> --json number,title,body,url,state`. */
+const IssueSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string(),
+  url: z.string(),
+  state: z.enum(ISSUE_STATE),
+});
+
+type Issue = z.infer<typeof IssueSchema>;
+
+/** The output of `gh issue view <n> --json comments`. */
+const IssueCommentsSchema = z.object({
+  comments: z.array(
+    z.object({
+      author: z.object({ login: z.string() }),
+      body: z.string(),
+      createdAt: z.iso.datetime(),
+    }),
+  ),
+});
+
+type IssueComment = z.infer<typeof IssueCommentsSchema>["comments"][number];
+
+/** The GitHub CLI commands Tenbox uses, run in the directory of the repository. */
 export const gh = {
   findPr,
   isMergedAt,
@@ -41,6 +67,10 @@ export const gh = {
   edit,
   markReady,
   listChecks,
+  viewIssue,
+  closeIssue,
+  commentIssue,
+  issueComments,
 };
 
 const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
@@ -199,4 +229,23 @@ async function listChecks(dir: string, number: number): Promise<CiCheck[]> {
   if (result.stdout.trim() !== "") return parseCiChecks(result.stdout);
   if (result.code === 0 || result.stderr.includes(NO_CHECKS)) return [];
   throw ghError("pr checks", result.stderr.trim());
+}
+
+async function viewIssue(dir: string, number: string): Promise<Issue> {
+  const out = await run(["issue", "view", number, "--json", "number,title,body,url,state"], dir);
+  return checkOutput({ schema: IssueSchema, subcommand: "issue view", stdout: out });
+}
+
+async function closeIssue(dir: string, number: string): Promise<void> {
+  await run(["issue", "close", number], dir);
+}
+
+async function commentIssue(dir: string, number: string, body: string): Promise<void> {
+  await run(["issue", "comment", number, "--body", body], dir);
+}
+
+async function issueComments(dir: string, number: string): Promise<IssueComment[]> {
+  const out = await run(["issue", "view", number, "--json", "comments"], dir);
+  return checkOutput({ schema: IssueCommentsSchema, subcommand: "issue view", stdout: out })
+    .comments;
 }
