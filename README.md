@@ -85,4 +85,4 @@ from the tenbox you have installed, so it never goes out of date.
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
