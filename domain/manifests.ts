@@ -25,6 +25,10 @@ const TrackerConfigSchema = z.object({
   kind: TrackerKindSchema.default(TRACKER_KIND.none),
   api_key: z.string().optional(),
   statuses: StatusNamesSchema.optional(),
+  /** Linear: the key of the team `tenbox task new` writes to, such as `TEN`. */
+  team: z.string().min(1).optional(),
+  /** ClickUp: the id of the list `tenbox task new` writes to. */
+  list: z.string().min(1).optional(),
 });
 
 const ID_PLACEHOLDER = "{id}";

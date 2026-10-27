@@ -1,4 +1,4 @@
-import { noTrackerError } from "../../../domain/errors/tools.ts";
+import { noTrackerError, noTrackerToWriteError } from "../../../domain/errors/tools.ts";
 import { TRACKER_KIND } from "../../../domain/manifests.ts";
 import type { Tracker, TrackerTask } from "../../../domain/tracker.ts";
 
@@ -16,5 +16,11 @@ export const noneTracker: Tracker = {
   },
   comment() {
     return Promise.resolve();
+  },
+  findOpen() {
+    return Promise.reject(noTrackerToWriteError());
+  },
+  create() {
+    return Promise.reject(noTrackerToWriteError());
   },
 };

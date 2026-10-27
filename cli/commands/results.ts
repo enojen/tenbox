@@ -45,6 +45,14 @@ export interface StartResult {
   claude: SessionStartInfo;
 }
 
+/** `tenbox task new`: the task written, or the open task with the same title (`created: false`). */
+export interface TaskNewResult {
+  ok: true;
+  task: string;
+  url: string;
+  created: boolean;
+}
+
 export interface WorktreeResult {
   ok: true;
   task: string;
