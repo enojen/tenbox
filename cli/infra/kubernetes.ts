@@ -9,6 +9,7 @@ import { type Endpoint, type EndpointTls, http } from "./http.ts";
 const NAMESPACE = "tenbox";
 const JOBS_PATH = `/apis/batch/v1/namespaces/${NAMESPACE}/jobs`;
 const VOLUMES_PATH = `/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims`;
+const PODS_PATH = `/api/v1/namespaces/${NAMESPACE}/pods`;
 const SECRETS_PATH = `/api/v1/namespaces/${NAMESPACE}/secrets`;
 
 /** The API server of the kubeconfig's current context and how to log in to it. */
@@ -95,6 +96,8 @@ export const kubernetes = {
   readTemplate,
   readClass,
   listJobs,
+  findPod,
+  streamLog,
   ensureVolume,
   saveSecret,
   createJob,
@@ -267,6 +270,28 @@ const JobSchema = z.object({
 
 const JobListSchema = z.object({ items: z.array(JobSchema) });
 
+const PodListSchema = z.object({
+  items: z.array(
+    z.object({
+      metadata: z.object({ name: z.string(), creationTimestamp: z.string() }),
+      status: z.object({ phase: z.string().default("Pending") }).prefault({}),
+    }),
+  ),
+});
+
+/** One pod of a Job; `started` is false while it is Pending (image pull). */
+interface Pod {
+  name: string;
+  started: boolean;
+}
+
+/** One pod's log: `follow` keeps the stream open until the container ends. */
+interface LogInput {
+  cluster: Cluster;
+  pod: string;
+  follow: boolean;
+}
+
 const CreatedSchema = z.object({ metadata: z.object({ name: z.string() }) });
 
 function endpoint(cluster: Cluster, apiPath: string): Endpoint {
@@ -329,4 +354,23 @@ async function createJob(post: ObjectPost): Promise<string> {
   const request = { endpoint: endpoint(cluster, JOBS_PATH), schema: CreatedSchema, body: object };
   const created = await http.post(request);
   return jobUrl(cluster, created.metadata.name);
+}
+
+/** The newest pod of the Job, null when it has none yet. */
+async function findPod(cluster: Cluster, job: string): Promise<Pod | null> {
+  const selector = encodeURIComponent(`job-name=${job}`);
+  const apiPath = `${PODS_PATH}?labelSelector=${selector}`;
+  const list = await http.get({ endpoint: endpoint(cluster, apiPath), schema: PodListSchema });
+  const newest = list.items.sort((a, b) =>
+    b.metadata.creationTimestamp.localeCompare(a.metadata.creationTimestamp),
+  )[0];
+  if (newest === undefined) return null;
+  return { name: newest.metadata.name, started: newest.status.phase !== "Pending" };
+}
+
+/** The log of the pod's container as text chunks. */
+function streamLog(input: LogInput): Promise<AsyncIterable<string>> {
+  const { cluster, pod, follow } = input;
+  const query = follow ? "?follow=true" : "";
+  return http.stream(endpoint(cluster, `${PODS_PATH}/${pod}/log${query}`));
 }

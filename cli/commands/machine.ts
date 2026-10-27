@@ -1,7 +1,7 @@
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { machines } from "../application/machines.ts";
-import type { MachineLsResult, MachineRunResultJson } from "./results.ts";
+import type { MachineLogsResultJson, MachineLsResult, MachineRunResultJson } from "./results.ts";
 
 export interface MachineRunArgs {
   id: TaskId;
@@ -20,4 +20,19 @@ export async function runOnMachine(args: MachineRunArgs): Promise<MachineRunResu
 export async function listMachineRuns(): Promise<MachineLsResult> {
   const runs = await machines.list();
   return { ok: true, runs };
+}
+
+export interface MachineLogsArgs {
+  id: TaskId;
+  follow: boolean;
+}
+
+/** Writes the pod log of the task's newest Job to stderr. */
+export async function showMachineLogs(args: MachineLogsArgs): Promise<MachineLogsResultJson> {
+  const { task, job, status } = await machines.logs({
+    id: args.id,
+    follow: args.follow,
+    write: (chunk) => process.stderr.write(chunk),
+  });
+  return { ok: true, task, job, status };
 }

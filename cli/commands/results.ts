@@ -314,6 +314,13 @@ export interface MachineRunResultJson {
   url: string;
 }
 
+export interface MachineLogsResultJson {
+  ok: true;
+  task: string;
+  job: string;
+  status: "in_progress" | "success" | "failure";
+}
+
 export interface MachineLsResult {
   ok: true;
   runs: MachineRunRow[];

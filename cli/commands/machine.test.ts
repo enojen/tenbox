@@ -9,6 +9,7 @@ import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 const USAGE_EXIT = 2;
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const HTTP_OK = 200;
 const HTTP_CREATED = 201;
 const HTTP_CONFLICT = 409;
 const TOKEN = "SECRET-TOKEN";
@@ -106,6 +107,11 @@ interface FakeApi {
   secretStatus: number;
   /** The items of every Job list. */
   jobs: unknown[];
+  /** The items of every pod list. */
+  pods: unknown[];
+  /** The body and the status of every pod log answer. */
+  log: string;
+  logStatus: number;
   stop(): void;
 }
 
@@ -116,6 +122,9 @@ function startFakeApi(): FakeApi {
     pvcStatus: HTTP_CREATED,
     secretStatus: HTTP_CREATED,
     jobs: [],
+    pods: [],
+    log: "",
+    logStatus: HTTP_OK,
     stop: () => {},
   };
   const server = Bun.serve({
@@ -126,6 +135,10 @@ function startFakeApi(): FakeApi {
       const body = await readBody(request);
       const auth = request.headers.get("authorization");
       api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
+      if (url.pathname.endsWith("/log")) {
+        return new Response(api.log, { status: api.logStatus });
+      }
+      if (url.pathname.endsWith("/pods")) return Response.json({ items: api.pods });
       if (request.method === "GET") return Response.json({ items: api.jobs });
       if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
       if (url.pathname === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
@@ -236,12 +249,17 @@ const secretBody = (call: ApiCall | undefined) => SecretBodySchema.parse(call?.b
 interface FakeJobInput {
   name: string;
   status: Record<string, number>;
+  created?: string;
+}
+
+function fakePod(name: string, phase = "Running") {
+  return { metadata: { name, creationTimestamp: CREATED }, status: { phase } };
 }
 
 function fakeJob(input: FakeJobInput) {
   const env = [{ name: "TENBOX_CMD", value: "tenbox build TEN-1" }];
   return {
-    metadata: { name: input.name, creationTimestamp: CREATED },
+    metadata: { name: input.name, creationTimestamp: input.created ?? CREATED },
     spec: { template: { spec: { containers: [{ name: "box", env }] } } },
     status: input.status,
   };
@@ -520,6 +538,72 @@ describe("machine", () => {
     expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
       ["GET", JOBS_PATH, "?labelSelector=app%3Dtenyard"],
     ]);
+  });
+
+  describe("machine logs", () => {
+    const NEWER = "task-ten-1-1021-110000";
+    const OLDER = "task-ten-1-1021-100000";
+    const LOG = "boot: cloning\ntenbox start TEN-1\n";
+
+    const twoJobs = () => [
+      fakeJob({ name: OLDER, status: { failed: 1 } }),
+      fakeJob({ name: NEWER, status: { succeeded: 1 }, created: "2026-10-21T11:00:00Z" }),
+    ];
+
+    test("machine logs prints the newest Job's pod log to stderr and the job on stdout", async () => {
+      api.jobs = twoJobs();
+      api.pods = [fakePod("pod-newer")];
+      api.log = LOG;
+      const run = await machine(["logs", "TEN-1"]);
+      expect(run.code).toBe(0);
+      expect(run.err).toContain("boot: cloning\ntenbox start TEN-1");
+      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
+      const pods = api.calls.find((c) => c.path.endsWith("/pods"));
+      expect(pods?.query).toBe(`?labelSelector=${encodeURIComponent(`job-name=${NEWER}`)}`);
+      const log = api.calls.find((c) => c.path.endsWith("/log"));
+      expect(log?.path).toBe("/api/v1/namespaces/tenbox/pods/pod-newer/log");
+      expect(log?.query).toBe("");
+    });
+
+    test("machine logs --follow streams until the pod ends", async () => {
+      api.jobs = [fakeJob({ name: NEWER, status: { failed: 1 } })];
+      api.pods = [fakePod("pod-newer")];
+      api.log = LOG;
+      const run = await machine(["logs", "TEN-1", "--follow"]);
+      expect(run.code).toBe(0);
+      expect(run.err).toContain("tenbox start TEN-1");
+      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "failure" });
+      const log = api.calls.find((c) => c.path.endsWith("/log"));
+      expect(log?.query).toBe("?follow=true");
+    });
+
+    test("machine logs of a task with no Job is no-machine-run", async () => {
+      const run = await machine(["logs", "TEN-9"]);
+      expect([run.code, run.json.code]).toEqual([1, "no-machine-run"]);
+      expect(String(run.json.error)).toContain("TEN-9");
+      expect(String(run.json.error)).toContain("tenbox machine run");
+      expect(api.calls.map((c) => c.path)).toEqual([JOBS_PATH]);
+    });
+
+    test("a failed log request is a kubernetes error without the token", async () => {
+      api.jobs = twoJobs();
+      api.pods = [fakePod("pod-newer")];
+      api.log = "container is waiting to start";
+      api.logStatus = 400;
+      const run = await machine(["logs", "TEN-1"]);
+      expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
+      expect(String(run.json.error)).toContain("HTTP 400");
+      expect(run.out + run.err).not.toContain(TOKEN);
+    });
+
+    test.each([
+      ["no id", ["logs"]],
+      ["another word", ["logs", "TEN-1", "now"]],
+    ])("machine logs with %s is a usage error", async (_name, args) => {
+      const run = await machine(args);
+      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+      expect(String(run.json.error)).toContain("tenbox machine logs <id> [--follow]");
+    });
   });
 
   test("a failed Job is completed with conclusion failure", async () => {

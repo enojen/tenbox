@@ -3,7 +3,9 @@ import {
   loginExpiredError,
   machineBusyError,
   noLoginError,
+  noMachineRunError,
   noProjectIdError,
+  serviceError,
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
@@ -14,6 +16,7 @@ import { claudeCredentials } from "../infra/claude/credentials.ts";
 import { env } from "../infra/env.ts";
 import { git } from "../infra/git.ts";
 import { type Cluster, type Job, kubernetes, type TemplateFields } from "../infra/kubernetes.ts";
+import { pollUntil } from "../infra/poll.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
@@ -52,7 +55,22 @@ export interface MachineRunRow {
 }
 
 /** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, list };
+export const machines = { run, list, logs };
+
+/** The task's newest Job log: where each text chunk goes, and whether to follow. */
+interface MachineLogsInput {
+  id: TaskId;
+  follow: boolean;
+  write: (chunk: string) => void;
+}
+
+interface MachineLogsResult {
+  task: TaskId;
+  job: string;
+  status: "in_progress" | "success" | "failure";
+}
+
+const POD_POLL_MS = 2000;
 
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
@@ -83,6 +101,47 @@ async function list(): Promise<MachineRunRow[]> {
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const jobs = await kubernetes.listJobs(cluster, TENYARD_SELECTOR);
   return jobs.map(toRow);
+}
+
+/** Writes the log of the newest Job of the task; its status is read after the log ends. */
+async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
+  const { id, follow, write } = input;
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
+  const newest = jobs.sort((a, b) => b.created.localeCompare(a.created))[0];
+  if (newest === undefined) throw noMachineRunError(id);
+  const pod = await waitForPod({ cluster, job: newest.name, follow });
+  const chunks = await kubernetes.streamLog({ cluster, pod, follow });
+  for await (const chunk of chunks) write(chunk);
+  const after = await kubernetes.listJobs(cluster, `task=${id}`);
+  const job = after.find((j) => j.name === newest.name) ?? newest;
+  return { task: id, job: newest.name, status: jobStatus(job) };
+}
+
+function jobStatus(job: Job): MachineLogsResult["status"] {
+  if (job.succeeded > 0) return "success";
+  if (job.failed > 0) return "failure";
+  return "in_progress";
+}
+
+/** The pod to read, and whether to wait for it to start. */
+interface PodWait {
+  cluster: Cluster;
+  job: string;
+  follow: boolean;
+}
+
+/** Without `follow`, a pod that is not running yet is left to the API's own answer. */
+async function waitForPod(input: PodWait): Promise<string> {
+  const { cluster, job, follow } = input;
+  const check = async () => {
+    const pod = await kubernetes.findPod(cluster, job);
+    return pod !== null && (pod.started || !follow) ? pod.name : null;
+  };
+  const deadlineMs = follow ? Number.POSITIVE_INFINITY : Date.now();
+  const found = await pollUntil({ check, deadlineMs, intervalMs: POD_POLL_MS });
+  if (found === null) throw serviceError("kubernetes", "kubernetes", `Job ${job} has no pod yet`);
+  return found;
 }
 
 function toRow(job: Job): MachineRunRow {

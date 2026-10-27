@@ -40,10 +40,12 @@ interface JsonRequest<T> extends JsonGet<T> {
 interface HttpCall {
   method: HttpMethod;
   body?: string;
+  /** No timeout, for a stream. */
+  unlimited?: boolean;
 }
 
 /** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
-export const http = { get, post, put, ensure };
+export const http = { get, post, put, ensure, stream };
 
 /** GET, no body. */
 function get<T>(request: JsonGet<T>): Promise<T> {
@@ -66,6 +68,18 @@ async function ensure<T>(request: JsonRequest<T>): Promise<T | null> {
   const response = await send(request.endpoint, call);
   if (response.status === HTTP_CONFLICT) return null;
   return readAnswer(request, response);
+}
+
+/** GET the answer body as a text stream, with no time limit: a followed log runs as long as it runs. */
+async function stream(endpoint: Endpoint): Promise<AsyncIterable<string>> {
+  const response = await send(endpoint, { method: "GET", unlimited: true });
+  if (!response.ok) {
+    const text = await response.text();
+    throw endpointError(endpoint, `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`);
+  }
+  return response.body === null
+    ? emptyStream()
+    : response.body.pipeThrough(new TextDecoderStream());
 }
 
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
@@ -93,11 +107,12 @@ export function endpointError(endpoint: Endpoint, message: string): TenboxError 
 /** A network error or no answer in time is the service's failure, not an internal one. */
 async function send(endpoint: Endpoint, call: HttpCall): Promise<Response> {
   try {
+    const { unlimited, ...init } = call;
     return await fetch(endpoint.url, {
-      ...call,
+      ...init,
       headers: { "Content-Type": "application/json", ...endpoint.headers },
       ...(endpoint.tls === undefined ? {} : { tls: endpoint.tls }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      ...(unlimited === true ? {} : { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
     });
   } catch (e) {
     throw endpointError(endpoint, errorMessage(e));
@@ -111,3 +126,5 @@ async function readJson(endpoint: Endpoint, response: Response): Promise<unknown
     throw endpointError(endpoint, "the answer is not JSON");
   }
 }
+
+async function* emptyStream(): AsyncGenerator<string> {}
