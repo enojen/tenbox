@@ -43,7 +43,7 @@ async function twoAgents(): Promise<AgentPair> {
 }
 
 describe("install", () => {
-  test("links every agent and workflow, skips dotfiles", async () => {
+  test("links every agent, workflow and skill, skips dotfiles", async () => {
     const { claudeDir } = env();
     const tenboxRoot = await sourceRoot();
     const r = await install();
@@ -51,9 +51,11 @@ describe("install", () => {
     expect(r.claude_dir).toBe(claudeDir);
     const agentNames = await sourceNames("agents");
     const workflowNames = await sourceNames("workflows");
+    const skillNames = await sourceNames("skills");
     const expected = [
       ...agentNames.map((name) => ({ dir: "agents", name })),
       ...workflowNames.map((name) => ({ dir: "workflows", name })),
+      ...skillNames.map((name) => ({ dir: "skills", name })),
     ];
     expect(r.links).toEqual(
       expected.map((file) => ({
@@ -120,6 +122,27 @@ describe("install", () => {
       expect(agentLink).toBe(path.join(mainDir, "agents", "a.md"));
     } finally {
       await withRoles.remove();
+    }
+  });
+
+  test("links each skill folder of skills/ as one folder link", async () => {
+    const withSkill = await makeTempProject({ "skills/tenbox/SKILL.md": "the skill" });
+    try {
+      const { claudeDir } = env();
+      const mainDir = await files.realPath(withSkill.mainDir);
+      const r = await install(withSkill.mainDir);
+      expect(r.links).toEqual([
+        {
+          name: "tenbox",
+          source: path.join(mainDir, "skills", "tenbox"),
+          link: path.join(claudeDir, "skills", "tenbox"),
+          state: "linked",
+        },
+      ]);
+      const skill = await files.read(path.join(claudeDir, "skills", "tenbox", "SKILL.md"));
+      expect(skill).toBe("the skill");
+    } finally {
+      await withSkill.remove();
     }
   });
 

@@ -32,7 +32,10 @@ and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
   `gh`, `docker`, `claude` and tenbox itself (`process.execPath`).
 - Every CLI command prints JSON on stdout; human text goes to stderr.
 - Agent roles are Markdown with frontmatter in `agents/`; workflows are plain JavaScript
-  in `workflows/`; check both against the current Claude Code docs, not memory.
+  in `workflows/`; the skill is `skills/tenbox/SKILL.md`; check them against the current
+  Claude Code docs, not memory.
+- Every project runs the tenbox of the main checkout of this repo (`bun link`, the links of
+  `tenbox install`). Keep the main checkout on `main` and work only in task worktrees.
 - `README.md` stays short: what Tenbox is, why, and how to start. A feature, a command or a
   number goes to `docs/reference.md`, not to the README. If the README ever needs more, it gets
   one "Commands" section with a line per command.
@@ -188,6 +191,7 @@ server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: ro
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)
 agents/     planner.md, worker.md, reviewer.md, runner.md
 workflows/  tenbox-plan.js, tenbox-build.js, tenbox-close.js
+skills/     tenbox/SKILL.md: when and how a session in any project uses tenbox
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
 machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR
@@ -201,4 +205,4 @@ hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 
 A scratch project for the first runs lives outside this repo, in `~/wt/tenbox-demo/`
 (a small Bun + Hono API). `tenbox start DEMO-1 --title "..."` opens a worktree there.
-`tenbox install` links `agents/` and `workflows/` into `~/.claude/`.
+`tenbox install` links `agents/`, `workflows/` and `skills/` into `~/.claude/`.
