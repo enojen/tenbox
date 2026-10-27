@@ -36,7 +36,7 @@ git clone https://github.com/enojen/tenbox.git ~/wt/tenbox/main
 cd ~/wt/tenbox/main
 bun install
 bun link            # puts `tenbox` on your PATH
-tenbox install      # links agents/ and workflows/ into ~/.claude/
+tenbox install      # links agents/, workflows/ and skills/ into ~/.claude/
 ```
 
 ## Usage
@@ -63,6 +63,12 @@ tenbox close TEN-1                              # after the merge: clean up, set
 ```
 
 Every command prints JSON on stdout and human text on stderr.
+
+### From Claude Code
+
+`tenbox install` also links the `tenbox` skill, so Claude Code in any project knows Tenbox.
+Ask it in plain words, for example "start TEN-1 with tenbox". The skill reads the commands
+from the tenbox you have installed, so it never goes out of date.
 
 ## Documentation
 

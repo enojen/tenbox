@@ -80,7 +80,7 @@ error. `TENBOX_DEBUG=1` logs every spawned command and prints stacks.
 | `tenbox stats <id>` | Prints `{ ok, task, source, runs, rounds, roles, models }`: minutes and tokens per round (`{ round, minutes, calls, input, output, cache_write, cache_read }`), calls and tokens per role and per model. `source` is `stats.json` when the task dir has a `stats.json` of schema 5 or 6 (after `tenbox close`), else `sessions`: the `wf_*.json` run files and the `agent-<agentId>.jsonl` transcripts in Claude Code's session files for the task worktree. A run file with no `workflow_agent` entries (Claude Code 2.1.303 writes none) gets its agents the same way, from its run dir, with `finished: true`; `tokens` and `tool_calls` are then null. A run with no run file (its session ended before the run did) is counted too: its agents come from `journal.jsonl` (one per `started` line), `agent-<agentId>.meta.json` (role) and the transcript (model, first and last timestamp as start and length; no phase, tokens or tool calls), its workflow from the script name in `workflows/scripts/`; a run with no script or no timestamp is skipped. `runs` lists the runs oldest first as `{ workflow, started, finished }`, `finished: false` for such a run; from a `stats.json` it is the `runs` saved by `tenbox close`, `null` for schema 5, which has none. A `calls` is one assistant message id; a message on several lines counts once, with the tokens of its last line. `round` comes from the agent label `round N: ...` and counts across the build runs in start order (the second run's `round 1` is round 4 after a run of three rounds); agents with no round label (plan, approval, record build) have `round: null`, listed last. A round's minutes run from its first agent start to its last agent end. Without `stats.json` and without session files it fails with `no-stats`; with only a `stats.json` of an older schema (4 or less, no token numbers) it fails with `old-stats`. The transcript format is not a public API; only `cli/infra/claude/sessionFiles.ts` and `transcripts.ts` read it |
 | `tenbox status <id>` | Where one task stands, read from its files, its background session and its PR. Prints `{ ok, task, title, status, round, approved, parts, session, pr, checks }`. `status`: the `status` of `.tenbox/task.json` (`started`, `plan-ready`, `approved`, `building`, the `build.json` status, `closed`; see `task.json` below), null without the file. `round`: the newest `rounds/N`, else the `round` of `build.json`, else `null`. `parts`: `{ todo, doing, done, blocked }`, counted from the `status:` line of each part file (a missing or other value counts as `todo`). `session`: `{ state }`, the `state` of the newest background session of the task worktree in `claude agents --json` (`working`, `blocked`, `done`), `none` without one, `unavailable` without `claude` in `PATH`, or `failed: <reason>`. `pr`: `{ number, url, draft }` or `null`, also when `gh` is missing or fails (one stderr line). `checks`: `{ round, ok, summary }` of the newest round that has a `checks.json`, else `null`; a `checks.json` that is not valid gives `bad-file` (exit 1). A task with no worktree gives `no-worktree` (exit 1) |
 | `tenbox list` | Run in the project. Prints `{ ok, tasks }`: the status report of `tenbox status` for every task worktree `~/wt/<project>/<id>` that has a `.tenbox` directory, ordered by id. `main` and the group worktrees (`<id>-N` next to `<id>`) are left out. Also one line per task on stderr: `<id> · <status> · round <n or -> · parts <done>/<all> · session <state> · PR <#n or ->`. With no task worktree it prints `tasks: []`. It asks `gh` and `claude` once per task, all tasks at the same time |
-| `tenbox install` | Symlinks every file of `agents/` and `workflows/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
+| `tenbox install` | Symlinks every file of `agents/` and `workflows/` and every folder of `skills/` into `~/.claude/`, from the main checkout of the Tenbox repo, also when run from a task worktree; outside a git checkout it fails with `no-repo`. Never overwrites a foreign file |
 
 The base is the manifest `base`, `main` by default; `--base` overrides it for `start` and
 `check`. Task ids are letters, digits, `_` and `-`.
@@ -257,6 +257,20 @@ closed }` when `tenbox close` refused before it changed anything (`unmerged`, `m
 | reviewer | sonnet | Reviews the diff through one lens; returns `must_fix`, `nice_to_have`, `attention`, `unproven`; never edits |
 | runner | sonnet | Runs one `tenbox` command and returns its JSON unchanged |
 
+## The skill: `skills/tenbox/`
+
+`tenbox install` links the folder to `~/.claude/skills/tenbox`, so a Claude Code session in
+any project lists the `tenbox` skill and knows when to use it. The skill holds no command
+details. When it loads, it runs `tenbox help` for the commands of the installed tenbox and
+`realpath` for the path of this file in the same checkout; its `allowed-tools` let those two
+commands run without a permission rule. The rest is the order of the steps and what an
+agent leaves to the user: the approval, the answers and the merge.
+
+Every project runs the tenbox of the main checkout of the Tenbox repo: `tenbox` (`bun link`),
+the links and the skill all come from it. So the main checkout stays on one branch, `main`,
+and work happens only in task worktrees: half-done code there never reaches another project.
+A merge plus `git pull` in the main checkout is the release; the commit is the version.
+
 ## Task files: `.tenbox/`
 
 The files live in the task dir `~/.tenbox/<project id>/<id>/`. The task worktree has `.tenbox`, a
@@ -403,6 +417,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
     repositories/ data access per table, no rules: `find...`, `insert`
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
+skills/       tenbox/SKILL.md, the skill for a session in any project
 machines/     the box image (k8s/) and the login sync (login/); see machines/README.md
 docs/         design.md (the target design), reference.md, the icon
 ```
