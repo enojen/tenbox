@@ -1,9 +1,11 @@
 ---
 name: Feature
-about: An idea for Tenbox
-labels: enhancement
+about: A new command, role or behaviour, or a change to one
+labels: feature
 ---
 
-**The problem**
+**Why**
 
-**Your idea**
+**What**
+
+**Done when**
