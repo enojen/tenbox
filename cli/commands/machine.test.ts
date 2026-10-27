@@ -577,6 +577,37 @@ describe("machine", () => {
       expect(log?.query).toBe("?follow=true");
     });
 
+    test("machine logs --follow waits for a Pending pod to run", async () => {
+      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
+      api.pods = [fakePod("pod-newer", "Pending")];
+      api.log = LOG;
+      setTimeout(() => {
+        api.pods = [fakePod("pod-newer")];
+      }, 300);
+      const run = await machine(["logs", "TEN-1", "--follow"]);
+      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
+      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBeGreaterThan(1);
+    });
+
+    test("machine logs --follow waits for a pod that does not exist yet", async () => {
+      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
+      api.pods = [];
+      api.log = LOG;
+      setTimeout(() => {
+        api.pods = [fakePod("pod-newer")];
+      }, 300);
+      const run = await machine(["logs", "TEN-1", "--follow"]);
+      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
+    });
+
+    test("machine logs without --follow and without a pod is a kubernetes error", async () => {
+      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
+      api.pods = [];
+      const run = await machine(["logs", "TEN-1"]);
+      expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
+      expect(String(run.json.error)).toContain(`Job ${NEWER} has no pod yet`);
+    });
+
     test("machine logs of a task with no Job is no-machine-run", async () => {
       const run = await machine(["logs", "TEN-9"]);
       expect([run.code, run.json.code]).toEqual([1, "no-machine-run"]);

@@ -146,8 +146,9 @@ async function waitForPod(input: PodWait): Promise<string> {
 
 function toRow(job: Job): MachineRunRow {
   const row = { id: job.name, title: job.cmd, url: job.url, created: job.created };
-  if (job.succeeded > 0) return { ...row, status: "completed", conclusion: "success" };
-  if (job.failed > 0) return { ...row, status: "completed", conclusion: "failure" };
+  const status = jobStatus(job);
+  if (status === "success") return { ...row, status: "completed", conclusion: "success" };
+  if (status === "failure") return { ...row, status: "completed", conclusion: "failure" };
   return { ...row, status: "in_progress", conclusion: null };
 }
 
