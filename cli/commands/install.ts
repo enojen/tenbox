@@ -9,7 +9,7 @@ import type { InstallResult, LinkEntry, LinkState, LinkTarget } from "./results.
 export const LINK_STATE = { linked: "linked", unchanged: "unchanged", skipped: "skipped" } as const;
 
 /** The checkout directories that `~/.claude/` gets a copy of, as symlinks. */
-const LINKED_DIRS: string[] = ["agents", "workflows"];
+const LINKED_DIRS: string[] = ["agents", "workflows", "skills"];
 
 interface DirPair {
   sourceDir: string;
@@ -17,8 +17,9 @@ interface DirPair {
 }
 
 /**
- * Symlink every file of `agents/` and `workflows/` into `claudeDir`. Never overwrites, never
- * deletes. The sources come from the main checkout of `tenboxRoot`, so a task worktree can run it.
+ * Symlink every file of `agents/` and `workflows/` and every folder of `skills/` into
+ * `claudeDir`. Never overwrites, never deletes. The sources come from the main checkout of
+ * `tenboxRoot`, so a task worktree can run it.
  */
 export async function install(tenboxRoot: string = env().tenboxRoot): Promise<InstallResult> {
   const { claudeDir } = env();
@@ -52,7 +53,7 @@ async function installDir(sourceRoot: string, dir: string): Promise<LinkEntry[]>
   return entries;
 }
 
-/** Dotfiles like `.gitkeep` are repo plumbing, not roles or workflows. */
+/** Dotfiles like `.gitkeep` are repo plumbing, not roles, workflows or skills. */
 function isLinkable(name: string): boolean {
   return !name.startsWith(".");
 }
