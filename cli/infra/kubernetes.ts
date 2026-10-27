@@ -105,6 +105,7 @@ export const kubernetes = {
   removeVolume,
   saveSecret,
   createJob,
+  removeJob,
 };
 
 const KubeconfigSchema = z.object({
@@ -334,6 +335,19 @@ async function saveSecret(input: SecretInput): Promise<void> {
   const created = await http.ensure(request);
   if (created !== null) return;
   await http.put({ ...request, endpoint: endpoint(cluster, `${SECRETS_PATH}/${name}`) });
+}
+
+/** One Job to delete, by name. */
+interface JobRemoval {
+  cluster: Cluster;
+  name: string;
+}
+
+/** Deletes the Job and, in the background, its pods: the Job is gone from the list at once. */
+async function removeJob(removal: JobRemoval): Promise<void> {
+  const { cluster, name } = removal;
+  const apiPath = `${JOBS_PATH}/${name}?propagationPolicy=Background`;
+  await http.remove(endpoint(cluster, apiPath));
 }
 
 /** Creates the Job; the API URL of the created Job. */

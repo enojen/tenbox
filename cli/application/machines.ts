@@ -52,7 +52,7 @@ export interface MachineRunRow {
 }
 
 /** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, list, remove };
+export const machines = { run, list, stop, remove };
 
 /** The volume of a task and what `remove` did to it. */
 export interface MachineVolume {
@@ -83,6 +83,14 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   if (projectId === undefined) throw noProjectIdError(project.mainDir);
   const url = await runJob({ id, cmd, words, project, projectId, manifest });
   return { task: id, cmd, url };
+}
+
+/** Deletes the active Jobs of the task; the volume stays. */
+async function stop(id: TaskId): Promise<string[]> {
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  const names = await activeJobs(cluster, id);
+  for (const name of names) await kubernetes.removeJob({ cluster, name });
+  return names;
 }
 
 /** Deletes the volume of the task unless a Job of the task is active. */
@@ -195,10 +203,14 @@ function resourceClass(command: CommandRun): ResourceClass {
   return RESOURCE_CLASS.plan;
 }
 
+async function activeJobs(cluster: Cluster, id: TaskId): Promise<string[]> {
+  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
+  return jobs.filter((job) => job.active > 0).map((job) => job.name);
+}
+
 /** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */
 async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
-  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
-  const active = jobs.filter((job) => job.active > 0).map((job) => job.name);
+  const active = await activeJobs(cluster, id);
   if (active.length > 0) throw machineBusyError(id, active);
 }
 
