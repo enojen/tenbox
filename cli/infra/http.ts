@@ -74,9 +74,7 @@ async function remove(endpoint: Endpoint): Promise<boolean> {
   const response = await send(endpoint, { method: "DELETE" });
   if (response.status === HTTP_NOT_FOUND) return false;
   if (response.ok) return true;
-  const text = await response.text();
-  const detail = text.slice(0, ERROR_BODY_CHARS);
-  throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
+  throw await httpFailure(endpoint, response);
 }
 
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
@@ -87,14 +85,18 @@ async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
 async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T> {
   const { endpoint } = request;
   if (!response.ok) {
-    const text = await response.text();
-    const detail = text.slice(0, ERROR_BODY_CHARS);
-    throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
+    throw await httpFailure(endpoint, response);
   }
   const json = await readJson(endpoint, response);
   const parsed = request.schema.safeParse(json);
   if (!parsed.success) throw endpointError(endpoint, "unexpected response");
   return parsed.data;
+}
+
+async function httpFailure(endpoint: Endpoint, response: Response): Promise<TenboxError> {
+  const text = await response.text();
+  const detail = text.slice(0, ERROR_BODY_CHARS);
+  return endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
 }
 
 export function endpointError(endpoint: Endpoint, message: string): TenboxError {
