@@ -1,7 +1,7 @@
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { machines } from "../application/machines.ts";
-import type { MachineLsResult, MachineRunResultJson } from "./results.ts";
+import type { MachineLsResult, MachineRmResult, MachineRunResultJson } from "./results.ts";
 
 export interface MachineRunArgs {
   id: TaskId;
@@ -20,4 +20,10 @@ export async function runOnMachine(args: MachineRunArgs): Promise<MachineRunResu
 export async function listMachineRuns(): Promise<MachineLsResult> {
   const runs = await machines.list();
   return { ok: true, runs };
+}
+
+/** Deletes the volume of the task on the cluster, after its close Job has ended. */
+export async function removeMachineVolume(id: TaskId): Promise<MachineRmResult> {
+  const volume = await machines.remove(id);
+  return { ok: true, task: id, volume };
 }

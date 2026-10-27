@@ -11,6 +11,8 @@ const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 const HTTP_CREATED = 201;
 const HTTP_CONFLICT = 409;
+const HTTP_NOT_FOUND = 404;
+const HTTP_OK = 200;
 const TOKEN = "SECRET-TOKEN";
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
@@ -104,6 +106,8 @@ interface FakeApi {
   /** The answer status of the PVC POST. */
   pvcStatus: number;
   secretStatus: number;
+  /** The answer status of the PVC DELETE. */
+  deleteStatus: number;
   /** The items of every Job list. */
   jobs: unknown[];
   stop(): void;
@@ -115,6 +119,7 @@ function startFakeApi(): FakeApi {
     calls: [],
     pvcStatus: HTTP_CREATED,
     secretStatus: HTTP_CREATED,
+    deleteStatus: HTTP_OK,
     jobs: [],
     stop: () => {},
   };
@@ -127,6 +132,7 @@ function startFakeApi(): FakeApi {
       const auth = request.headers.get("authorization");
       api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
       if (request.method === "GET") return Response.json({ items: api.jobs });
+      if (request.method === "DELETE") return Response.json({}, { status: api.deleteStatus });
       if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
       if (url.pathname === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
       return Response.json(body, { status: HTTP_CREATED });
@@ -138,7 +144,7 @@ function startFakeApi(): FakeApi {
 }
 
 const readBody = (request: Request): Promise<unknown> =>
-  request.method === "GET" ? Promise.resolve(null) : request.json();
+  request.method === "GET" || request.method === "DELETE" ? Promise.resolve(null) : request.json();
 
 const base64 = (text: string) => Buffer.from(text).toString("base64");
 
@@ -561,5 +567,42 @@ describe("machine", () => {
     expect(run.code).toBe(0);
     expect(api.calls.map((c) => c.auth)).toEqual([null, null, null, null]);
     expect(run.out).not.toContain(base64("KEY"));
+  });
+
+  test("machine rm deletes the task's volume when no Job of the task is active", async () => {
+    const run = await machine(["rm", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({
+      ok: true,
+      task: "TEN-1",
+      volume: { name: "task-ten-1", state: "deleted" },
+    });
+    expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
+      ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1"],
+      ["DELETE", `${PVCS_PATH}/task-ten-1`, ""],
+    ]);
+    expect(api.calls[1]?.auth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test("machine rm refuses with machine-busy while a Job of the task is active", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    const run = await machine(["rm", "TEN-1"]);
+    expect([run.code, run.json.code]).toEqual([1, "machine-busy"]);
+    expect(String(run.json.error)).toContain("task-ten-1-1021-100000");
+    expect(api.calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+
+  test("machine rm of a volume that is already gone is missing, not an error", async () => {
+    api.deleteStatus = HTTP_NOT_FOUND;
+    const run = await machine(["rm", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json.volume).toEqual({ name: "task-ten-1", state: "missing" });
+  });
+
+  test("machine rm without an id or with an extra word is a usage error", async () => {
+    const none = await machine(["rm"]);
+    const extra = await machine(["rm", "TEN-1", "TEN-2"]);
+    expect([none.code, extra.code]).toEqual([USAGE_EXIT, USAGE_EXIT]);
+    expect(api.calls).toEqual([]);
   });
 });

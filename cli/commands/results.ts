@@ -12,7 +12,7 @@ import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
-import type { MachineRunRow } from "../application/machines.ts";
+import type { MachineRunRow, MachineVolume } from "../application/machines.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
@@ -312,6 +312,12 @@ export interface MachineRunResultJson {
   cmd: string;
   /** The API URL of the Job. */
   url: string;
+}
+
+export interface MachineRmResult {
+  ok: true;
+  task: string;
+  volume: MachineVolume;
 }
 
 export interface MachineLsResult {

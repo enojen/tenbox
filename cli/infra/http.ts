@@ -6,6 +6,7 @@ import { serviceError } from "../../domain/errors/tools.ts";
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;
 const HTTP_CONFLICT = 409;
+const HTTP_NOT_FOUND = 404;
 
 /** PEM text: the server's CA, and the client certificate and key when they replace a token. */
 export interface EndpointTls {
@@ -23,7 +24,7 @@ export interface Endpoint {
   tls?: EndpointTls;
 }
 
-type HttpMethod = "GET" | "POST" | "PUT";
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 /** A request without a body; the answer must match `schema`. */
 interface JsonGet<T> {
@@ -43,7 +44,7 @@ interface HttpCall {
 }
 
 /** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
-export const http = { get, post, put, ensure };
+export const http = { get, post, put, ensure, remove };
 
 /** GET, no body. */
 function get<T>(request: JsonGet<T>): Promise<T> {
@@ -66,6 +67,16 @@ async function ensure<T>(request: JsonRequest<T>): Promise<T | null> {
   const response = await send(request.endpoint, call);
   if (response.status === HTTP_CONFLICT) return null;
   return readAnswer(request, response);
+}
+
+/** DELETE; false when the server answers 404 Not Found: the object is gone already. */
+async function remove(endpoint: Endpoint): Promise<boolean> {
+  const response = await send(endpoint, { method: "DELETE" });
+  if (response.status === HTTP_NOT_FOUND) return false;
+  if (response.ok) return true;
+  const text = await response.text();
+  const detail = text.slice(0, ERROR_BODY_CHARS);
+  throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
 }
 
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {

@@ -52,7 +52,13 @@ export interface MachineRunRow {
 }
 
 /** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, list };
+export const machines = { run, list, remove };
+
+/** The volume of a task and what `remove` did to it. */
+export interface MachineVolume {
+  name: string;
+  state: "deleted" | "missing";
+}
 
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
@@ -78,6 +84,18 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const url = await runJob({ id, cmd, words, project, projectId, manifest });
   return { task: id, cmd, url };
 }
+
+/** Deletes the volume of the task unless a Job of the task is active. */
+async function remove(id: TaskId): Promise<MachineVolume> {
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  await ensureIdle(cluster, id);
+  const name = `task-${kubeName(id)}`;
+  const deleted = await kubernetes.removeVolume({ cluster, name });
+  return { name, state: deleted ? "deleted" : "missing" };
+}
+
+/** The task id in lower case, `_` as `-`: a Kubernetes name. */
+const kubeName = (id: TaskId): string => id.toLowerCase().replaceAll("_", "-");
 
 async function list(): Promise<MachineRunRow[]> {
   const cluster = await kubernetes.readCluster(env().kubeconfig);
@@ -155,7 +173,7 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
   const file = path.join(homePath(manifest.machine.template), "classes.yaml");
   const resources = await kubernetes.readClass({ file, name });
   return {
-    name: id.toLowerCase().replaceAll("_", "-"),
+    name: kubeName(id),
     task: id,
     run: runStamp(new Date()),
     project: project.name,

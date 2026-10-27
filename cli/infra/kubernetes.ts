@@ -82,6 +82,12 @@ interface ObjectPost {
   object: KubeObject;
 }
 
+/** One volume of the namespace by name. */
+interface VolumeInput {
+  cluster: Cluster;
+  name: string;
+}
+
 /** An Opaque Secret of the namespace and its values by key. */
 interface SecretInput {
   cluster: Cluster;
@@ -96,6 +102,7 @@ export const kubernetes = {
   readClass,
   listJobs,
   ensureVolume,
+  removeVolume,
   saveSecret,
   createJob,
 };
@@ -305,6 +312,12 @@ async function ensureVolume(post: ObjectPost): Promise<void> {
     schema: CreatedSchema,
     body: object,
   });
+}
+
+/** Deletes the volume by name; false when it is gone already (404). */
+function removeVolume(input: VolumeInput): Promise<boolean> {
+  const { cluster, name } = input;
+  return http.remove(endpoint(cluster, `${VOLUMES_PATH}/${name}`));
 }
 
 /** Creates the Secret, or replaces an existing one (409) whole: a key left out is removed. */
