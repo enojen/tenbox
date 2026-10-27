@@ -6,6 +6,7 @@ import { serviceError } from "../../domain/errors/tools.ts";
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;
 const HTTP_CONFLICT = 409;
+const HTTP_NOT_FOUND = 404;
 
 /** PEM text: the server's CA, and the client certificate and key when they replace a token. */
 export interface EndpointTls {
@@ -23,7 +24,7 @@ export interface Endpoint {
   tls?: EndpointTls;
 }
 
-type HttpMethod = "GET" | "POST" | "PUT";
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 /** A request without a body; the answer must match `schema`. */
 interface JsonGet<T> {
@@ -45,7 +46,7 @@ interface HttpCall {
 }
 
 /** JSON over HTTP: every answer is validated with its schema; every failure is a `TenboxError`. */
-export const http = { get, post, put, ensure, stream };
+export const http = { get, post, put, ensure, remove, stream };
 
 /** GET, no body. */
 function get<T>(request: JsonGet<T>): Promise<T> {
@@ -81,12 +82,21 @@ async function stream(request: TextStream): Promise<AsyncIterable<string>> {
   const { endpoint, unlimited } = request;
   const response = await send(endpoint, { method: "GET", unlimited });
   if (!response.ok) {
-    const text = await response.text();
-    throw endpointError(endpoint, `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`);
+    const failure = await httpFailure(endpoint, response);
+    throw failure;
   }
   return response.body === null
     ? emptyStream()
     : response.body.pipeThrough(new TextDecoderStream());
+}
+
+/** DELETE; false when the server answers 404 Not Found: the object is gone already. */
+async function remove(endpoint: Endpoint): Promise<boolean> {
+  const response = await send(endpoint, { method: "DELETE" });
+  if (response.status === HTTP_NOT_FOUND) return false;
+  if (response.ok) return true;
+  const failure = await httpFailure(endpoint, response);
+  throw failure;
 }
 
 async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
@@ -97,14 +107,19 @@ async function sendJson<T>(request: JsonGet<T>, call: HttpCall): Promise<T> {
 async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T> {
   const { endpoint } = request;
   if (!response.ok) {
-    const text = await response.text();
-    const detail = text.slice(0, ERROR_BODY_CHARS);
-    throw endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
+    const failure = await httpFailure(endpoint, response);
+    throw failure;
   }
   const json = await readJson(endpoint, response);
   const parsed = request.schema.safeParse(json);
   if (!parsed.success) throw endpointError(endpoint, "unexpected response");
   return parsed.data;
+}
+
+async function httpFailure(endpoint: Endpoint, response: Response): Promise<TenboxError> {
+  const text = await response.text();
+  const detail = text.slice(0, ERROR_BODY_CHARS);
+  return endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
 }
 
 export function endpointError(endpoint: Endpoint, message: string): TenboxError {

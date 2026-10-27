@@ -83,6 +83,12 @@ interface ObjectPost {
   object: KubeObject;
 }
 
+/** One volume of the namespace by name. */
+interface VolumeInput {
+  cluster: Cluster;
+  name: string;
+}
+
 /** An Opaque Secret of the namespace and its values by key. */
 interface SecretInput {
   cluster: Cluster;
@@ -99,8 +105,10 @@ export const kubernetes = {
   findPod,
   streamLog,
   ensureVolume,
+  removeVolume,
   saveSecret,
   createJob,
+  removeJob,
 };
 
 const KubeconfigSchema = z.object({
@@ -332,6 +340,12 @@ async function ensureVolume(post: ObjectPost): Promise<void> {
   });
 }
 
+/** Deletes the volume by name; false when it is gone already (404). */
+function removeVolume(input: VolumeInput): Promise<boolean> {
+  const { cluster, name } = input;
+  return http.remove(endpoint(cluster, `${VOLUMES_PATH}/${name}`));
+}
+
 /** Creates the Secret, or replaces an existing one (409) whole: a key left out is removed. */
 async function saveSecret(input: SecretInput): Promise<void> {
   const { cluster, name, values } = input;
@@ -346,6 +360,19 @@ async function saveSecret(input: SecretInput): Promise<void> {
   const created = await http.ensure(request);
   if (created !== null) return;
   await http.put({ ...request, endpoint: endpoint(cluster, `${SECRETS_PATH}/${name}`) });
+}
+
+/** One Job to delete, by name. */
+interface JobRemoval {
+  cluster: Cluster;
+  name: string;
+}
+
+/** Deletes the Job and, in the background, its pods: the Job is gone from the list at once. */
+async function removeJob(removal: JobRemoval): Promise<void> {
+  const { cluster, name } = removal;
+  const apiPath = `${JOBS_PATH}/${name}?propagationPolicy=Background`;
+  await http.remove(endpoint(cluster, apiPath));
 }
 
 /** Creates the Job; the API URL of the created Job. */

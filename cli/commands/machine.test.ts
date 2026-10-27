@@ -12,6 +12,7 @@ const MINUTE_MS = 60_000;
 const HTTP_OK = 200;
 const HTTP_CREATED = 201;
 const HTTP_CONFLICT = 409;
+const HTTP_NOT_FOUND = 404;
 const TOKEN = "SECRET-TOKEN";
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
@@ -105,10 +106,14 @@ interface FakeApi {
   /** The answer status of the PVC POST. */
   pvcStatus: number;
   secretStatus: number;
+  /** The answer status of a DELETE, of a Job or of a PVC. */
+  deleteStatus: number;
   /** The items of every Job list. */
   jobs: unknown[];
   /** The items of every pod list. */
   pods: unknown[];
+  /** When set, the items of the pod lists after the next one: the pod starts between two polls. */
+  nextPods: unknown[] | null;
   /** The body and the status of every pod log answer. */
   log: string;
   logStatus: number;
@@ -121,8 +126,10 @@ function startFakeApi(): FakeApi {
     calls: [],
     pvcStatus: HTTP_CREATED,
     secretStatus: HTTP_CREATED,
+    deleteStatus: HTTP_OK,
     jobs: [],
     pods: [],
+    nextPods: null,
     log: "",
     logStatus: HTTP_OK,
     stop: () => {},
@@ -138,8 +145,12 @@ function startFakeApi(): FakeApi {
       if (url.pathname.endsWith("/log")) {
         return new Response(api.log, { status: api.logStatus });
       }
-      if (url.pathname.endsWith("/pods")) return Response.json({ items: api.pods });
+      if (url.pathname.endsWith("/pods")) return podList(api);
       if (request.method === "GET") return Response.json({ items: api.jobs });
+      if (request.method === "DELETE" && url.pathname.startsWith(JOBS_PATH)) {
+        return removeJob(api, url.pathname);
+      }
+      if (request.method === "DELETE") return Response.json({}, { status: api.deleteStatus });
       if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
       if (url.pathname === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
       return Response.json(body, { status: HTTP_CREATED });
@@ -151,7 +162,24 @@ function startFakeApi(): FakeApi {
 }
 
 const readBody = (request: Request): Promise<unknown> =>
-  request.method === "GET" ? Promise.resolve(null) : request.json();
+  request.method === "GET" || request.method === "DELETE" ? Promise.resolve(null) : request.json();
+
+function podList(api: FakeApi): Response {
+  const items = api.pods;
+  if (api.nextPods !== null) {
+    api.pods = api.nextPods;
+    api.nextPods = null;
+  }
+  return Response.json({ items });
+}
+
+/** A deleted Job is gone from the next list, as with propagationPolicy=Background. */
+function removeJob(api: FakeApi, apiPath: string): Response {
+  if (api.deleteStatus !== HTTP_OK) return Response.json({}, { status: api.deleteStatus });
+  const name = apiPath.slice(`${JOBS_PATH}/`.length);
+  api.jobs = api.jobs.filter((job) => !JSON.stringify(job).includes(`"name":"${name}"`));
+  return Response.json({ kind: "Status", status: "Success" });
+}
 
 const base64 = (text: string) => Buffer.from(text).toString("base64");
 
@@ -580,24 +608,21 @@ describe("machine", () => {
     test("machine logs --follow waits for a Pending pod to run", async () => {
       api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
       api.pods = [fakePod("pod-newer", "Pending")];
+      api.nextPods = [fakePod("pod-newer")];
       api.log = LOG;
-      setTimeout(() => {
-        api.pods = [fakePod("pod-newer")];
-      }, 300);
       const run = await machine(["logs", "TEN-1", "--follow"]);
       expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
-      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBeGreaterThan(1);
+      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(2);
     });
 
     test("machine logs --follow waits for a pod that does not exist yet", async () => {
       api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
       api.pods = [];
+      api.nextPods = [fakePod("pod-newer")];
       api.log = LOG;
-      setTimeout(() => {
-        api.pods = [fakePod("pod-newer")];
-      }, 300);
       const run = await machine(["logs", "TEN-1", "--follow"]);
       expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
+      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(2);
     });
 
     test("machine logs without --follow and without a pod is a kubernetes error", async () => {
@@ -659,6 +684,61 @@ describe("machine", () => {
     ]);
   });
 
+  test("machine stop deletes the active Job of the task with its pods", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    const run = await machine(["stop", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: ["task-ten-1-1021-100000"] });
+    expect(api.calls.map((c) => [c.method, c.path, c.query, c.auth])).toEqual([
+      ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1", `Bearer ${TOKEN}`],
+      [
+        "DELETE",
+        `${JOBS_PATH}/task-ten-1-1021-100000`,
+        "?propagationPolicy=Background",
+        `Bearer ${TOKEN}`,
+      ],
+    ]);
+  });
+
+  test("machine stop with no active Job is ok with an empty list", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-090000", status: { succeeded: 1 } })];
+    const run = await machine(["stop", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: [] });
+    expect(api.calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+
+  test("machine run after stop is not machine-busy", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    await machine(["stop", "TEN-1"]);
+    const ls = await machine(["ls"]);
+    expect(ls.json.runs).toEqual([]);
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
+  });
+
+  test("machine stop without a kubeconfig fails before any request", async () => {
+    env.KUBECONFIG = path.join(project.root, "missing-kubeconfig");
+    const run = await machine(["stop", "TEN-1"]);
+    expect([run.code, run.json.code]).toEqual([1, "no-kubeconfig"]);
+    expect(api.calls).toEqual([]);
+  });
+
+  test("machine stop without an id is a usage error", async () => {
+    const run = await machine(["stop"]);
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+    expect(String(run.json.error)).toContain("tenbox machine stop <id>");
+    expect(api.calls).toEqual([]);
+  });
+
+  test("a failed DELETE is a kubernetes error", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    api.deleteStatus = 500;
+    const run = await machine(["stop", "TEN-1"]);
+    expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
+  });
+
   test("a missing job.yaml is a template error before any request", async () => {
     await files.remove(path.join(template, "job.yaml"));
     const run = await build();
@@ -682,5 +762,42 @@ describe("machine", () => {
     expect(run.code).toBe(0);
     expect(api.calls.map((c) => c.auth)).toEqual([null, null, null, null]);
     expect(run.out).not.toContain(base64("KEY"));
+  });
+
+  test("machine rm deletes the task's volume when no Job of the task is active", async () => {
+    const run = await machine(["rm", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({
+      ok: true,
+      task: "TEN-1",
+      volume: { name: "task-ten-1", state: "deleted" },
+    });
+    expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
+      ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1"],
+      ["DELETE", `${PVCS_PATH}/task-ten-1`, ""],
+    ]);
+    expect(api.calls[1]?.auth).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test("machine rm refuses with machine-busy while a Job of the task is active", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    const run = await machine(["rm", "TEN-1"]);
+    expect([run.code, run.json.code]).toEqual([1, "machine-busy"]);
+    expect(String(run.json.error)).toContain("task-ten-1-1021-100000");
+    expect(api.calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+
+  test("machine rm of a volume that is already gone is missing, not an error", async () => {
+    api.deleteStatus = HTTP_NOT_FOUND;
+    const run = await machine(["rm", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json.volume).toEqual({ name: "task-ten-1", state: "missing" });
+  });
+
+  test("machine rm without an id or with an extra word is a usage error", async () => {
+    const none = await machine(["rm"]);
+    const extra = await machine(["rm", "TEN-1", "TEN-2"]);
+    expect([none.code, extra.code]).toEqual([USAGE_EXIT, USAGE_EXIT]);
+    expect(api.calls).toEqual([]);
   });
 });

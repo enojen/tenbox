@@ -1,7 +1,13 @@
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { machines } from "../application/machines.ts";
-import type { MachineLogsResultJson, MachineLsResult, MachineRunResultJson } from "./results.ts";
+import type {
+  MachineLogsResultJson,
+  MachineLsResult,
+  MachineRmResult,
+  MachineRunResultJson,
+  MachineStopResult,
+} from "./results.ts";
 
 export interface MachineRunArgs {
   id: TaskId;
@@ -35,4 +41,16 @@ export async function showMachineLogs(args: MachineLogsArgs): Promise<MachineLog
     write: (chunk) => process.stderr.write(chunk),
   });
   return { ok: true, task, job, status };
+}
+
+/** Ends the running Job of the task; its volume stays. */
+export async function stopMachine(id: TaskId): Promise<MachineStopResult> {
+  const stopped = await machines.stop(id);
+  return { ok: true, task: id, stopped };
+}
+
+/** Deletes the volume of the task on the cluster, after its close Job has ended. */
+export async function removeMachineVolume(id: TaskId): Promise<MachineRmResult> {
+  const volume = await machines.remove(id);
+  return { ok: true, task: id, volume };
 }
