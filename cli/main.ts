@@ -24,6 +24,7 @@ import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { decide } from "./commands/decide.ts";
+import { commandHelp } from "./commands/help.ts";
 import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listTasks } from "./commands/list.ts";
@@ -371,6 +372,10 @@ const hasCommandSeparator = (): boolean => process.argv.slice(2).includes("--");
 
 async function main(argv: string[]): Promise<void> {
   const [name, ...rest] = argv;
+  if (name === "help" && rest[0] !== undefined) {
+    printCommandHelp(rest[0]);
+    return;
+  }
   if (!name || name === "help" || name === "--help") {
     printHelp();
     return;
@@ -391,6 +396,14 @@ function printHelp(): void {
   const usages = Object.entries(COMMANDS).map(([name, command]) => [name, command.usage]);
   for (const [, usage] of usages) process.stderr.write(`  ${usage}\n`);
   emit({ ok: true, commands: Object.fromEntries(usages) });
+}
+
+function printCommandHelp(name: string): void {
+  const command = COMMANDS[name];
+  if (!command) throw usageError(`unknown command: ${name}`);
+  const result = commandHelp({ name, usage: command.usage });
+  process.stderr.write(`${result.help}\n`);
+  emit(result);
 }
 
 function toFailure(e: unknown): Failure {
