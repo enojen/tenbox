@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COMMAND } from "../../../domain/commands.ts";
 import { claudeError } from "../../../domain/errors/tools.ts";
 import type { TaskId } from "../../../domain/ids.ts";
 import { jsons } from "../../../domain/utils.ts";
@@ -44,7 +45,7 @@ function shellWord(word: string): string {
 
 /** The `--settings` JSON with a `Notification` hook for permission prompts that runs `tenbox hook blocked <id>`. */
 function blockedHookSettings(id: TaskId): string {
-  const command = processes.selfCommand(["hook", "blocked", id]).map(shellWord).join(" ");
+  const command = processes.selfCommand([COMMAND.hook, "blocked", id]).map(shellWord).join(" ");
   const hooks = {
     Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command }] }],
   };

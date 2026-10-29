@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BUILD_STATUS, type BuildStatus } from "./builds.ts";
+import { COMMAND } from "./commands.ts";
 import type { TaskId } from "./ids.ts";
 import { jsons } from "./utils.ts";
 
@@ -31,14 +32,14 @@ const SEPARATOR = " · ";
 const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => string> = {
   [NOTIFICATION_STATE.needsYou]: (n) =>
     n.recommended === undefined
-      ? `tenbox attach ${n.id}`
-      : `tenbox answer ${n.id} ${n.recommended}`,
-  [NOTIFICATION_STATE.readyForYou]: (n) => `tenbox pr ${n.id} --ready`,
-  [NOTIFICATION_STATE.failed]: (n) => `tenbox attach ${n.id}`,
-  [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox attach ${n.id}`,
-  [NOTIFICATION_STATE.prOpened]: (n) => `tenbox close ${n.id}`,
-  [NOTIFICATION_STATE.planReady]: (n) => `tenbox approve ${n.id}`,
-  [NOTIFICATION_STATE.blocked]: (n) => `tenbox attach ${n.id}`,
+      ? `tenbox ${COMMAND.attach} ${n.id}`
+      : `tenbox ${COMMAND.answer} ${n.id} ${n.recommended}`,
+  [NOTIFICATION_STATE.readyForYou]: (n) => `tenbox ${COMMAND.pr} ${n.id} --ready`,
+  [NOTIFICATION_STATE.failed]: (n) => `tenbox ${COMMAND.attach} ${n.id}`,
+  [NOTIFICATION_STATE.checkFailed]: (n) => `tenbox ${COMMAND.attach} ${n.id}`,
+  [NOTIFICATION_STATE.prOpened]: (n) => `tenbox ${COMMAND.close} ${n.id}`,
+  [NOTIFICATION_STATE.planReady]: (n) => `tenbox ${COMMAND.approve} ${n.id}`,
+  [NOTIFICATION_STATE.blocked]: (n) => `tenbox ${COMMAND.attach} ${n.id}`,
 };
 
 /** The state of a build end status a person must act on; null for `not-approved`. */

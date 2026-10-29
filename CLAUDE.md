@@ -99,6 +99,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | plan-ready | The notification state of `tenbox plan done`; the detail is the part and open question counts. |
 | status report | The state of one task read from its files, its background session and its PR: the `task.json` status, round, parts, session, PR, last check; `tenbox status` prints it (`StatusReport`). |
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
+| command | One tenbox CLI command, the first word after `tenbox`: `start`, `check`, `merge-check` ...; the command table of `cli/main.ts`, the machine run commands and the next command of a notification take its name from `COMMAND` (`CommandName`). |
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
 | machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
