@@ -835,10 +835,24 @@ describe("machine", () => {
     expect(api.calls).toEqual([]);
   });
 
+  test("machine stop of a Job that ends before its DELETE is ok and not stopped", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
+    api.deleteStatus = HTTP_NOT_FOUND;
+    const run = await machine(["stop", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: [] });
+  });
+
   test("machine stop without an id is a usage error", async () => {
     const run = await machine(["stop"]);
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
     expect(String(run.json.error)).toContain("tenbox machine stop <id>");
+    expect(api.calls).toEqual([]);
+  });
+
+  test("machine stop with an extra word is a usage error", async () => {
+    const run = await machine(["stop", "TEN-1", "TEN-2"]);
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
     expect(api.calls).toEqual([]);
   });
 

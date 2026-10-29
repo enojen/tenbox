@@ -43,7 +43,7 @@ export async function showMachineLogs(args: MachineLogsArgs): Promise<MachineLog
   return { ok: true, task, job, status };
 }
 
-/** Ends the running Job of the task; its volume stays. */
+/** Ends the running Jobs of the task; its volume stays. */
 export async function stopMachine(id: TaskId): Promise<MachineStopResult> {
   const stopped = await machines.stop(id);
   return { ok: true, task: id, stopped };

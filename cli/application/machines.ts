@@ -108,12 +108,16 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   return { task: id, cmd, url };
 }
 
-/** Deletes the active Jobs of the task; the volume stays. */
+/** Deletes the active Jobs of the task; the names it deleted. The volume stays. */
 async function stop(id: TaskId): Promise<string[]> {
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const names = await activeJobs(cluster, id);
-  for (const name of names) await kubernetes.removeJob({ cluster, name });
-  return names;
+  const stopped: string[] = [];
+  for (const name of names) {
+    const deleted = await kubernetes.removeJob({ cluster, name });
+    if (deleted) stopped.push(name);
+  }
+  return stopped;
 }
 
 /** Deletes the volume of the task unless a Job of the task is active. */

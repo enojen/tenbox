@@ -462,11 +462,14 @@ interface JobRemoval {
   name: string;
 }
 
-/** Deletes the Job and, in the background, its pods: the Job is gone from the list at once. */
-async function removeJob(removal: JobRemoval): Promise<void> {
+/**
+ * Deletes the Job and, in the background, its pods: the Job is gone from the list at once.
+ * False when it is gone already (404).
+ */
+function removeJob(removal: JobRemoval): Promise<boolean> {
   const { cluster, name } = removal;
   const apiPath = `${JOBS_PATH}/${name}?propagationPolicy=Background`;
-  await http.remove(endpoint(cluster, apiPath));
+  return http.remove(endpoint(cluster, apiPath));
 }
 
 /** Creates the Job; the API URL of the created Job. */

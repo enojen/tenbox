@@ -331,7 +331,7 @@ const COMMANDS: Record<string, Command> = {
       }
       if (follow) throw usageError(`usage: ${MACHINE_USAGE}`);
       if (action === "ls" && rest.length === 0) return listMachineRuns();
-      if (action === "stop") return stopMachine(idArg(rest, MACHINE_USAGE));
+      if (action === "stop" && rest.length === 1) return stopMachine(idArg(rest, MACHINE_USAGE));
       if (action === "rm" && rest.length === 1) {
         return removeMachineVolume(idArg(rest, MACHINE_USAGE));
       }
