@@ -32,9 +32,14 @@ export interface SessionStartInfo {
 }
 
 /** A background `claude` session in one task worktree. */
-interface SessionTarget {
+export interface SessionTarget {
   id: TaskId;
   taskWorktree: string;
+}
+
+/** A task worktree and the `state` of its newest background session. */
+export interface TargetState extends SessionTarget {
+  state: string;
 }
 
 interface SessionEnsureInput {
@@ -45,7 +50,7 @@ interface SessionEnsureInput {
 }
 
 /** The task's background `claude` sessions, all started in its task worktree. */
-export const sessions = { ensure, run, resume, attach, stop, findState };
+export const sessions = { ensure, run, resume, attach, stop, findState, findStates };
 
 /** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
@@ -132,8 +137,49 @@ async function findState(target: SessionTarget): Promise<string> {
   if (claudeRun === null) return SESSION_STATE.unavailable;
   try {
     const found = await claude.listBackground(claudeRun);
-    return [...found].sort(byStart).at(-1)?.state ?? SESSION_STATE.none;
+    return newestState(found);
   } catch (e) {
     return failedState(e);
   }
+}
+
+/** Task worktrees under `dir`, whose sessions one `claude agents --cwd <dir>` lists. */
+interface StatesQuery {
+  dir: string;
+  targets: SessionTarget[];
+}
+
+/**
+ * Each target with the `state` of its newest background session; `unavailable` without
+ * `claude`, `failed: <reason>` when it fails.
+ */
+async function findStates(query: StatesQuery): Promise<TargetState[]> {
+  const { dir, targets } = query;
+  const binary = claude.find();
+  if (binary === null)
+    return targets.map((target) => ({ ...target, state: SESSION_STATE.unavailable }));
+  try {
+    const cwd = await files.realPath(dir);
+    const found = await claude.listUnder({ claude: binary, cwd });
+    return await Promise.all(targets.map((target) => withNewestState({ target, found })));
+  } catch (e) {
+    const state = failedState(e);
+    return targets.map((target) => ({ ...target, state }));
+  }
+}
+
+interface FoundSessions {
+  target: SessionTarget;
+  found: BackgroundSession[];
+}
+
+async function withNewestState(input: FoundSessions): Promise<TargetState> {
+  const { target, found } = input;
+  const real = await files.realPath(target.taskWorktree);
+  const own = found.filter((session) => session.cwd === real);
+  return { ...target, state: newestState(own) };
+}
+
+function newestState(found: BackgroundSession[]): string {
+  return [...found].sort(byStart).at(-1)?.state ?? SESSION_STATE.none;
 }

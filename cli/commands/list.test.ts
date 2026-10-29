@@ -40,6 +40,39 @@ describe("tenbox list", () => {
     expect(run.err).toContain("T-2 · started · round - · parts 1/1 · session none · PR -");
   });
 
+  test("asks claude for the sessions once and gives each task the state of its own session", async () => {
+    await start("T-1");
+    await start("T-2");
+    const real = (id: string) => files.realPath(path.join(project.wtRoot, "demo", id));
+    const first = await real("T-1");
+    const second = await real("T-2");
+    await fake.setSessions([
+      {
+        id: "a",
+        cwd: first,
+        kind: "background",
+        startedAt: 1,
+        state: "working",
+        pid: 1,
+      },
+      {
+        id: "b",
+        cwd: second,
+        kind: "background",
+        startedAt: 2,
+        state: "blocked",
+        pid: 2,
+      },
+    ]);
+    const run = await list();
+    const calls = await fake.calls();
+    expect(calls.filter((call) => call.args[0] === "agents")).toHaveLength(1);
+    expect(run.json.tasks).toMatchObject([
+      { task: "T-1", session: { state: "working" } },
+      { task: "T-2", session: { state: "blocked" } },
+    ]);
+  });
+
   test("leaves out main, group worktrees and directories without .tenbox", async () => {
     await start("T-1");
     await files.write(path.join(project.wtRoot, "demo", "T-1-2", ".tenbox", "x"), "");
