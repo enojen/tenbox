@@ -53,6 +53,12 @@ export function stringValue(values: Values, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+/** A flag given any number of times, `{ multiple: true }`; none gives an empty list. */
+export function stringListValue(values: Values, name: string): string[] {
+  const value = values[name];
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
+
 export function flagValue(values: Values, name: string): boolean {
   return values[name] === true;
 }

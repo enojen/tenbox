@@ -1,6 +1,7 @@
 import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import type { Tracker } from "../../../domain/tracker.ts";
 import { clickupTracker } from "./clickup.ts";
+import { githubTracker } from "./github.ts";
 import { linearTracker } from "./linear.ts";
 import { noneTracker } from "./none.ts";
 
@@ -13,5 +14,7 @@ export function makeTracker(config: TrackerConfig): Tracker {
       return linearTracker(config);
     case TRACKER_KIND.clickup:
       return clickupTracker(config);
+    case TRACKER_KIND.github:
+      return githubTracker;
   }
 }

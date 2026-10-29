@@ -1,0 +1,33 @@
+name: Bug
+description: Something does not work as the reference describes
+labels: [bug]
+body:
+  - type: textarea
+    id: ran
+    attributes:
+      label: What you ran
+      placeholder: tenbox check TEN-301 --tier full
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: The JSON output or the error, as printed.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: OS, `bun --version`, `claude --version`, and the tenbox commit (`git rev-parse --short HEAD` in its checkout).
+      placeholder: Ubuntu 24.04 · bun 1.3.5 · claude 2.1.40 · tenbox 6a5aae0
+    validations:
+      required: false

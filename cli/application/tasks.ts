@@ -10,7 +10,7 @@ import {
   type TaskFile,
   taskFileOf,
 } from "../../domain/tasks.ts";
-import type { TaskStatus, Tracker } from "../../domain/tracker.ts";
+import type { NewTask, TaskRef, TaskStatus, Tracker } from "../../domain/tracker.ts";
 import { files } from "../infra/files.ts";
 
 interface TaskSource {
@@ -28,8 +28,13 @@ const STATUS_SKIPPED = "skipped";
 /** The real status name the tracker set, `skipped` or `failed: <reason>`. */
 export type StatusUpdate = string;
 
+/** The task `ensure` found or wrote; `created` tells which. */
+interface EnsuredTask extends TaskRef {
+  created: boolean;
+}
+
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
-export const tasks = { get, find, ensureFiles, updateStatus, saveStatus };
+export const tasks = { get, find, ensure, ensureFiles, updateStatus, saveStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
@@ -47,6 +52,14 @@ async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
   const found = await tracker.getTask(id);
   const comments = await tracker.comments(id);
   return { ...found, id, tracker: tracker.kind, comments };
+}
+
+/** The open task with the title, else a new one in the tracker: a title is written once. */
+async function ensure(tracker: Tracker, task: NewTask): Promise<EnsuredTask> {
+  const found = await tracker.findOpen(task.title);
+  if (found !== null) return { ...found, created: false };
+  const made = await tracker.create(task);
+  return { ...made, created: true };
 }
 
 /** The task in `task.json` of `dir`; null when it is missing, `bad-file` when it is not valid. */

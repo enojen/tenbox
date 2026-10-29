@@ -11,7 +11,7 @@ type Envelope = z.infer<typeof EnvelopeSchema>;
 export interface GraphqlRequest<T> {
   endpoint: Endpoint;
   query: string;
-  variables: Record<string, string>;
+  variables: Record<string, string | string[]>;
   data: z.ZodType<T>;
 }
 

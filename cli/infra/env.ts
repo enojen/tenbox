@@ -22,6 +22,8 @@ export interface Env {
   home: string;
   /** `TENBOX_DEBUG=1`: log every run and print a stack for every error. */
   debug: boolean;
+  /** `CLAUDECODE` is set: the command runs inside a Claude Code session, so an agent runs it. */
+  agent: boolean;
 }
 
 /** Read at each call, so tests can set `process.env` and `process.chdir` first. */
@@ -38,6 +40,7 @@ export function env(): Env {
     kubeconfig: process.env.KUBECONFIG ?? path.join(os.homedir(), ".kube", "config"),
     home: os.homedir(),
     debug: process.env.TENBOX_DEBUG === "1",
+    agent: Boolean(process.env.CLAUDECODE),
   };
 }
 

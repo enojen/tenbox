@@ -63,7 +63,9 @@ reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
 `machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, with the resource
 class from `task/classes.yaml` (`plan` for `start` and `close`, `machine.class` of
-`tenbox.yaml` for `build`, default `build`), and posts the
+`tenbox.yaml` for `build`, default `build`) and, for `build`, the services of
+`machine.services` from `task/services/` (their sidecars and volumes; their env joins
+`TENBOX_ENV`, where `machine.env` wins), and posts the
 volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
 `tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
 the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer

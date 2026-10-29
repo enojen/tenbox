@@ -44,6 +44,13 @@ export function noTrackerError(id: string): TenboxError {
   );
 }
 
+export function noTrackerToWriteError(): TenboxError {
+  return new TenboxError(
+    "no tracker configured; add tracker: to tenbox.yaml, or use tenbox report for a Tenbox task",
+    "no-tracker",
+  );
+}
+
 export function noLoginError(file: string): TenboxError {
   return new TenboxError(
     `no claude.ai login at ${file}; run /login in claude on this computer`,
