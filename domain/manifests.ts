@@ -6,7 +6,12 @@ import { RESOURCE_CLASS } from "./machines.ts";
 import { objects } from "./utils.ts";
 
 /** The trackers Tenbox has an adapter for; `none` is no tracker. */
-export const TRACKER_KIND = { none: "none", linear: "linear", clickup: "clickup" } as const;
+export const TRACKER_KIND = {
+  none: "none",
+  linear: "linear",
+  clickup: "clickup",
+  github: "github",
+} as const;
 
 export const TrackerKindSchema = z.enum(TRACKER_KIND);
 
@@ -111,6 +116,10 @@ const MachineSchema = z
     template: z.string().min(1).default(DEFAULT_TEMPLATE),
     /** The resource class of a build in the box. */
     class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.build),
+    /** Files of `<template>/services/` that a build gets. */
+    services: z
+      .array(z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }))
+      .default([]),
     env: z.record(z.string().regex(ENV_NAME), z.string()).default({}),
   })
   .strict();
