@@ -298,7 +298,7 @@ describe("tenbox close", () => {
       expect(calls).toBe(false);
     });
 
-    test("a MERGED PR gives review and wait_merge minutes, schema 6, no human_review", async () => {
+    test("a MERGED PR gives review and wait_merge minutes, schema 7, no human_review", async () => {
       await setup();
       await commitOn(taskWorktree, "b.txt");
       const rawHead = await git.run(["rev-parse", "HEAD"], taskWorktree);
@@ -317,7 +317,7 @@ describe("tenbox close", () => {
       await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
       const text = await readStatsText();
       const written = JSON.parse(text);
-      expect(written.schema).toBe(6);
+      expect(written.schema).toBe(7);
       expect(written.runs).toMatchObject([{ workflow: "tenbox-build", finished: true }]);
       expect(written.minutes).toMatchObject({ review: 10, wait_merge: 20 });
       expect(written.minutes).not.toHaveProperty("human_review");
@@ -672,7 +672,7 @@ describe("tenbox close", () => {
     expect(run.json).toMatchObject({ tracker: { kind: "none", status: "skipped" } });
   });
 
-  test("with tracker none the cost comment is skipped", async () => {
+  test("with tracker none the close comment is skipped", async () => {
     await setup();
     const run = await closeT1();
     expect(run.json).toMatchObject({ ok: true, comment: { state: "skipped" } });
@@ -743,12 +743,13 @@ describe("tenbox close", () => {
       stats: { path: path.join(kept, "stats.json"), state: "written" },
     });
     expect(written).toMatchObject({
-      schema: 6,
+      schema: 7,
       project: "demo",
       task: "T-1",
       title: "x",
       user: "me@example.com",
       forced: true,
+      findings: [],
       code: { added: 6, removed: 1, files: 4, test_added: 3 },
       plan: { parts: 2, difficulty: ["easy", "hard"], estimated_lines: 120 },
       runs: null,

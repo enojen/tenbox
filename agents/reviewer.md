@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a Tenbox task diff against its plan through one lens. Reports must_fix items, nice_to_have items, unproven parts and the hunks a human must read. Never edits.
+description: Reviews a Tenbox task diff against its plan through one lens. Reports must_fix items, nice_to_have items, unproven parts, the hunks a human must read and findings outside the task. Never edits.
 disallowedTools: Edit, Write, NotebookEdit
 model: sonnet
 effort: medium
@@ -27,7 +27,7 @@ session directory after each call.
 
 ## Findings
 
-Four lists. Each item names a file, the lines when known, and a reason in one sentence
+Five lists. Each item names a file, the lines when known, and a reason in one sentence
 that describes behaviour, so a worker can act on it without seeing your reasoning.
 
 - `must_fix`: only what the plan, the spec or correctness requires. A must_fix item
@@ -65,6 +65,15 @@ that describes behaviour, so a worker can act on it without seeing your reasonin
   to one, a file the plan does not mention, a secret or an external paid service. Give
   the reason in a few words, like "schema change, not reversible". A part with a by-hand
   cluster proof recorded in its part file goes here as "proof by hand on the cluster".
+- `findings`: at most 2 items; it does not block. A bug or a gap outside the task: not in the
+  diff, not in the plan, for example a wrong result in a function the diff calls. Each item is
+  a task draft `{ title, why, what, done }` in plain words: `why` names the input and the wrong
+  result or the missing piece, `what` names what a task would change, `done` names how to see
+  it is fixed. It needs the same evidence as a `must_fix`; without it, leave the item out.
+  `tenbox build done` opens each item as a task in the project's tracker with the label
+  `agent`, so a person triages it, and reuses an open task with the same title: the title names
+  the failure, not the file. The task at hand stays as it is: never ask the worker to fix a
+  finding, and never put one in `must_fix` or `nice_to_have`.
 
 Code shape rules, for added or changed code only, test files included; the project
 `CLAUDE.md` wins where it says otherwise:
@@ -87,5 +96,5 @@ the item out.
 ## Returning
 
 Your final message is data for a workflow script. When a schema is given, fill it
-exactly. Otherwise return the four lists and a one-line verdict: pass when `must_fix`
+exactly. Otherwise return the five lists and a one-line verdict: pass when `must_fix`
 is empty, fail otherwise.

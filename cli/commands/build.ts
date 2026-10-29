@@ -4,6 +4,7 @@ import {
   type BuildResult,
   buildArgs,
   buildKind,
+  type Finding,
   groupTiers,
   type KindPlan,
   parseBuild,
@@ -13,23 +14,27 @@ import { checkFailedError } from "../../domain/errors/builds.ts";
 import { errorMessage } from "../../domain/errors/index.ts";
 import { groupBranch, groupWorktreeDir } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { CHECK_TIER, type Manifest } from "../../domain/manifests.ts";
+import { CHECK_TIER, type Manifest, TRACKER_KIND } from "../../domain/manifests.ts";
 import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
+import { AGENT_LABEL, newTaskOf, type TaskRef, type Tracker } from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
+import { manifests } from "../application/manifests.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
 import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
+import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
+import { makeTracker } from "../infra/tracker/index.ts";
 import { runChecks } from "./check.ts";
 import { assertChecked, findLatestChecks, openPr } from "./pr.ts";
 import type { PrError, PrResult, SendBuildResult, TaskFileResult } from "./results.ts";
@@ -64,6 +69,7 @@ export interface BuildDoneInput {
 
 /** `pr` only for an accepted `ready-for-you`: the draft PR result, or why it failed. */
 export interface BuildDoneResult extends TaskFileResult {
+  findings: Finding[];
   pr?: PrResult | PrError;
 }
 
@@ -79,9 +85,9 @@ const FULL_TIER_TIMEOUT_SECONDS = 600;
 const FULL_TIER_TIMEOUT_MS = FULL_TIER_TIMEOUT_SECONDS * durations.MS_PER_SECOND;
 
 /**
- * Validates the build result and writes it with its kind to the task's `.tenbox/build.json`. A
- * `ready-for-you` result must pass its checks and fit the limits of its kind before anything is
- * written, and then opens the draft PR.
+ * Validates the build result, opens a task per finding and writes the result with its kind to
+ * the task's `.tenbox/build.json`. A `ready-for-you` result must pass its checks and fit the
+ * limits of its kind before anything is written or opened, and then opens the draft PR.
  */
 export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult> {
   const { id } = input;
@@ -92,13 +98,61 @@ export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult>
   const ready = result.status === BUILD_STATUS.readyForYou;
   if (ready) await assertChecksPass({ id, taskWorktree, kindPlan });
   if (ready) await assertDiffFits({ id, taskWorktree, kindPlan });
-  const file = await builds.save(taskWorktree, JSON.stringify({ ...result, kind: kindPlan.kind }));
+  const findings = await openFindings({ id, taskWorktree, result });
+  const saved = { ...result, kind: kindPlan.kind, findings };
+  const file = await builds.save(taskWorktree, JSON.stringify(saved));
   await saveBuildStatus(taskWorktree);
   await notifyEnd(id, taskWorktree);
   await autoAnswers.run({ id, taskWorktree });
-  if (!ready) return { ok: true, task: id, file };
+  if (!ready) return { ok: true, task: id, file, findings };
   const pr = await openDraftPr(id);
-  return { ok: true, task: id, file, pr };
+  return { ok: true, task: id, file, findings, pr };
+}
+
+interface FindingsInput {
+  id: TaskId;
+  taskWorktree: string;
+  result: BuildResult;
+}
+
+/**
+ * One task per finding in the tracker of the task worktree's manifest, labeled `agent`; a title
+ * that is open already is reused. Without a tracker the findings keep no task.
+ */
+async function openFindings(input: FindingsInput): Promise<Finding[]> {
+  const { id, taskWorktree, result } = input;
+  const { findings } = result;
+  if (findings.length === 0) return findings;
+  const { project } = await projects.get(taskWorktree);
+  const manifest = await manifests.get(project.mainDir, taskWorktree);
+  if (manifest.tracker.kind === TRACKER_KIND.none) return findings;
+  const tracker = makeTracker(manifest.tracker);
+  const opened: Finding[] = [];
+  for (const finding of findings) {
+    const task = await ensureFinding({ id, tracker, finding });
+    opened.push({ ...finding, task });
+  }
+  return opened;
+}
+
+interface FindingTask {
+  id: TaskId;
+  tracker: Tracker;
+  finding: Finding;
+}
+
+/** A tracker failure is one warning line, not the end of the build: the finding keeps no task. */
+async function ensureFinding(input: FindingTask): Promise<TaskRef | null> {
+  const { id, tracker, finding } = input;
+  const labels = [...finding.labels, AGENT_LABEL];
+  const task = newTaskOf({ ...finding, labels }, { task: id, tenbox: null });
+  try {
+    const ensured = await tasks.ensure(tracker, task);
+    return { id: ensured.id, url: ensured.url };
+  } catch (error) {
+    log(`warning: could not open "${task.title}": ${errorMessage(error)}`);
+    return null;
+  }
 }
 
 /** The task, its worktree, and its plan with the kind the build runs as. */

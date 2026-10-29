@@ -10,7 +10,7 @@ import type { TaskId } from "../../domain/ids.ts";
 import { TRACKER_KIND } from "../../domain/manifests.ts";
 import { taskBranch } from "../../domain/names.ts";
 import type { Project } from "../../domain/projects.ts";
-import { costComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
+import { closeComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
 import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE, type TaskFile } from "../../domain/tasks.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
@@ -57,7 +57,7 @@ export const PULL_STATE = { pulled: "pulled", skipped: "skipped" } as const;
 /** What the close did with the task branch on `origin`. */
 export const REMOTE_BRANCH_STATE = { deleted: "deleted", skipped: "skipped" } as const;
 
-/** What the close did with the cost comment on the tracker task. */
+/** What the close did with the close comment on the tracker task. */
 export const COMMENT_STATE = { posted: "posted", skipped: "skipped" } as const;
 
 /** Who says the branch is merged: GitHub, a test merge in git, or nobody. */
@@ -74,7 +74,7 @@ interface CloseTarget {
 
 /**
  * Writes `stats.json` in the task dir, stops the task's background sessions, removes the worktree and the
- * branch, sets the tracker to done and posts the cost comment. The task dir stays. The safety checks run first; a step with
+ * branch, sets the tracker to done and posts the close comment. The task dir stays. The safety checks run first; a step with
  * nothing to do is skipped.
  */
 export async function closeTask(input: CloseInput): Promise<CloseResult> {
@@ -380,7 +380,7 @@ async function postComment(input: CommentInput): Promise<CommentState> {
   const { id, tracker, stats } = input;
   if (stats === null || tracker.kind === TRACKER_KIND.none) return COMMENT_STATE.skipped;
   try {
-    await tracker.comment({ id, text: costComment(stats) });
+    await tracker.comment({ id, text: closeComment(stats) });
     return COMMENT_STATE.posted;
   } catch (e) {
     return failedState(e);

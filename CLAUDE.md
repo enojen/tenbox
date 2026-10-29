@@ -79,10 +79,11 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | PR | The GitHub pull request of one group; its body starts with the group line `tenbox: <id> group <N>` (`groupLine`, `GroupPr`). |
 | recipe | How a group is built: worker model and effort, review lenses, check tier (`Recipe`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
-| stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text) and points per part of one task (`TaskStats`). |
+| stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text), points per part and the findings of one task (`TaskStats`). |
 | build result | What `/tenbox-build` returns and `tenbox build done` saves as `build.json`: status, round, proofs, attention, nice-to-have, unproven (`BuildResult`). |
 | proof | One record `{ part, file, test, failure }`: the test that failed before the code and how. It is recorded in `.tenbox/proofs.json` by `tenbox build done` or by hand (`tenbox proof`) (`StatsProof`). |
 | unproven | A reviewer item `{ part, reason }`: a part whose change of behaviour has no proof (`Unproven`). |
+| finding | A bug or a gap outside the task that a reviewer saw: a task draft `{ title, why, what, done }` under `findings` of the review result; `tenbox build done` opens it in the project's tracker with the label `agent` and adds the opened `task: { id, url }` to it in `build.json` (null without a tracker); `tenbox close` names the urls in its comment (`Finding`). |
 | points | Per part in stats: +1 per distinct test among its proofs, -1 per unproven item (`StatsPoints`). |
 | decision | One answer or note in `.tenbox/decisions.md`, added by `tenbox decide` or `tenbox answer`; a plan decision override adds the note `<title>: <option text>`; a question answer also ticks its line in `questions.md` (`Decision`). |
 | decision card | What a blocked worker returns: `{ title, options, recommended, reason, auto, kind }`; `kind` is one of eight, six of them never auto-answered; `build.json` keeps it with `deadline` and, after `tenbox answer`, `answered` (`DecisionCard`). |

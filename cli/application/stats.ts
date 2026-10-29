@@ -92,6 +92,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     code,
     agents: summary.agents,
     runs: summary.runs,
+    findings: (build?.findings ?? []).map(({ title, task }) => ({ title, task })),
   };
 }
 
