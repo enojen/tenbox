@@ -73,7 +73,16 @@ const ServiceSchema = z
               .object({
                 initContainers: z.array(NamedSchema).default([]),
                 containers: z
-                  .array(z.object({ name: z.literal(BOX), env: z.array(NamedSchema) }).strict())
+                  .array(
+                    z
+                      .object({
+                        name: z.literal(BOX),
+                        env: z.array(
+                          z.object({ name: z.string().min(1), value: z.string() }).strict(),
+                        ),
+                      })
+                      .strict(),
+                  )
                   .default([]),
                 volumes: z.array(NamedSchema).default([]),
               })
@@ -85,10 +94,11 @@ const ServiceSchema = z
   })
   .strict();
 
-interface Service {
+/** `env` goes to `TENBOX_ENV`: the box gives its command no other variable of the container. */
+export interface Service {
   sidecars: Named[];
   volumes: Named[];
-  env: Named[];
+  env: Record<string, string>;
 }
 
 const JobPodSchema = z.looseObject({
@@ -96,9 +106,6 @@ const JobPodSchema = z.looseObject({
     template: z.looseObject({
       spec: z.looseObject({
         initContainers: z.array(NamedSchema).default([]),
-        containers: z.array(
-          z.looseObject({ name: z.string(), env: z.array(NamedSchema).default([]) }),
-        ),
         volumes: z.array(NamedSchema).default([]),
       }),
     }),
@@ -273,7 +280,7 @@ async function readService(file: string): Promise<Service> {
   return {
     sidecars: pod.initContainers,
     volumes: pod.volumes,
-    env: pod.containers.flatMap((c) => c.env),
+    env: Object.fromEntries(pod.containers.flatMap((c) => c.env).map((e) => [e.name, e.value])),
   };
 }
 
@@ -284,12 +291,9 @@ function addServices(input: ServicesInput): KubeObject {
   const parsed = JobPodSchema.safeParse(job);
   if (!parsed.success) throw templateError(file, issueLines(parsed.error).join("; "));
   const pod = parsed.data.spec.template.spec;
-  const box = pod.containers.find((c) => c.name === BOX);
-  if (box === undefined) throw templateError(file, `no container "${BOX}"`);
   for (const service of services) {
     pod.initContainers = byName(pod.initContainers, service.sidecars);
     pod.volumes = byName(pod.volumes, service.volumes);
-    box.env = byName(box.env, service.env);
   }
   return parsed.data;
 }

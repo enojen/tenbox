@@ -13,7 +13,13 @@ import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
 import { env } from "../infra/env.ts";
 import { git } from "../infra/git.ts";
-import { type Cluster, type Job, kubernetes, type TemplateFields } from "../infra/kubernetes.ts";
+import {
+  type Cluster,
+  type Job,
+  kubernetes,
+  type Service,
+  type TemplateFields,
+} from "../infra/kubernetes.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
@@ -124,16 +130,16 @@ async function ensureLogin(): Promise<void> {
 async function runJob(command: CommandRun): Promise<string> {
   const { id, manifest, projectId } = command;
   const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const fields = await templateFields(command);
   const dir = homePath(manifest.machine.template);
-  const volume = await kubernetes.readTemplate({ file: path.join(dir, "pvc.yaml"), fields });
-  const file = path.join(dir, "job.yaml");
-  const template = await kubernetes.readTemplate({ file, fields });
   const services = await Promise.all(
     serviceNames(command).map((name) =>
       kubernetes.readService(path.join(dir, "services", `${name}.yaml`)),
     ),
   );
+  const fields = await templateFields({ command, services });
+  const volume = await kubernetes.readTemplate({ file: path.join(dir, "pvc.yaml"), fields });
+  const file = path.join(dir, "job.yaml");
+  const template = await kubernetes.readTemplate({ file, fields });
   const job = kubernetes.addServices({ file, job: template, services });
   await ensureIdle(cluster, id);
   const values = projectSecretValues(manifest);
@@ -155,8 +161,15 @@ function projectSecretValues(manifest: Manifest): Record<string, string> {
   };
 }
 
-async function templateFields(command: CommandRun): Promise<TemplateFields> {
+interface FieldsInput {
+  command: CommandRun;
+  services: Service[];
+}
+
+async function templateFields(input: FieldsInput): Promise<TemplateFields> {
+  const { command, services } = input;
   const { id, words, project, projectId, manifest } = command;
+  const boxEnv = Object.assign({}, ...services.map((s) => s.env), manifest.machine.env);
   const repo = await originUrl(project);
   const name = resourceClass(command);
   const file = path.join(homePath(manifest.machine.template), "classes.yaml");
@@ -170,7 +183,7 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
     repo,
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
-    env: JSON.stringify(manifest.machine.env),
+    env: JSON.stringify(boxEnv),
     class: name,
     cpu: resources.cpu,
     cpuLimit: resources.cpu_limit,

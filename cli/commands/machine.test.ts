@@ -512,25 +512,22 @@ describe("machine", () => {
       await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
     });
 
-    test("a build adds the sidecar, the volume and the box env of each service", async () => {
+    test("a build adds the sidecar and the volume, and the service env goes to TENBOX_ENV", async () => {
       const run = await build();
       expect(run.code).toBe(0);
       const job = posts().find((c) => c.path === JOBS_PATH);
       expect(jobPod(job)).toEqual({ sidecars: ["postgres"], volumes: ["home", "pgdata"] });
-      expect(jobEnv(job).TEST_PG_URL).toBe("postgres://test:test@127.0.0.1:5432");
-      expect(jobEnv(job).TENBOX_TASK).toBe("TEN-1");
+      expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_PG_URL":"postgres://test:test@127.0.0.1:5432"}`);
+      expect(jobEnv(job).TEST_PG_URL).toBeUndefined();
     });
 
-    test("a service env with the name of a template env replaces it", async () => {
-      const service = POSTGRES_SERVICE.replace("TEST_PG_URL", "TENBOX_TASK");
-      await writeService("postgres", service);
+    test("machine.env wins over a service env of the same name", async () => {
+      const env = `env: { TEST_PG_URL: "postgres://own", GREETING: "hi" }`;
+      await writeManifest(`machine: { template: ${template}, services: [postgres], ${env} }\n`);
       const run = await build();
       expect(run.code).toBe(0);
       const job = posts().find((c) => c.path === JOBS_PATH);
-      const env = jobBody(job).spec.template.spec.containers[0]?.env ?? [];
-      expect(env.filter((e) => e.name === "TENBOX_TASK")).toEqual([
-        { name: "TENBOX_TASK", value: "postgres://test:test@127.0.0.1:5432" },
-      ]);
+      expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_PG_URL":"postgres://own","GREETING":"hi"}`);
     });
 
     test.each([
@@ -541,7 +538,7 @@ describe("machine", () => {
       expect(run.code).toBe(0);
       const job = posts().find((c) => c.path === JOBS_PATH);
       expect(jobPod(job)).toEqual({ sidecars: [], volumes: ["home"] });
-      expect(jobEnv(job).TEST_PG_URL).toBeUndefined();
+      expect(jobEnv(job).TENBOX_ENV).toBe("{}");
     });
 
     test("a service without a file is a template error before any request", async () => {
@@ -558,6 +555,13 @@ describe("machine", () => {
         POSTGRES_SERVICE.replace("      volumes:", "      nodeSelector: {}\n      volumes:"),
       ],
       ["a container other than box", POSTGRES_SERVICE.replace("name: box", "name: other")],
+      [
+        "an env from a Secret",
+        POSTGRES_SERVICE.replace(
+          `value: "postgres://test:test@127.0.0.1:5432"`,
+          "valueFrom: { secretKeyRef: { name: pg, key: url } }",
+        ),
+      ],
       ["no mapping", "- postgres\n"],
     ])("a service file with %s is a template error before any request", async (_name, text) => {
       await writeService("postgres", text);
