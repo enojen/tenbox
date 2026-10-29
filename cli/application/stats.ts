@@ -92,6 +92,7 @@ async function compute(input: StatsInput): Promise<TaskStats> {
     code,
     agents: summary.agents,
     runs: summary.runs,
+    opened_tasks: build?.opened_tasks ?? [],
   };
 }
 

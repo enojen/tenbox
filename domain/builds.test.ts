@@ -145,6 +145,7 @@ const ready = (kind?: TaskKind): BuildResult => ({
   status: "ready-for-you",
   round: 1,
   proofs: [],
+  findings: [],
   attention: [],
   nice_to_have: [],
   unproven: [],
@@ -177,6 +178,35 @@ test("a diff over the limits of its kind is kind-raised with the review of the k
       details: { kind: "normal", lenses: ["contract"], reviews: 3 },
     }),
   );
+});
+
+const FINDING = { title: "t", why: "w", what: "x", done: "d" };
+
+test("a result without findings gets none; one with findings keeps them as drafts", () => {
+  const base = {
+    status: "failed",
+    round: 1,
+    proofs: [],
+    attention: [],
+    nice_to_have: [],
+    unproven: [],
+  };
+  expect(parseBuild(JSON.stringify(base)).findings).toEqual([]);
+  const withFinding = parseBuild(JSON.stringify({ ...base, findings: [FINDING] }));
+  expect(withFinding.findings).toEqual([{ ...FINDING, labels: [] }]);
+});
+
+test("a finding without one of its sections is bad-input", () => {
+  const base = {
+    status: "failed",
+    round: 1,
+    proofs: [],
+    attention: [],
+    nice_to_have: [],
+    unproven: [],
+  };
+  const text = JSON.stringify({ ...base, findings: [{ title: "t", why: "w", what: "x" }] });
+  expect(() => parseBuild(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
 test("readBuild reads build.json and refuses a broken one with bad-file", () => {

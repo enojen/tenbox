@@ -106,3 +106,16 @@ test("anything but task new is a usage error", async () => {
   expect(run.code).toBe(2);
   expect(run.json.code).toBe("usage");
 });
+
+test("in a task worktree the tracker comes from that worktree's tenbox.yaml, not the main checkout's", async () => {
+  const gh = await installGh();
+  await files.write(path.join(project.mainDir, "tenbox.yaml"), "project: demo\n");
+  const worktree = await project.addTaskWorktree("T-1");
+  await files.write(
+    path.join(worktree, "tenbox.yaml"),
+    "project: demo\ntracker: { kind: github }\n",
+  );
+  const inMain = await tenbox(["task", "new", ...draft], project.mainDir, gh.env);
+  const inWorktree = await tenbox(["task", "new", ...draft], worktree, gh.env);
+  expect([inMain.json.code, inWorktree.json.created]).toEqual(["no-tracker", true]);
+});
