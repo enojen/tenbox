@@ -31,6 +31,19 @@ export interface GroupPr {
 
 export const ISSUE_STATE = { open: "OPEN", closed: "CLOSED" } as const;
 
+/** The repository of the issues: `owner/name`, or null for the repository of `dir`. */
+export interface IssueTarget {
+  dir: string;
+  repo: string | null;
+}
+
+/** An issue to open: the title, the body and the labels, which must exist in the repository. */
+interface NewIssue {
+  title: string;
+  body: string;
+  labels: string[];
+}
+
 /** The output of `gh issue view <n> --json number,title,body,url,state`. */
 const IssueSchema = z.object({
   number: z.number(),
@@ -55,6 +68,19 @@ const IssueCommentsSchema = z.object({
 
 type IssueComment = z.infer<typeof IssueCommentsSchema>["comments"][number];
 
+/** The output of `gh issue list --json number,title,url`. */
+const IssueListSchema = z.array(
+  z.object({ number: z.number(), title: z.string(), url: z.string() }),
+);
+
+type ListedIssue = z.infer<typeof IssueListSchema>[number];
+
+/** The output of `gh label list --json name`. */
+const LabelListSchema = z.array(z.object({ name: z.string() }));
+
+/** `gh issue create` prints the URL of the new issue. */
+const ISSUE_URL = /\/issues\/(\d+)$/;
+
 /** The GitHub CLI commands Tenbox uses, run in the directory of the repository. */
 export const gh = {
   findPr,
@@ -71,6 +97,11 @@ export const gh = {
   closeIssue,
   commentIssue,
   issueComments,
+  listOpenIssues,
+  createIssue,
+  listLabels,
+  createLabel,
+  canLabel,
 };
 
 const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
@@ -231,21 +262,62 @@ async function listChecks(dir: string, number: number): Promise<CiCheck[]> {
   throw ghError("pr checks", result.stderr.trim());
 }
 
-async function viewIssue(dir: string, number: string): Promise<Issue> {
-  const out = await run(["issue", "view", number, "--json", "number,title,body,url,state"], dir);
+/** `--repo owner/name` when the target names one; else gh takes the repository of `dir`. */
+const repoArgs = (target: IssueTarget): string[] =>
+  target.repo === null ? [] : ["--repo", target.repo];
+
+async function viewIssue(target: IssueTarget, number: string): Promise<Issue> {
+  const args = ["issue", "view", number, "--json", "number,title,body,url,state"];
+  const out = await run([...args, ...repoArgs(target)], target.dir);
   return checkOutput({ schema: IssueSchema, subcommand: "issue view", stdout: out });
 }
 
-async function closeIssue(dir: string, number: string): Promise<void> {
-  await run(["issue", "close", number], dir);
+async function closeIssue(target: IssueTarget, number: string): Promise<void> {
+  await run(["issue", "close", number, ...repoArgs(target)], target.dir);
 }
 
-async function commentIssue(dir: string, number: string, body: string): Promise<void> {
-  await run(["issue", "comment", number, "--body", body], dir);
+async function commentIssue(target: IssueTarget, number: string, body: string): Promise<void> {
+  await run(["issue", "comment", number, "--body", body, ...repoArgs(target)], target.dir);
 }
 
-async function issueComments(dir: string, number: string): Promise<IssueComment[]> {
-  const out = await run(["issue", "view", number, "--json", "comments"], dir);
+async function issueComments(target: IssueTarget, number: string): Promise<IssueComment[]> {
+  const args = ["issue", "view", number, "--json", "comments", ...repoArgs(target)];
+  const out = await run(args, target.dir);
   return checkOutput({ schema: IssueCommentsSchema, subcommand: "issue view", stdout: out })
     .comments;
+}
+
+/** The open issues GitHub's search finds for the words in their title; the exact match is the caller's. */
+async function listOpenIssues(target: IssueTarget, words: string): Promise<ListedIssue[]> {
+  const search = ["--search", `in:title ${words}`, "--limit", LIST_LIMIT];
+  const args = ["issue", "list", "--state", "open", ...search, "--json", "number,title,url"];
+  const out = await run([...args, ...repoArgs(target)], target.dir);
+  return checkOutput({ schema: IssueListSchema, subcommand: "issue list", stdout: out });
+}
+
+async function createIssue(target: IssueTarget, issue: NewIssue): Promise<ListedIssue> {
+  const labels = issue.labels.flatMap((label) => ["--label", label]);
+  const args = ["issue", "create", "--title", issue.title, "--body", issue.body, ...labels];
+  const url = await run([...args, ...repoArgs(target)], target.dir);
+  const number = ISSUE_URL.exec(url)?.[1];
+  if (number === undefined) throw ghError("issue create", `not an issue URL: ${url}`);
+  return { number: Number(number), title: issue.title, url };
+}
+
+/** Whether the login may set labels: GitHub lets only a user with push access label an issue. */
+async function canLabel(target: IssueTarget): Promise<boolean> {
+  const repo = target.repo ?? "{owner}/{repo}";
+  const out = await run(["api", `repos/${repo}`, "--jq", ".permissions.push"], target.dir);
+  return out === "true";
+}
+
+async function listLabels(target: IssueTarget): Promise<string[]> {
+  const args = ["label", "list", "--limit", LIST_LIMIT, "--json", "name", ...repoArgs(target)];
+  const out = await run(args, target.dir);
+  const labels = checkOutput({ schema: LabelListSchema, subcommand: "label list", stdout: out });
+  return labels.map((label) => label.name);
+}
+
+async function createLabel(target: IssueTarget, name: string): Promise<void> {
+  await run(["label", "create", name, ...repoArgs(target)], target.dir);
 }

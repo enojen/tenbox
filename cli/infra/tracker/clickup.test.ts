@@ -143,3 +143,66 @@ describe("clickup comments", () => {
     ]);
   });
 });
+
+describe("clickup new tasks", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+
+  interface Call {
+    url: string;
+    method: string | undefined;
+    body: unknown;
+  }
+
+  function answerEach(answers: unknown[]): { calls: Call[] } {
+    const calls: Call[] = [];
+    globalThis.fetch = Object.assign(
+      async (url: unknown, init?: RequestInit) => {
+        const body = init?.body === undefined ? undefined : JSON.parse(String(init.body));
+        calls.push({ url: String(url), method: init?.method, body });
+        return Response.json(answers[calls.length - 1]);
+      },
+      { preconnect: saved.preconnect },
+    );
+    return { calls };
+  }
+
+  test("findOpen reads the open tasks of the list and matches the whole name, ignoring case", async () => {
+    const { calls } = answerEach([
+      {
+        tasks: [
+          { id: "a1", name: "Add Login", url: "https://app.clickup.com/t/a1" },
+          { id: "a2", name: "Add login page", url: "https://app.clickup.com/t/a2" },
+        ],
+      },
+    ]);
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k", list: "901" });
+    const found = await tracker.findOpen("add login");
+    expect(found).toEqual({ id: "a1", url: "https://app.clickup.com/t/a1" });
+    expect(calls[0]?.url).toBe("https://api.clickup.com/api/v2/list/901/task");
+  });
+
+  test("create posts the task to the list with its tags and returns its id and url", async () => {
+    const { calls } = answerEach([{ id: "a3", url: "https://app.clickup.com/t/a3" }]);
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k", list: "901" });
+    const made = await tracker.create({ title: "T", body: "**Why**\nx", labels: ["agent"] });
+    expect(made).toEqual({ id: "a3", url: "https://app.clickup.com/t/a3" });
+    expect(calls).toEqual([
+      {
+        url: "https://api.clickup.com/api/v2/list/901/task",
+        method: "POST",
+        body: { name: "T", markdown_description: "**Why**\nx", tags: ["agent"] },
+      },
+    ]);
+  });
+
+  test("without tracker.list, create refuses with tracker and names the setting", async () => {
+    answerEach([]);
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
+    await expect(tracker.create({ title: "T", body: "b", labels: [] })).rejects.toThrow(
+      "ClickUp: set tracker.list to the id of the list, for example 901234567",
+    );
+  });
+});
