@@ -9,7 +9,17 @@ import {
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
-import { RESOURCE_CLASS, type ResourceClass } from "../../domain/machines.ts";
+import {
+  JOB_STATUS,
+  type JobStatus,
+  RESOURCE_CLASS,
+  type ResourceClass,
+  RUN_STATUS,
+  type RunConclusion,
+  type RunStatus,
+  VOLUME_STATE,
+  type VolumeState,
+} from "../../domain/machines.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
@@ -54,8 +64,8 @@ interface MachineRunResult {
 export interface MachineRunRow {
   id: string;
   title: string;
-  status: "in_progress" | "completed";
-  conclusion: "success" | "failure" | null;
+  status: RunStatus;
+  conclusion: RunConclusion | null;
   url: string;
   created: string;
 }
@@ -73,14 +83,14 @@ interface MachineLogsInput {
 interface MachineLogsResult {
   task: TaskId;
   job: string;
-  status: "in_progress" | "success" | "failure";
+  status: JobStatus;
 }
 
 const POD_POLL_MS = 2000;
 /** The volume of a task and what `remove` did to it. */
 export interface MachineVolume {
   name: string;
-  state: "deleted" | "missing";
+  state: VolumeState;
 }
 
 /** A checked command of the task and the project it runs in. */
@@ -126,7 +136,7 @@ async function remove(id: TaskId): Promise<MachineVolume> {
   await ensureIdle(cluster, id);
   const name = `task-${kubeName(id)}`;
   const deleted = await kubernetes.removeVolume({ cluster, name });
-  return { name, state: deleted ? "deleted" : "missing" };
+  return { name, state: deleted ? VOLUME_STATE.deleted : VOLUME_STATE.missing };
 }
 
 /** The task id in lower case, `_` as `-`: a Kubernetes name. */
@@ -153,10 +163,10 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   return { task: id, job: newest.name, status: jobStatus(job) };
 }
 
-function jobStatus(job: Job): MachineLogsResult["status"] {
-  if (job.succeeded > 0) return "success";
-  if (job.failed > 0) return "failure";
-  return "in_progress";
+function jobStatus(job: Job): JobStatus {
+  if (job.succeeded > 0) return JOB_STATUS.success;
+  if (job.failed > 0) return JOB_STATUS.failure;
+  return JOB_STATUS.inProgress;
 }
 
 /** The pod to read, and whether to wait for it to start. */
@@ -182,9 +192,9 @@ async function waitForPod(input: PodWait): Promise<string> {
 function toRow(job: Job): MachineRunRow {
   const row = { id: job.name, title: job.cmd, url: job.url, created: job.created };
   const status = jobStatus(job);
-  if (status === "success") return { ...row, status: "completed", conclusion: "success" };
-  if (status === "failure") return { ...row, status: "completed", conclusion: "failure" };
-  return { ...row, status: "in_progress", conclusion: null };
+  if (status === JOB_STATUS.inProgress)
+    return { ...row, status: RUN_STATUS.inProgress, conclusion: null };
+  return { ...row, status: RUN_STATUS.completed, conclusion: status };
 }
 
 /** The command after `--`, checked: only the flags of its command. */

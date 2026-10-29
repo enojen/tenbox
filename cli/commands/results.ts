@@ -3,6 +3,7 @@ import type { Approval } from "../../domain/approvals.ts";
 import type { DecisionCard } from "../../domain/cards.ts";
 import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
+import type { JobStatus } from "../../domain/machines.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import type { StatsProof } from "../../domain/proofs.ts";
@@ -326,7 +327,7 @@ export interface MachineLogsResultJson {
   ok: true;
   task: string;
   job: string;
-  status: "in_progress" | "success" | "failure";
+  status: JobStatus;
 }
 
 export interface MachineStopResult {

@@ -1,7 +1,5 @@
 import { expect, test } from "bun:test";
-import { type DecisionCard, getOption, isAutoAllowed } from "./cards.ts";
-
-type CardKind = DecisionCard["kind"];
+import { type CardKind, type DecisionCard, getOption, isAutoAllowed } from "./cards.ts";
 
 const card = (auto: boolean, kind: CardKind = "scope"): DecisionCard => ({
   title: "Which store?",

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Recipe } from "./groups.ts";
 import { taskId } from "./ids.ts";
 import {
   checkPlanMd,
@@ -7,6 +8,7 @@ import {
   type PlanResult,
   parsePlan,
   planLines,
+  type Question,
   readPlan,
   renderDocsPart,
   renderDocsPlanMd,
@@ -115,7 +117,7 @@ test("checkPlanMd refuses a missing plan.md with no-plan", () => {
 });
 
 test("planLines lists the parts, the examples, the decisions with the taken option and the questions", () => {
-  const question: PlanResult["questions"][number] = { kind: "risk", text: "q?", blocking: true };
+  const question: Question = { kind: "risk", text: "q?", blocking: true };
   const plan = { ...valid, questions: [question] };
   expect(planLines(plan)).toEqual([
     "Parts",
@@ -152,7 +154,7 @@ test("planLines says none for an empty list", () => {
     "  none",
   ]);
 });
-const recipe: NonNullable<PlanResult["groups"]>[number]["recipe"] = {
+const recipe: Recipe = {
   model: "sonnet",
   effort: "medium",
   lenses: [],

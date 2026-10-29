@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import path from "node:path";
 import { CARD_KIND } from "../../domain/cards.ts";
 import type { Group } from "../../domain/groups.ts";
+import type { PlanPart } from "../../domain/plans.ts";
 
 const WORKFLOW = path.join(import.meta.dir, "..", "..", "workflows", "tenbox-build.js");
 const WORKER_ROLE = path.join(import.meta.dir, "..", "..", "agents", "worker.md");
@@ -44,11 +45,6 @@ async function runWorkflow(args: unknown, agent: ScriptedAgent) {
   const run = new AsyncFunction("args", "agent", "parallel", "phase", source);
   const parallel = (jobs: (() => Promise<unknown>)[]) => Promise.all(jobs.map((job) => job()));
   return run(args, agent, parallel, () => {});
-}
-
-interface PlanPart {
-  id: string;
-  difficulty: "easy" | "hard";
 }
 
 const planPart = (id: string): PlanPart => ({ id, difficulty: "easy" });
@@ -180,10 +176,13 @@ const proofFor = (name: string): ScriptedProof => ({
   failure: "got 1",
 });
 
+/** The status of the last worker of a run. */
+type LastWorkerStatus = "done" | "blocked";
+
 /** Runs the workflow with a worker that returns one proof per round; `status` is the last worker status. */
 async function runWithProofs(
   maxRounds: number,
-  lastWorkerStatus: "done" | "blocked",
+  lastWorkerStatus: LastWorkerStatus,
   extraProofFields: object = {},
 ) {
   const reviewerPrompts: string[] = [];

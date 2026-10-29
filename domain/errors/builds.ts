@@ -1,4 +1,4 @@
-import type { KindReview, TaskKind } from "../kinds.ts";
+import type { Lens, TaskKind } from "../kinds.ts";
 import { TenboxError } from "./index.ts";
 
 /* Errors of a build: groups, checks, the kind's limits, decision cards. */
@@ -57,7 +57,7 @@ export interface KindRaised {
   from: TaskKind;
   /** The smallest kind whose limits the diff fits, and its review. */
   kind: TaskKind;
-  lenses: KindReview["lenses"];
+  lenses: Lens[];
   reviews: number;
   diff: DiffSize;
 }

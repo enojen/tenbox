@@ -8,12 +8,13 @@ import {
   DEFAULT_KIND,
   KIND_PRESETS,
   kindForDiff,
+  type Lens,
   reviewOf,
   type TaskKind,
   TaskKindSchema,
 } from "./kinds.ts";
 import { CHECK_TIER, type CheckTier } from "./manifests.ts";
-import type { PlanResult } from "./plans.ts";
+import type { PlanPart, PlanResult } from "./plans.ts";
 import { ProofSchema } from "./proofs.ts";
 import { jsons } from "./utils.ts";
 
@@ -47,10 +48,10 @@ const BuildResultSchema = z.looseObject({
 
 export type BuildResult = z.infer<typeof BuildResultSchema>;
 
-export type BuildStatus = BuildResult["status"];
+export type BuildStatus = (typeof BUILD_STATUS)[keyof typeof BUILD_STATUS];
 
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
-export type Unproven = BuildResult["unproven"][number];
+export type Unproven = z.infer<typeof UnprovenSchema>;
 
 /** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {
@@ -75,8 +76,8 @@ export interface BuildArgs {
   kind: TaskKind;
   /** How many rounds the build may review. */
   reviews: number;
-  parts: PlanResult["parts"];
-  lenses: PlanResult["lenses"];
+  parts: PlanPart[];
+  lenses: Lens[];
   groups?: Group[];
 }
 

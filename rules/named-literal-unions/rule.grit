@@ -1,0 +1,11 @@
+language js
+
+TsUnionType(types=$types) as $union where {
+  $types <: [..., TsStringLiteralType(), ..., TsStringLiteralType(), ...],
+  not $union <: within TsTypeAliasDeclaration(ty=$union),
+  not $union <: within or {
+    `Pick<$_, $union>`,
+    `Omit<$_, $union>`
+  },
+  register_diagnostic(span=$union, message="Name the string literal union: declare it as a type alias or a const object and use its name.")
+}

@@ -22,6 +22,8 @@ export const CARD_KIND = [
   "other",
 ] as const;
 
+export type CardKind = (typeof CARD_KIND)[number];
+
 /** What a blocked worker asks; `recommended` is the 1-based number of one of the options. */
 export const DecisionCardSchema = z
   .object({
@@ -47,7 +49,7 @@ export const AnsweredSchema = z.object({
 export type DecisionCard = z.infer<typeof DecisionCardSchema>;
 
 /** Kinds Tenbox never auto-answers, whatever `auto` says. */
-const NEVER_AUTO: readonly DecisionCard["kind"][] = CARD_KIND.filter(
+const NEVER_AUTO: readonly CardKind[] = CARD_KIND.filter(
   (kind) => kind !== "scope" && kind !== "other",
 );
 

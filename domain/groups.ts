@@ -15,6 +15,8 @@ const RecipeSchema = z.object({
   tier: z.enum(["fast", "full"]),
 });
 
+export type Recipe = z.infer<typeof RecipeSchema>;
+
 /** One PR of the task: `needs` holds smaller group ids; an empty list branches off the base. */
 export const GroupSchema = z.object({
   id: z.number().int(),

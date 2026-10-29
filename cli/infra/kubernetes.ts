@@ -174,6 +174,12 @@ export const kubernetes = {
   removeJob,
 };
 
+const KubeUserSchema = z.object({
+  token: z.string().optional(),
+  "client-certificate-data": z.string().optional(),
+  "client-key-data": z.string().optional(),
+});
+
 const KubeconfigSchema = z.object({
   "current-context": z.string().optional(),
   contexts: z
@@ -196,18 +202,14 @@ const KubeconfigSchema = z.object({
     .array(
       z.object({
         name: z.string(),
-        user: z.object({
-          token: z.string().optional(),
-          "client-certificate-data": z.string().optional(),
-          "client-key-data": z.string().optional(),
-        }),
+        user: KubeUserSchema,
       }),
     )
     .default([]),
 });
 
 type Kubeconfig = z.infer<typeof KubeconfigSchema>;
-type KubeUser = Kubeconfig["users"][number]["user"];
+type KubeUser = z.infer<typeof KubeUserSchema>;
 
 /** The current context of the kubeconfig at `file`; no error names a credential. */
 async function readCluster(file: string): Promise<Cluster> {
