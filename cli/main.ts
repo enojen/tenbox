@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import type { ParseArgsOptionsConfig } from "node:util";
+import { COMMAND, COMMAND_NAMES, type CommandName } from "../domain/commands.ts";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { TASK_KINDS, type TaskKind } from "../domain/kinds.ts";
@@ -23,10 +24,17 @@ import { buildDone, sendBuild } from "./commands/build.ts";
 import { runChecks } from "./commands/check.ts";
 import { closeTask } from "./commands/close.ts";
 import { decide } from "./commands/decide.ts";
+import { commandHelp } from "./commands/help.ts";
 import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listTasks } from "./commands/list.ts";
-import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
+import {
+  listMachineRuns,
+  removeMachineVolume,
+  runOnMachine,
+  showMachineLogs,
+  stopMachine,
+} from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { partDone } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
@@ -44,7 +52,8 @@ import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 
 interface Command extends ArgSpec {
-  run(positionals: string[], values: Values): Promise<unknown>;
+  /** `argv` holds the `--` that `parseArgs` drops. */
+  run(positionals: string[], values: Values, argv: string[]): Promise<unknown>;
 }
 
 const START_USAGE =
@@ -71,7 +80,7 @@ const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
-  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
+  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
@@ -87,6 +96,7 @@ const DRAFT_OPTIONS: ParseArgsOptionsConfig = {
 };
 const HOOK_USAGE = "tenbox hook blocked <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
+const SUCCESS_EXIT_CODE = 0;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
 /** 128 + the signal number, as shells report it. */
@@ -97,8 +107,8 @@ const STOP_SIGNALS = [
   ["SIGTERM", SIGTERM_EXIT_CODE],
 ] as const;
 
-const COMMANDS: Record<string, Command> = {
-  start: {
+const COMMANDS: Record<CommandName, Command> = {
+  [COMMAND.start]: {
     usage: START_USAGE,
     options: {
       title: { type: "string" },
@@ -117,7 +127,7 @@ const COMMANDS: Record<string, Command> = {
         claude: flagValue(values, "claude"),
       }),
   },
-  check: {
+  [COMMAND.check]: {
     usage: CHECK_USAGE,
     options: {
       group: { type: "string" },
@@ -137,7 +147,7 @@ const COMMANDS: Record<string, Command> = {
           (intValue(values, "timeout") ?? DEFAULT_TIMEOUT_SECONDS) * durations.MS_PER_SECOND,
       }),
   },
-  worktree: {
+  [COMMAND.worktree]: {
     usage: WORKTREE_USAGE,
     options: { group: { type: "string" } },
     run: (positionals, values) => {
@@ -146,7 +156,7 @@ const COMMANDS: Record<string, Command> = {
       return ensureGroupWorktree({ id: idArg(positionals, WORKTREE_USAGE), group });
     },
   },
-  "merge-check": {
+  [COMMAND.mergeCheck]: {
     usage: MERGE_CHECK_USAGE,
     options: { base: { type: "string" } },
     run: (_positionals, values) =>
@@ -155,13 +165,13 @@ const COMMANDS: Record<string, Command> = {
         timeoutMs: DEFAULT_TIMEOUT_SECONDS * durations.MS_PER_SECOND,
       }),
   },
-  close: {
+  [COMMAND.close]: {
     usage: CLOSE_USAGE,
     options: { force: { type: "boolean", default: false } },
     run: (positionals, values) =>
       closeTask({ id: idArg(positionals, CLOSE_USAGE), force: flagValue(values, "force") }),
   },
-  pr: {
+  [COMMAND.pr]: {
     usage: PR_USAGE,
     options: {
       ready: { type: "boolean", default: false },
@@ -176,7 +186,7 @@ const COMMANDS: Record<string, Command> = {
         wait: flagValue(values, "wait"),
       }),
   },
-  part: {
+  [COMMAND.part]: {
     usage: PART_USAGE,
     options: {
       part: { type: "string" },
@@ -197,7 +207,7 @@ const COMMANDS: Record<string, Command> = {
       });
     },
   },
-  proof: {
+  [COMMAND.proof]: {
     usage: PROOF_USAGE,
     options: {
       part: { type: "string" },
@@ -214,7 +224,7 @@ const COMMANDS: Record<string, Command> = {
         failure: stringValue(values, "failure"),
       }),
   },
-  decide: {
+  [COMMAND.decide]: {
     usage: DECIDE_USAGE,
     options: { json: { type: "string" }, build: { type: "boolean", default: true } },
     run: (positionals, values) => {
@@ -224,7 +234,7 @@ const COMMANDS: Record<string, Command> = {
       return decide({ id: idArg(positionals, DECIDE_USAGE), json, build });
     },
   },
-  plan: {
+  [COMMAND.plan]: {
     usage: `${PLAN_USAGE} | ${PLAN_SHOW_USAGE}`,
     options: { json: { type: "string" } },
     run: (positionals, values) => {
@@ -235,7 +245,7 @@ const COMMANDS: Record<string, Command> = {
       return planDone({ id: idArg(rest, PLAN_USAGE), json });
     },
   },
-  build: {
+  [COMMAND.build]: {
     usage: `${BUILD_USAGE} | ${BUILD_DONE_USAGE}`,
     options: { json: { type: "string" } },
     run: (positionals, values) => {
@@ -246,12 +256,12 @@ const COMMANDS: Record<string, Command> = {
       return buildDone({ id: idArg(rest, BUILD_DONE_USAGE), json });
     },
   },
-  attach: {
+  [COMMAND.attach]: {
     usage: ATTACH_USAGE,
     options: {},
     run: (positionals) => attachTask(idArg(positionals, ATTACH_USAGE)),
   },
-  hook: {
+  [COMMAND.hook]: {
     usage: HOOK_USAGE,
     options: {},
     run: (positionals) => {
@@ -260,7 +270,7 @@ const COMMANDS: Record<string, Command> = {
       return blockedHook(idArg(rest, HOOK_USAGE));
     },
   },
-  wait: {
+  [COMMAND.wait]: {
     usage: WAIT_USAGE,
     options: {
       for: { type: "string" },
@@ -276,7 +286,7 @@ const COMMANDS: Record<string, Command> = {
       });
     },
   },
-  answer: {
+  [COMMAND.answer]: {
     usage: ANSWER_USAGE,
     options: { auto: { type: "boolean", default: false } },
     run: (positionals, values) => {
@@ -288,43 +298,53 @@ const COMMANDS: Record<string, Command> = {
       return answerCard({ id, option: Number(option) });
     },
   },
-  approve: {
+  [COMMAND.approve]: {
     usage: APPROVE_USAGE,
     options: {},
     run: (positionals) => approveTask(idArg(positionals, APPROVE_USAGE)),
   },
-  approved: {
+  [COMMAND.approved]: {
     usage: APPROVED_USAGE,
     options: {},
     run: (positionals) => checkApproved(idArg(positionals, APPROVED_USAGE)),
   },
-  stats: {
+  [COMMAND.stats]: {
     usage: STATS_USAGE,
     options: {},
     run: (positionals) => showStats(idArg(positionals, STATS_USAGE)),
   },
-  status: {
+  [COMMAND.status]: {
     usage: STATUS_USAGE,
     options: {},
     run: (positionals) => showStatus(idArg(positionals, STATUS_USAGE)),
   },
-  list: {
+  [COMMAND.list]: {
     usage: LIST_USAGE,
     options: {},
     run: () => listTasks(),
   },
-  machine: {
+  [COMMAND.machine]: {
     usage: MACHINE_USAGE,
-    options: {},
-    run: (positionals) => {
+    options: { follow: { type: "boolean", default: false } },
+    run: (positionals, values, argv) => {
       const [action, ...rest] = positionals;
+      const follow = flagValue(values, "follow");
+      if (action === "logs") {
+        if (rest.length > 1) throw usageError(`usage: ${MACHINE_USAGE}`);
+        return showMachineLogs({ id: idArg(rest, MACHINE_USAGE), follow });
+      }
+      if (follow) throw usageError(`usage: ${MACHINE_USAGE}`);
       if (action === "ls" && rest.length === 0) return listMachineRuns();
-      if (action !== "run" || !hasCommandSeparator()) throw usageError(`usage: ${MACHINE_USAGE}`);
+      if (action === "stop" && rest.length === 1) return stopMachine(idArg(rest, MACHINE_USAGE));
+      if (action === "rm" && rest.length === 1) {
+        return removeMachineVolume(idArg(rest, MACHINE_USAGE));
+      }
+      if (action !== "run" || !argv.includes("--")) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
     },
   },
-  task: {
+  [COMMAND.task]: {
     usage: TASK_NEW_USAGE,
     options: DRAFT_OPTIONS,
     run: (positionals, values) => {
@@ -334,7 +354,7 @@ const COMMANDS: Record<string, Command> = {
       return newTask(draftValues(values));
     },
   },
-  report: {
+  [COMMAND.report]: {
     usage: REPORT_USAGE,
     options: { ...DRAFT_OPTIONS, repo: { type: "string", default: "tenbox" } },
     run: (positionals, values) => {
@@ -342,27 +362,33 @@ const COMMANDS: Record<string, Command> = {
       return report({ ...draftValues(values), repo: repoValue(values) });
     },
   },
-  install: {
+  [COMMAND.install]: {
     usage: "tenbox install",
     options: {},
     run: () => install(),
   },
 };
 
-/** `parseArgs` drops `--`; the words after it must have been separated. */
-const hasCommandSeparator = (): boolean => process.argv.slice(2).includes("--");
-
 async function main(argv: string[]): Promise<void> {
   const [name, ...rest] = argv;
+  if (name === "help" && rest[0] !== undefined) {
+    printCommandHelp(rest[0]);
+    return;
+  }
   if (!name || name === "help" || name === "--help") {
     printHelp();
     return;
   }
-  const command = COMMANDS[name];
-  if (!command) throw usageError(`unknown command: ${name}`);
+  const command = getCommand(name);
   const parsed = parseCommandArgs(command, rest);
-  const result = await command.run(parsed.positionals, parsed.values);
+  const result = await command.run(parsed.positionals, parsed.values, argv);
   emit(result);
+}
+
+function getCommand(name: string): Command {
+  const commandName = COMMAND_NAMES.find((c) => c === name);
+  if (commandName === undefined) throw usageError(`unknown command: ${name}`);
+  return COMMANDS[commandName];
 }
 
 function emit(value: unknown): void {
@@ -375,19 +401,24 @@ function printHelp(): void {
   emit({ ok: true, commands: Object.fromEntries(usages) });
 }
 
+function printCommandHelp(name: string): void {
+  const command = getCommand(name);
+  const result = commandHelp({ name, usage: command.usage });
+  process.stderr.write(`${result.help}\n`);
+  emit(result);
+}
+
 function toFailure(e: unknown): Failure {
   if (!(e instanceof TenboxError)) return { ok: false, error: errorMessage(e), code: "internal" };
   const details = e.details !== undefined ? { details: e.details } : {};
   return { ok: false, error: e.message, code: e.code, ...details };
 }
 
-function exitWithFailure(e: unknown): never {
+function reportFailure(e: unknown): number {
   const failure = toFailure(e);
   emit(failure);
   printStack(e);
-  process.exit(
-    e instanceof TenboxError && e.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE,
-  );
+  return e instanceof TenboxError && e.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE;
 }
 
 /** Internal errors always show their stack; Tenbox's own errors only with TENBOX_DEBUG=1. */
@@ -435,9 +466,18 @@ function exitOnStop(): void {
   }
 }
 
-exitOnStop();
-try {
-  await main(process.argv.slice(2));
-} catch (e) {
-  exitWithFailure(e);
+/** One command: its JSON on stdout and its exit code, without leaving, so tests run it in theirs. */
+export async function runCli(argv: string[]): Promise<number> {
+  try {
+    await main(argv);
+    return SUCCESS_EXIT_CODE;
+  } catch (e) {
+    return reportFailure(e);
+  }
+}
+
+if (import.meta.main) {
+  exitOnStop();
+  const code = await runCli(process.argv.slice(2));
+  if (code !== SUCCESS_EXIT_CODE) process.exit(code);
 }

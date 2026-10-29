@@ -1,13 +1,26 @@
 import path from "node:path";
+import { COMMAND } from "../../domain/commands.ts";
 import {
   loginExpiredError,
   machineBusyError,
   noLoginError,
+  noMachineRunError,
   noProjectIdError,
+  serviceError,
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
-import { RESOURCE_CLASS, type ResourceClass } from "../../domain/machines.ts";
+import {
+  JOB_STATUS,
+  type JobStatus,
+  RESOURCE_CLASS,
+  type ResourceClass,
+  RUN_STATUS,
+  type RunConclusion,
+  type RunStatus,
+  VOLUME_STATE,
+  type VolumeState,
+} from "../../domain/machines.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
@@ -20,12 +33,12 @@ import {
   type Service,
   type TemplateFields,
 } from "../infra/kubernetes.ts";
+import { pollUntil } from "../infra/poll.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
-const MACHINE_COMMAND = { start: "start", build: "build", close: "close" } as const;
-type MachineCommand = (typeof MACHINE_COMMAND)[keyof typeof MACHINE_COMMAND];
-const MACHINE_COMMANDS = Object.values(MACHINE_COMMAND);
+const MACHINE_COMMANDS = [COMMAND.start, COMMAND.build, COMMAND.close] as const;
+type MachineCommand = (typeof MACHINE_COMMANDS)[number];
 
 /** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
 const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
@@ -51,14 +64,34 @@ interface MachineRunResult {
 export interface MachineRunRow {
   id: string;
   title: string;
-  status: "in_progress" | "completed";
-  conclusion: "success" | "failure" | null;
+  status: RunStatus;
+  conclusion: RunConclusion | null;
   url: string;
   created: string;
 }
 
 /** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, list };
+export const machines = { run, list, stop, remove, logs };
+
+/** The task's newest Job log: where each text chunk goes, and whether to follow. */
+interface MachineLogsInput {
+  id: TaskId;
+  follow: boolean;
+  write: (chunk: string) => void;
+}
+
+interface MachineLogsResult {
+  task: TaskId;
+  job: string;
+  status: JobStatus;
+}
+
+const POD_POLL_MS = 2000;
+/** The volume of a task and what `remove` did to it. */
+export interface MachineVolume {
+  name: string;
+  state: VolumeState;
+}
 
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
@@ -85,17 +118,83 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
   return { task: id, cmd, url };
 }
 
+/** Deletes the active Jobs of the task; the names it deleted. The volume stays. */
+async function stop(id: TaskId): Promise<string[]> {
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  const names = await activeJobs(cluster, id);
+  const stopped: string[] = [];
+  for (const name of names) {
+    const deleted = await kubernetes.removeJob({ cluster, name });
+    if (deleted) stopped.push(name);
+  }
+  return stopped;
+}
+
+/** Deletes the volume of the task unless a Job of the task is active. */
+async function remove(id: TaskId): Promise<MachineVolume> {
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  await ensureIdle(cluster, id);
+  const name = `task-${kubeName(id)}`;
+  const deleted = await kubernetes.removeVolume({ cluster, name });
+  return { name, state: deleted ? VOLUME_STATE.deleted : VOLUME_STATE.missing };
+}
+
+/** The task id in lower case, `_` as `-`: a Kubernetes name. */
+const kubeName = (id: TaskId): string => id.toLowerCase().replaceAll("_", "-");
+
 async function list(): Promise<MachineRunRow[]> {
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const jobs = await kubernetes.listJobs(cluster, TENYARD_SELECTOR);
   return jobs.map(toRow);
 }
 
+/** Writes the log of the newest Job of the task; its status is read after the log ends. */
+async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
+  const { id, follow, write } = input;
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
+  const newest = jobs.sort((a, b) => b.created.localeCompare(a.created))[0];
+  if (newest === undefined) throw noMachineRunError(id);
+  const pod = await waitForPod({ cluster, job: newest.name, follow });
+  const chunks = await kubernetes.streamLog({ cluster, pod, follow });
+  for await (const chunk of chunks) write(chunk);
+  const after = await kubernetes.listJobs(cluster, `task=${id}`);
+  const job = after.find((j) => j.name === newest.name) ?? newest;
+  return { task: id, job: newest.name, status: jobStatus(job) };
+}
+
+function jobStatus(job: Job): JobStatus {
+  if (job.succeeded > 0) return JOB_STATUS.success;
+  if (job.failed > 0) return JOB_STATUS.failure;
+  return JOB_STATUS.inProgress;
+}
+
+/** The pod to read, and whether to wait for it to start. */
+interface PodWait {
+  cluster: Cluster;
+  job: string;
+  follow: boolean;
+}
+
+/** Without `follow`, a pod that is not running yet is left to the API's own answer. */
+async function waitForPod(input: PodWait): Promise<string> {
+  const { cluster, job, follow } = input;
+  const check = async () => {
+    const pod = await kubernetes.findPod(cluster, job);
+    return pod !== null && (pod.started || !follow) ? pod.name : null;
+  };
+  const deadlineMs = follow ? Number.POSITIVE_INFINITY : Date.now();
+  const found = await pollUntil({ check, deadlineMs, intervalMs: POD_POLL_MS });
+  if (found === null) throw serviceError("kubernetes", "kubernetes", `Job ${job} has no pod yet`);
+  return found;
+}
+
 function toRow(job: Job): MachineRunRow {
   const row = { id: job.name, title: job.cmd, url: job.url, created: job.created };
-  if (job.succeeded > 0) return { ...row, status: "completed", conclusion: "success" };
-  if (job.failed > 0) return { ...row, status: "completed", conclusion: "failure" };
-  return { ...row, status: "in_progress", conclusion: null };
+  const status = jobStatus(job);
+  if (status === JOB_STATUS.inProgress)
+    return { ...row, status: RUN_STATUS.inProgress, conclusion: null };
+  return { ...row, status: RUN_STATUS.completed, conclusion: status };
 }
 
 /** The command after `--`, checked: only the flags of its command. */
@@ -112,10 +211,10 @@ function parseCommand(input: MachineRunInput): MachineCommand {
 function flagsFit(command: MachineCommand, flags: string[]): boolean {
   const [flag, value, ...rest] = flags;
   if (flag === undefined) return true;
-  if (command === MACHINE_COMMAND.start) {
+  if (command === COMMAND.start) {
     return flag === "--title" && value !== undefined && rest.length === 0;
   }
-  if (command === MACHINE_COMMAND.close) return flag === "--force" && value === undefined;
+  if (command === COMMAND.close) return flag === "--force" && value === undefined;
   return false;
 }
 
@@ -175,7 +274,7 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
   const file = path.join(homePath(manifest.machine.template), "classes.yaml");
   const resources = await kubernetes.readClass({ file, name });
   return {
-    name: id.toLowerCase().replaceAll("_", "-"),
+    name: kubeName(id),
     task: id,
     run: runStamp(new Date()),
     project: project.name,
@@ -192,19 +291,23 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
 
 /** `start` and `close` plan and clean up; only a build runs the project's tests. */
 function resourceClass(command: CommandRun): ResourceClass {
-  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.class;
+  if (command.cmd === COMMAND.build) return command.manifest.machine.class;
   return RESOURCE_CLASS.plan;
 }
 
+async function activeJobs(cluster: Cluster, id: TaskId): Promise<string[]> {
+  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
+  return jobs.filter((job) => job.active > 0).map((job) => job.name);
+}
+
 function serviceNames(command: CommandRun): string[] {
-  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.services;
+  if (command.cmd === COMMAND.build) return command.manifest.machine.services;
   return [];
 }
 
 /** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */
 async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
-  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
-  const active = jobs.filter((job) => job.active > 0).map((job) => job.name);
+  const active = await activeJobs(cluster, id);
   if (active.length > 0) throw machineBusyError(id, active);
 }
 

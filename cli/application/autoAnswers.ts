@@ -1,4 +1,5 @@
 import { type AutoCard, autoCardOf } from "../../domain/answers.ts";
+import { COMMAND } from "../../domain/commands.ts";
 import { autoAnswerLog, tenboxDir } from "../../domain/taskDirs.ts";
 import { log } from "../infra/env.ts";
 import { pollUntil } from "../infra/poll.ts";
@@ -20,7 +21,7 @@ async function run(target: AnswerTarget): Promise<void> {
   const card = await findCard(tenboxDir(target.taskWorktree));
   if (card === null) return;
   const logFile = autoAnswerLog(tenboxDir(target.taskWorktree));
-  const args = ["answer", target.id, "--auto"];
+  const args = [COMMAND.answer, target.id, "--auto"];
   processes.runSelf({ args, cwd: target.taskWorktree, logFile });
 }
 

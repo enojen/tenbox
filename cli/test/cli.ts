@@ -4,8 +4,8 @@ import path from "node:path";
 import { z } from "zod";
 import { jsons, objects } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
-
-const MAIN_TS = path.join(import.meta.dir, "..", "main.ts");
+import { bundledMain } from "./bundle.ts";
+import { type CliOutput, inProcessBusy, runInProcess } from "./inProcess.ts";
 
 /** A test that runs the real CLI starts git and bun processes. Alone it takes under 2 s; in a
  * build round, with every check and agent running at once, it passed bun's default 5 s. */
@@ -39,10 +39,27 @@ export function tenbox(
   return tenboxInput({ args, cwd, env: extraEnv });
 }
 
-/** Like `tenbox`, with text on stdin, as a Claude Code hook gets it. */
+/**
+ * Like `tenbox`, with text on stdin, as a Claude Code hook gets it. A run without stdin runs in
+ * this process unless another one is running; else, and with stdin, it starts a process.
+ */
 export async function tenboxInput(input: CliInput): Promise<CliRun> {
-  const { args, cwd, env = {}, stdin = "" } = input;
-  const proc = Bun.spawn([process.execPath, "run", MAIN_TS, ...args], {
+  const { args, cwd, env = {}, stdin } = input;
+  const inProcess = stdin === undefined && !inProcessBusy();
+  const run = inProcess
+    ? runInProcess({ args, cwd, env })
+    : runInChild({ args, cwd, env, stdin: stdin ?? "" });
+  const { code, out, err } = await run;
+  const json = jsons.parse(out);
+  if (!objects.isRecord(json))
+    throw new Error(`stdout is not JSON (exit ${code}):\n${out}\n--- stderr:\n${err}`);
+  return { code, out, err, json };
+}
+
+async function runInChild(input: Required<CliInput>): Promise<CliOutput> {
+  const { args, cwd, env, stdin } = input;
+  const main = await bundledMain();
+  const proc = Bun.spawn([process.execPath, main, ...args], {
     cwd,
     env: { ...process.env, ...env },
     stdin: new Blob([stdin]),
@@ -54,10 +71,7 @@ export async function tenboxInput(input: CliInput): Promise<CliRun> {
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
-  const json = jsons.parse(out);
-  if (!objects.isRecord(json))
-    throw new Error(`stdout is not JSON (exit ${code}):\n${out}\n--- stderr:\n${err}`);
-  return { code, out, err, json };
+  return { code, out, err };
 }
 
 /** One call of the fake `claude`: its working directory and its arguments. */
@@ -66,11 +80,14 @@ interface ClaudeCall {
   args: string[];
 }
 
+/** The kind of a session `claude agents --json` lists. */
+type FakeSessionKind = "background" | "interactive";
+
 /** A background session as `claude agents --json` lists it. */
 export interface FakeSession {
   id: string;
   cwd: string;
-  kind: "background" | "interactive";
+  kind: FakeSessionKind;
   startedAt: number;
   /** The `state` of a background session: working, blocked, done. */
   state?: string;
@@ -116,19 +133,21 @@ export async function makeFakeClaude(root: string): Promise<FakeClaude> {
   };
 }
 
-const HookSettings = z.object({
-  hooks: z.object({
-    Notification: z.array(
-      z.object({
-        matcher: z.string(),
-        hooks: z.array(z.object({ type: z.string(), command: z.string() })),
-      }),
-    ),
-  }),
+const NotificationHooksSchema = z.object({
+  Notification: z.array(
+    z.object({
+      matcher: z.string(),
+      hooks: z.array(z.object({ type: z.string(), command: z.string() })),
+    }),
+  ),
 });
 
+type NotificationHooks = z.infer<typeof NotificationHooksSchema>;
+
+const HookSettings = z.object({ hooks: NotificationHooksSchema });
+
 /** The `Notification` hooks in the `--settings` JSON of a `claude` call; null without a valid one. */
-export function notificationHooks(args: string[]): z.infer<typeof HookSettings>["hooks"] | null {
+export function notificationHooks(args: string[]): NotificationHooks | null {
   const at = args.indexOf("--settings");
   const result = jsons.check(HookSettings, args[at + 1] ?? "");
   return result.ok ? result.value.hooks : null;

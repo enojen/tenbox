@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { files } from "../infra/files.ts";
 import { GH_STATE, type GhPrState } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { type CliRun, tenbox } from "../test/cli.ts";
+import { type FakeAnswer, type FakeTool, fakeTool } from "../test/fakeTools.ts";
 import { startFakeNtfy } from "../test/ntfy.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { openPr } from "./pr.ts";
@@ -48,62 +49,92 @@ test("a branch with no commits ahead of main is refused and nothing is pushed", 
   expect(branches).toBe("");
 });
 
-const FAKE_GH = `#!/usr/bin/env bun
-import fs from "node:fs";
-const dir = process.env.GH_FAKE;
-const args = process.argv.slice(2);
-const db = dir + "/prs.json";
-const prs = fs.existsSync(db) ? JSON.parse(fs.readFileSync(db, "utf8")) : [];
-const flag = (name) => args[args.indexOf(name) + 1];
-fs.appendFileSync(dir + "/calls.log", JSON.stringify(args) + "\\n");
-const save = () => fs.writeFileSync(db, JSON.stringify(prs));
-if (args[0] === "pr" && args[1] === "create") {
-  const number = prs.length + 1;
-  prs.push({ number, url: "https://example.com/pull/" + number, isDraft: args.includes("--draft"),
-    state: "OPEN", headRefName: flag("--head"), title: flag("--title"), body: flag("--body") });
-  save();
+/** A PR as the fake `gh` keeps it in `prs.json`. */
+interface FakePr {
+  number: number;
+  url: string;
+  isDraft: boolean;
+  state: string;
+  headRefName: string;
+  title: string;
+  body: string;
 }
-if (args[0] === "pr" && args[1] === "list") {
-  const head = args.includes("--head") ? flag("--head") : null;
-  const open = args.includes("--state") && flag("--state") === "open";
-  console.log(JSON.stringify(prs.filter((p) => (!head || p.headRefName === head) && (!open || p.state === "OPEN"))));
+
+const flagOf = (args: string[], name: string): string => args[args.indexOf(name) + 1] ?? "";
+
+/** The fake `gh` of these tests: it logs its calls and keeps the PRs it creates in `prs.json`. */
+function prGh(dir: string): FakeTool {
+  const db = path.join(dir, "prs.json");
+  return async (args) => {
+    await appendFile(path.join(dir, "calls.log"), `${JSON.stringify(args)}\n`);
+    const [group, action] = args;
+    if (group === "pr" && action === "checks") return prChecks(dir);
+    const text = await files.read(db);
+    const prs: FakePr[] = JSON.parse(text ?? "[]");
+    if (group === "pr" && action === "list") return { stdout: `${listPrs(prs, args)}\n` };
+    if (group === "pr" && action === "create") prs.push(newPr(prs.length + 1, args));
+    if (group === "api" && args.includes("PATCH")) patchPr(prs, args);
+    await files.write(db, JSON.stringify(prs));
+    return {};
+  };
 }
-if (args[0] === "pr" && args[1] === "checks") {
-  const seq = dir + "/checks.seq";
-  if (fs.existsSync(seq)) {
-    const list = JSON.parse(fs.readFileSync(seq, "utf8"));
-    const next = list.length > 1 ? list.shift() : list[0];
-    fs.writeFileSync(seq, JSON.stringify(list));
-    process.stdout.write(next);
-    process.exit(0);
-  }
-  const out = dir + "/checks.out";
-  if (fs.existsSync(out)) process.stdout.write(fs.readFileSync(out, "utf8"));
-  process.exit(Number(fs.existsSync(dir + "/checks.code") ? fs.readFileSync(dir + "/checks.code", "utf8") : 0));
+
+function newPr(number: number, args: string[]): FakePr {
+  return {
+    number,
+    url: `https://example.com/pull/${number}`,
+    isDraft: args.includes("--draft"),
+    state: "OPEN",
+    headRefName: flagOf(args, "--head"),
+    title: flagOf(args, "--title"),
+    body: flagOf(args, "--body"),
+  };
 }
-if (args[0] === "api" && args.includes("PATCH")) {
-  const pr = prs.find((p) => args.some((a) => a.endsWith("/pulls/" + p.number)));
+
+function listPrs(prs: FakePr[], args: string[]): string {
+  const head = args.includes("--head") ? flagOf(args, "--head") : null;
+  const open = flagOf(args, "--state") === "open";
+  const found = prs.filter(
+    (p) => (!head || p.headRefName === head) && (!open || p.state === "OPEN"),
+  );
+  return JSON.stringify(found);
+}
+
+/** `gh api -X PATCH .../pulls/<n> -f title=... -f body=...`. */
+function patchPr(prs: FakePr[], args: string[]): void {
+  const pr = prs.find((p) => args.some((a) => a.endsWith(`/pulls/${p.number}`)));
+  if (pr === undefined) return;
   for (const a of args) {
-    if (a.startsWith("title=")) pr.title = a.slice(6);
-    if (a.startsWith("body=")) pr.body = a.slice(5);
+    if (a.startsWith("title=")) pr.title = a.slice("title=".length);
+    if (a.startsWith("body=")) pr.body = a.slice("body=".length);
   }
-  save();
 }
-`;
+
+/** The next output of `checks.seq` (the last one stays), else `checks.out` with `checks.code`. */
+async function prChecks(dir: string): Promise<FakeAnswer> {
+  const seq = await files.read(path.join(dir, "checks.seq"));
+  if (seq !== null) {
+    const list: string[] = JSON.parse(seq);
+    const next = list.length > 1 ? list.shift() : list[0];
+    await files.write(path.join(dir, "checks.seq"), JSON.stringify(list));
+    return { stdout: next ?? "" };
+  }
+  const out = await files.read(path.join(dir, "checks.out"));
+  const code = await files.read(path.join(dir, "checks.code"));
+  return { stdout: out ?? "", code: Number(code ?? 0) };
+}
 
 async function installGh() {
-  const bin = path.join(project.root, "bin");
   const state = path.join(project.root, "gh-state");
-  await files.write(path.join(bin, "gh"), FAKE_GH);
-  await chmod(path.join(bin, "gh"), 0o755);
   await files.write(path.join(state, ".keep"), "");
+  fakeTool("gh", prGh(state));
   const db = path.join(state, "prs.json");
   const read = async (): Promise<Record<string, unknown>[]> => {
     const text = await files.read(db);
     return JSON.parse(text ?? "[]");
   };
   return {
-    env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_FAKE: state },
+    env: {},
     prs: read,
     setChecks: async (out: string, code: number) => {
       await files.write(path.join(state, "checks.out"), out);
@@ -459,8 +490,6 @@ test("without --wait the group has no ci key and gh pr checks is never called", 
 
 const ONE_MINUTE_MS = 60_000;
 const HALF_HOUR_MS = 30 * ONE_MINUTE_MS;
-/** Half an hour of polls spawns the fake `gh` many times; under the full suite on a loaded machine that takes over 30 s. */
-const PENDING_WAIT_TEST_TIMEOUT_MS = 60_000;
 
 interface WaitOutcome {
   result: Awaited<ReturnType<typeof openPr>> | null;
@@ -498,30 +527,26 @@ async function waitOnFakeClock(env: Record<string, string>) {
   }
 }
 
-test(
-  "--wait with checks that stay pending times out with ci-timeout and the pending checks",
-  async () => {
-    await commit(taskWorktree, "b.txt");
-    const gh = await installGh();
-    await gh.setChecks("unit\tpending\t0\thttps://x/2\n", 8);
-    const { caught, slept } = await waitOnFakeClock(gh.env);
-    expect(caught).toMatchObject({
-      code: "ci-timeout",
-      details: {
-        groups: [
-          {
-            ci: {
-              state: "pending",
-              checks: [{ name: "unit", state: "pending", time: "0", url: "https://x/2" }],
-            },
+test("--wait with checks that stay pending times out with ci-timeout and the pending checks", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await gh.setChecks("unit\tpending\t0\thttps://x/2\n", 8);
+  const { caught, slept } = await waitOnFakeClock(gh.env);
+  expect(caught).toMatchObject({
+    code: "ci-timeout",
+    details: {
+      groups: [
+        {
+          ci: {
+            state: "pending",
+            checks: [{ name: "unit", state: "pending", time: "0", url: "https://x/2" }],
           },
-        ],
-      },
-    });
-    expect(slept).toBeGreaterThanOrEqual(HALF_HOUR_MS);
-  },
-  PENDING_WAIT_TEST_TIMEOUT_MS,
-);
+        },
+      ],
+    },
+  });
+  expect(slept).toBeGreaterThanOrEqual(HALF_HOUR_MS);
+});
 
 test("--wait with no checks gives ci none after the register window and exits 0", async () => {
   await commit(taskWorktree, "b.txt");

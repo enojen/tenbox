@@ -14,7 +14,7 @@ import { builds } from "./builds.ts";
 import { checks } from "./checks.ts";
 import { parts } from "./parts.ts";
 import { projects } from "./projects.ts";
-import { sessions } from "./sessions.ts";
+import { type SessionTarget, sessions, type TargetState } from "./sessions.ts";
 import { tasks } from "./tasks.ts";
 import { worktrees } from "./worktrees/index.ts";
 
@@ -24,6 +24,12 @@ export const statusReports = { get, list };
 /** The status report of the task; `no-worktree` when it has none. */
 async function get(id: TaskId): Promise<StatusReport> {
   const taskWorktree = await worktrees.get(id);
+  const state = await sessions.findState({ id, taskWorktree });
+  return report({ id, taskWorktree, state });
+}
+
+async function report(source: TargetState): Promise<StatusReport> {
+  const { id, taskWorktree, state } = source;
   const { manifest } = await projects.get(taskWorktree);
   const dir = tenboxDir(taskWorktree);
   const build = await builds.find(dir);
@@ -33,7 +39,6 @@ async function get(id: TaskId): Promise<StatusReport> {
   const rounds = roundNumbers(roundNames);
   const task = await tasks.find(dir);
   const partCounts = await parts.get(dir);
-  const state = await sessions.findState({ id, taskWorktree });
   const checks = await findChecks(dir, rounds);
   return {
     task: id,
@@ -76,13 +81,15 @@ async function findChecks(dir: string, rounds: number[]): Promise<ReportChecks |
 async function list(): Promise<StatusReport[]> {
   const { cwd, wtRoot } = env();
   const { project } = await projects.get(cwd);
-  const names = await files.list(path.join(wtRoot, project.name));
-  const ids: TaskId[] = [];
+  const dir = path.join(wtRoot, project.name);
+  const names = await files.list(dir);
+  const targets: SessionTarget[] = [];
   for (const name of taskWorktreeNames(names).sort()) {
-    const started = await files.isDir(
-      tenboxDir(taskWorktreeDir(wtRoot, project.name, taskId(name))),
-    );
-    if (started) ids.push(taskId(name));
+    const id = taskId(name);
+    const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
+    const started = await files.isDir(tenboxDir(taskWorktree));
+    if (started) targets.push({ id, taskWorktree });
   }
-  return Promise.all(ids.map(get));
+  const states = await sessions.findStates({ dir, targets });
+  return Promise.all(states.map(report));
 }

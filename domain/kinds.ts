@@ -17,7 +17,7 @@ export const DEFAULT_KIND: TaskKind = "normal";
 /** The review lenses a plan or a group may ask for; a kind may add them all. */
 export const LensSchema = z.enum(["security", "contract"]);
 
-type Lens = z.infer<typeof LensSchema>;
+export type Lens = z.infer<typeof LensSchema>;
 
 /** `none`: no extra lens; `own`: the lenses of the plan or group; `every`: all lenses. */
 type LensRule = "none" | "own" | "every";

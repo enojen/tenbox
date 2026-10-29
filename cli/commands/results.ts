@@ -3,6 +3,7 @@ import type { Approval } from "../../domain/approvals.ts";
 import type { DecisionCard } from "../../domain/builds.ts";
 import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
+import type { JobStatus } from "../../domain/machines.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import type { StatsProof } from "../../domain/proofs.ts";
@@ -12,7 +13,7 @@ import type { RunMark, UsageReport } from "../../domain/runs.ts";
 import type { StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
-import type { MachineRunRow } from "../application/machines.ts";
+import type { MachineRunRow, MachineVolume } from "../application/machines.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
@@ -320,6 +321,26 @@ export interface MachineRunResultJson {
   cmd: string;
   /** The API URL of the Job. */
   url: string;
+}
+
+export interface MachineLogsResultJson {
+  ok: true;
+  task: string;
+  job: string;
+  status: JobStatus;
+}
+
+export interface MachineStopResult {
+  ok: true;
+  task: string;
+  /** The names of the Jobs deleted. */
+  stopped: string[];
+}
+
+export interface MachineRmResult {
+  ok: true;
+  task: string;
+  volume: MachineVolume;
 }
 
 export interface MachineLsResult {

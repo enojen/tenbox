@@ -70,6 +70,31 @@ Every command prints JSON on stdout and human text on stderr.
 Ask it in plain words, for example "start TEN-1 with tenbox". The skill reads the commands
 from the tenbox you have installed, so it never goes out of date.
 
+## Commands
+
+| Command | Does |
+|---|---|
+| `tenbox start <id>` | Opens the task worktree and starts the planner |
+| `tenbox plan show <id>` | Shows the plan, its decisions and questions |
+| `tenbox decide <id> --json '...'` | Answers a plan question or overrides a plan decision |
+| `tenbox approve <id>` | Approves the plan |
+| `tenbox build <id>` | Starts the build, check and review rounds |
+| `tenbox answer <id> <n>` | Answers a decision card and resumes the build |
+| `tenbox status <id>` / `tenbox list` | Where one task stands / every task |
+| `tenbox attach <id>` | Opens the task's background session |
+| `tenbox check <id>` | Runs the checks; only new failures fail |
+| `tenbox proof <id> ...` | Records a proof made by hand |
+| `tenbox pr <id>` | Pushes and opens or updates the PR |
+| `tenbox merge-check` | Merges the open task PRs in a temporary worktree and runs the checks |
+| `tenbox close <id>` | After the merge: cleans up, sets the tracker to done |
+| `tenbox stats <id>` | Minutes and tokens per round, role and model |
+| `tenbox machine run <id> -- ...` / `ls` / `logs` / `stop` / `rm` | Runs a command of the task on the cluster, lists the runs, shows their logs, stops one, removes the volume |
+| `tenbox task new` | Opens a task in the project's tracker |
+| `tenbox report` | Opens a bug or a missing piece of Tenbox itself as an issue |
+| `tenbox install` | Links the agents and workflows into `~/.claude/` |
+
+Flags and details: [`docs/reference.md`](docs/reference.md#the-cli-tenbox). The workflows run the other commands.
+
 ## Documentation
 
 - [`docs/reference.md`](docs/reference.md): every command, workflow, role and file, as built today.

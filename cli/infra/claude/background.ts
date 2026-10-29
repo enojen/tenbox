@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COMMAND } from "../../../domain/commands.ts";
 import { claudeError } from "../../../domain/errors/tools.ts";
 import type { TaskId } from "../../../domain/ids.ts";
 import { jsons } from "../../../domain/utils.ts";
@@ -44,7 +45,7 @@ function shellWord(word: string): string {
 
 /** The `--settings` JSON with a `Notification` hook for permission prompts that runs `tenbox hook blocked <id>`. */
 function blockedHookSettings(id: TaskId): string {
-  const command = processes.selfCommand(["hook", "blocked", id]).map(shellWord).join(" ");
+  const command = processes.selfCommand([COMMAND.hook, "blocked", id]).map(shellWord).join(" ");
   const hooks = {
     Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command }] }],
   };
@@ -52,7 +53,15 @@ function blockedHookSettings(id: TaskId): string {
 }
 
 /** The background session commands of the `claude` CLI. */
-export const claude = { find, startBackground, resumeBackground, listBackground, attach, stop };
+export const claude = {
+  find,
+  startBackground,
+  resumeBackground,
+  listBackground,
+  listUnder,
+  attach,
+  stop,
+};
 
 /** A stopped background session to wake with one more prompt. */
 export interface ClaudeResume {
@@ -126,12 +135,18 @@ async function resumeBackground(run: ClaudeRun, resume: ClaudeResume): Promise<v
 /** The background sessions started in exactly `run.cwd` that still have a process; `--cwd` also
  * lists its subdirs, and a session without a `pid` cannot be stopped, attached or busy. */
 async function listBackground(run: ClaudeRun): Promise<BackgroundSession[]> {
+  const under = await listUnder(run);
+  return under.filter((session) => session.cwd === run.cwd);
+}
+
+/** The background sessions started in `run.cwd` or any dir under it that still have a process. */
+async function listUnder(run: ClaudeRun): Promise<BackgroundSession[]> {
   const stdout = await runChecked(run, ["agents", "--json", "--cwd", run.cwd]);
   const result = jsons.check(AgentListSchema, stdout);
   if (!result.ok) throw claudeError("agents", "output is not a session list");
   const sessions: BackgroundSession[] = [];
   for (const { id, cwd, kind, startedAt, state, pid } of result.value) {
-    if (kind === BACKGROUND && id !== undefined && pid !== undefined && cwd === run.cwd) {
+    if (kind === BACKGROUND && id !== undefined && pid !== undefined) {
       const known = state ?? UNKNOWN_STATE;
       sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(known), state: known });
     }

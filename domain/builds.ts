@@ -8,12 +8,13 @@ import {
   DEFAULT_KIND,
   KIND_PRESETS,
   kindForDiff,
+  type Lens,
   reviewOf,
   type TaskKind,
   TaskKindSchema,
 } from "./kinds.ts";
 import { CHECK_TIER, type CheckTier } from "./manifests.ts";
-import type { PlanResult } from "./plans.ts";
+import type { PlanPart, PlanResult } from "./plans.ts";
 import { ProofSchema } from "./proofs.ts";
 import { TaskDraftSchema, TaskRefSchema } from "./tracker.ts";
 import { jsons, strings } from "./utils.ts";
@@ -38,6 +39,8 @@ export const DECISION_KIND = [
   "scope",
   "other",
 ] as const;
+
+export type DecisionKind = (typeof DECISION_KIND)[number];
 
 /** What a blocked worker asks; `recommended` is the 1-based number of one of the options. */
 const DecisionCardSchema = z
@@ -64,7 +67,7 @@ const AnsweredSchema = z.object({
 export type DecisionCard = z.infer<typeof DecisionCardSchema>;
 
 /** Kinds Tenbox never auto-answers, whatever `auto` says. */
-const NEVER_AUTO: readonly DecisionCard["kind"][] = DECISION_KIND.filter(
+const NEVER_AUTO: readonly DecisionKind[] = DECISION_KIND.filter(
   (kind) => kind !== "scope" && kind !== "other",
 );
 
@@ -115,10 +118,10 @@ const BuildResultSchema = z.looseObject({
 
 export type BuildResult = z.infer<typeof BuildResultSchema>;
 
-export type BuildStatus = BuildResult["status"];
+export type BuildStatus = (typeof BUILD_STATUS)[keyof typeof BUILD_STATUS];
 
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
-export type Unproven = BuildResult["unproven"][number];
+export type Unproven = z.infer<typeof UnprovenSchema>;
 
 /**
  * The unproven items `build.json` keeps: the earlier result's first, then the new ones. After an
@@ -130,7 +133,7 @@ export function keptUnproven(earlier: BuildResult | null, result: BuildResult): 
   return [...earlier.unproven, ...result.unproven];
 }
 
-export type Finding = BuildResult["findings"][number];
+export type Finding = z.infer<typeof FindingSchema>;
 
 /** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {
@@ -155,8 +158,8 @@ export interface BuildArgs {
   kind: TaskKind;
   /** How many rounds the build may review. */
   reviews: number;
-  parts: PlanResult["parts"];
-  lenses: PlanResult["lenses"];
+  parts: PlanPart[];
+  lenses: Lens[];
   groups?: Group[];
 }
 

@@ -31,6 +31,8 @@ export const PlanPartSchema = z.object({
   files: z.array(text).optional(),
 });
 
+export type PlanPart = z.infer<typeof PlanPartSchema>;
+
 const QuestionSchema = z.object({
   kind: z.enum(["technical", "product", "contract", "risk"]),
   text,
@@ -144,7 +146,7 @@ export function planLines(plan: PlanResult): string[] {
 }
 
 type Example = z.infer<typeof ExampleSchema>;
-type Question = z.infer<typeof QuestionSchema>;
+export type Question = z.infer<typeof QuestionSchema>;
 
 /** A heading, then each entry indented; `none` for no entry. */
 function section(heading: string, entries: string[][]): string[] {

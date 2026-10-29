@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import path from "node:path";
 import { DECISION_KIND } from "../../domain/builds.ts";
 import type { Group } from "../../domain/groups.ts";
+import type { PlanPart } from "../../domain/plans.ts";
 import {
   type AgentOptions,
   runWorkflow,
@@ -28,11 +29,6 @@ interface ReviewReply {
   attention: string[];
   unproven: { part: string; reason: string }[];
   findings: Finding[];
-}
-
-interface PlanPart {
-  id: string;
-  difficulty: "easy" | "hard";
 }
 
 const planPart = (id: string): PlanPart => ({ id, difficulty: "easy" });
@@ -171,10 +167,13 @@ const proofFor = (name: string): ScriptedProof => ({
   failure: "got 1",
 });
 
+/** The status of the last worker of a run. */
+type LastWorkerStatus = "done" | "blocked";
+
 /** Runs the workflow with a worker that returns one proof per round; `status` is the last worker status. */
 async function runWithProofs(
   maxRounds: number,
-  lastWorkerStatus: "done" | "blocked",
+  lastWorkerStatus: LastWorkerStatus,
   extraProofFields: object = {},
 ) {
   const reviewerPrompts: string[] = [];

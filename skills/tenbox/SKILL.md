@@ -1,7 +1,7 @@
 ---
 name: tenbox
 description: Run one tracker task (an id like TEN-301) through plan, build, check, review, PR and close with the tenbox CLI, on this computer or as a Job on the cluster. Use in a git project with a tenbox.yaml, or to add one, when the user asks to start, plan, approve, build, check, open the PR for, close or see the status of a task.
-allowed-tools: Bash(tenbox help *) Bash(realpath *)
+allowed-tools: Bash(tenbox help *)
 ---
 
 # Tenbox
@@ -15,15 +15,16 @@ details: they come from the tenbox you have now.
 
 !`tenbox help 2>&1 >/dev/null || echo "tenbox is not on PATH: see the Install section of the README"`
 
+## One command
+
+Run `tenbox help <command>` before you use a command. It prints the flags, the input, the
+output fields and an example.
+
 ## The reference
 
-Every command, file and rule, as built today, is in the reference of this checkout:
-
-!`realpath "${CLAUDE_SKILL_DIR}/../../docs/reference.md"`
-
-Read the section you need before you act: "How a task runs today" for the flow, "The CLI"
-for one command, "The manifest" for `tenbox.yaml`, "Machines" for the cluster. Where this
-skill and the reference disagree, the reference is right.
+For the flow of a task, the files of a task and `tenbox.yaml`, read the
+[reference](https://github.com/enojen/tenbox/blob/main/docs/reference.md). For one command,
+`tenbox help <command>` is right where the two disagree.
 
 ## How to work with it
 
@@ -44,4 +45,5 @@ skill and the reference disagree, the reference is right.
   the box and the Jobs). A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
   as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
-  "Machines" in the reference.
+  "Machines" in the reference. After its close Job ends, `tenbox machine rm <id>` deletes the
+  task's volume; run it only then, it cannot be undone.

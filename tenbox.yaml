@@ -2,11 +2,14 @@ project: tenbox
 setup: bun install
 
 checks:
-  types: bunx tsc --noEmit
-  unit: bun test cli domain server rules
-  format: bunx biome format cli domain server rules
-  lint: bunx biome check --formatter-enabled=false cli domain server rules
-  unused: bunx knip
+  fast:
+    types: bunx tsgo --noEmit
+    unit: bun test domain server rules cli/application cli/infra cli/test
+    format: bunx biome format cli domain server rules
+    lint: bunx biome check --formatter-enabled=false cli domain server rules
+    unused: bunx knip
+  full:
+    e2e: bun test cli/commands
 
 tracker: { kind: github }
 id: xathah

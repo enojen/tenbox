@@ -129,6 +129,15 @@ describe("errors and debug", () => {
     expect(quiet.err).not.toMatch(/^\s+at /m);
     expect(debug.err).toMatch(/^\s+at /m);
   });
+  test("a name an object has, like constructor, is an unknown command", async () => {
+    const r = await tenbox(["constructor"], main);
+    expect(r.code).toBe(2);
+    expect(r.json).toMatchObject({
+      ok: false,
+      code: "usage",
+      error: "unknown command: constructor",
+    });
+  });
   // Bun's fs errors carry no stack frames, so the stack is only the message.
   test("an internal error prints its stack", async () => {
     await chmod(wt, 0o000);
