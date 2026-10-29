@@ -77,11 +77,10 @@ from the tenbox you have installed, so it never goes out of date.
 
 ## Roadmap
 
-- Cards: one model for questions, answers, reviews and PR comments.
-- Adaptive flow: a plan lens, a code skeleton before the bodies, the task kind in stats.
-- Machines: tasks run as Jobs on a Kubernetes cluster, checks as their own Jobs.
-- Server: events from the CLI, task numbers computed on the server.
-- Later: sandbox and QA (the Try phase), `tenbox rebase`, the live pane and the panel.
+Every open task of Tenbox and [Tenyard](https://github.com/enojen/tenyard) is on the
+[board](https://github.com/users/enojen/projects/2): what is in progress, what comes next and
+what is wanted later. The [milestones](https://github.com/enojen/tenbox/milestones) group the
+tasks by theme.
 
 ## License
 
