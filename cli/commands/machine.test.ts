@@ -64,6 +64,20 @@ build: { cpu: 500m, cpu_limit: "4", memory: 2Gi }
 heavy: { cpu: 500m, cpu_limit: "4", memory: 5Gi }
 `;
 
+const POSTGRES_SERVICE = `spec:
+  template:
+    spec:
+      initContainers:
+        - { name: postgres, image: postgres:16, restartPolicy: Always }
+      containers:
+        - name: box
+          env:
+            - { name: TEST_PG_URL, value: "postgres://test:test@127.0.0.1:5432" }
+      volumes:
+        - name: pgdata
+          emptyDir: { medium: Memory }
+`;
+
 const PVC_TEMPLATE = `apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -223,6 +237,25 @@ function classResources(cpu: string, cpuLimit: string, memory: string) {
 function jobValueFrom(call: ApiCall | undefined, name: string): unknown {
   const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
   return entries.find((e) => e.name === name)?.valueFrom;
+}
+
+const PodSpecSchema = z.object({
+  spec: z.object({
+    template: z.object({
+      spec: z.object({
+        initContainers: z.array(z.object({ name: z.string() })).default([]),
+        volumes: z.array(z.object({ name: z.string() })).default([]),
+      }),
+    }),
+  }),
+});
+
+function jobPod(call: ApiCall | undefined) {
+  const spec = PodSpecSchema.parse(call?.body).spec.template.spec;
+  return {
+    sidecars: spec.initContainers.map((c) => c.name),
+    volumes: spec.volumes.map((v) => v.name),
+  };
 }
 
 /** A Secret body, as far as the tests read it. */
@@ -468,6 +501,78 @@ describe("machine", () => {
     expect([run.code, run.json.code]).toEqual([1, "template"]);
     expect(String(run.json.error)).toContain("classes.yaml");
     expect(api.calls).toEqual([]);
+  });
+
+  describe("services", () => {
+    const writeService = (name: string, text: string) =>
+      files.write(path.join(template, "services", `${name}.yaml`), text);
+
+    beforeEach(async () => {
+      await writeService("postgres", POSTGRES_SERVICE);
+      await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
+    });
+
+    test("a build adds the sidecar, the volume and the box env of each service", async () => {
+      const run = await build();
+      expect(run.code).toBe(0);
+      const job = posts().find((c) => c.path === JOBS_PATH);
+      expect(jobPod(job)).toEqual({ sidecars: ["postgres"], volumes: ["home", "pgdata"] });
+      expect(jobEnv(job).TEST_PG_URL).toBe("postgres://test:test@127.0.0.1:5432");
+      expect(jobEnv(job).TENBOX_TASK).toBe("TEN-1");
+    });
+
+    test("a service env with the name of a template env replaces it", async () => {
+      const service = POSTGRES_SERVICE.replace("TEST_PG_URL", "TENBOX_TASK");
+      await writeService("postgres", service);
+      const run = await build();
+      expect(run.code).toBe(0);
+      const job = posts().find((c) => c.path === JOBS_PATH);
+      const env = jobBody(job).spec.template.spec.containers[0]?.env ?? [];
+      expect(env.filter((e) => e.name === "TENBOX_TASK")).toEqual([
+        { name: "TENBOX_TASK", value: "postgres://test:test@127.0.0.1:5432" },
+      ]);
+    });
+
+    test.each([
+      ["start", ["tenbox", "start", "TEN-1"]],
+      ["close", ["tenbox", "close", "TEN-1"]],
+    ])("%s gets no service", async (_name, words) => {
+      const run = await machine(["run", "TEN-1", "--", ...words]);
+      expect(run.code).toBe(0);
+      const job = posts().find((c) => c.path === JOBS_PATH);
+      expect(jobPod(job)).toEqual({ sidecars: [], volumes: ["home"] });
+      expect(jobEnv(job).TEST_PG_URL).toBeUndefined();
+    });
+
+    test("a service without a file is a template error before any request", async () => {
+      await writeManifest(`machine: { template: ${template}, services: [postgres, redis] }\n`);
+      const run = await build();
+      expect([run.code, run.json.code]).toEqual([1, "template"]);
+      expect(String(run.json.error)).toContain(path.join("services", "redis.yaml"));
+      expect(api.calls).toEqual([]);
+    });
+
+    test.each([
+      [
+        "a key tenbox does not add",
+        POSTGRES_SERVICE.replace("      volumes:", "      nodeSelector: {}\n      volumes:"),
+      ],
+      ["a container other than box", POSTGRES_SERVICE.replace("name: box", "name: other")],
+      ["no mapping", "- postgres\n"],
+    ])("a service file with %s is a template error before any request", async (_name, text) => {
+      await writeService("postgres", text);
+      const run = await build();
+      expect([run.code, run.json.code]).toEqual([1, "template"]);
+      expect(String(run.json.error)).toContain(path.join("services", "postgres.yaml"));
+      expect(api.calls).toEqual([]);
+    });
+
+    test("a service name that is not a file name is a manifest error", async () => {
+      await writeManifest(`machine: { template: ${template}, services: [../job] }\n`);
+      const run = await build();
+      expect([run.code, run.json.code]).toEqual([1, "manifest"]);
+      expect(api.calls).toEqual([]);
+    });
   });
 
   test("close --force reaches TENBOX_CMD", async () => {

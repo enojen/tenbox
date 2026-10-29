@@ -99,6 +99,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
 | machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
+| service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
 

@@ -127,7 +127,14 @@ async function runJob(command: CommandRun): Promise<string> {
   const fields = await templateFields(command);
   const dir = homePath(manifest.machine.template);
   const volume = await kubernetes.readTemplate({ file: path.join(dir, "pvc.yaml"), fields });
-  const job = await kubernetes.readTemplate({ file: path.join(dir, "job.yaml"), fields });
+  const file = path.join(dir, "job.yaml");
+  const template = await kubernetes.readTemplate({ file, fields });
+  const services = await Promise.all(
+    serviceNames(command).map((name) =>
+      kubernetes.readService(path.join(dir, "services", `${name}.yaml`)),
+    ),
+  );
+  const job = kubernetes.addServices({ file, job: template, services });
   await ensureIdle(cluster, id);
   const values = projectSecretValues(manifest);
   await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
@@ -175,6 +182,11 @@ async function templateFields(command: CommandRun): Promise<TemplateFields> {
 function resourceClass(command: CommandRun): ResourceClass {
   if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.class;
   return RESOURCE_CLASS.plan;
+}
+
+function serviceNames(command: CommandRun): string[] {
+  if (command.cmd === MACHINE_COMMAND.build) return command.manifest.machine.services;
+  return [];
 }
 
 /** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */

@@ -56,6 +56,61 @@ interface ClassInput {
   name: string;
 }
 
+const BOX = "box";
+
+const NamedSchema = z.looseObject({ name: z.string().min(1) });
+
+type Named = z.infer<typeof NamedSchema>;
+
+/** A strategic merge patch of the Job; tenbox adds only these keys, so it refuses any other. */
+const ServiceSchema = z
+  .object({
+    spec: z
+      .object({
+        template: z
+          .object({
+            spec: z
+              .object({
+                initContainers: z.array(NamedSchema).default([]),
+                containers: z
+                  .array(z.object({ name: z.literal(BOX), env: z.array(NamedSchema) }).strict())
+                  .default([]),
+                volumes: z.array(NamedSchema).default([]),
+              })
+              .strict(),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+interface Service {
+  sidecars: Named[];
+  volumes: Named[];
+  env: Named[];
+}
+
+const JobPodSchema = z.looseObject({
+  spec: z.looseObject({
+    template: z.looseObject({
+      spec: z.looseObject({
+        initContainers: z.array(NamedSchema).default([]),
+        containers: z.array(
+          z.looseObject({ name: z.string(), env: z.array(NamedSchema).default([]) }),
+        ),
+        volumes: z.array(NamedSchema).default([]),
+      }),
+    }),
+  }),
+});
+
+interface ServicesInput {
+  file: string;
+  job: KubeObject;
+  services: Service[];
+}
+
 /** One template file and the values for its fields. */
 interface TemplateInput {
   file: string;
@@ -94,6 +149,8 @@ export const kubernetes = {
   readCluster,
   readTemplate,
   readClass,
+  readService,
+  addServices,
   listJobs,
   ensureVolume,
   saveSecret,
@@ -205,6 +262,41 @@ async function readClass(input: ClassInput): Promise<ClassResources> {
     throw templateError(file, `no class "${name}" (${Object.keys(parsed.data).join(", ")})`);
   }
   return found;
+}
+
+async function readService(file: string): Promise<Service> {
+  const text = await files.read(file);
+  if (text === null) throw templateError(file, "missing");
+  const parsed = ServiceSchema.safeParse(parseYaml(text));
+  if (!parsed.success) throw templateError(file, issueLines(parsed.error).join("; "));
+  const pod = parsed.data.spec.template.spec;
+  return {
+    sidecars: pod.initContainers,
+    volumes: pod.volumes,
+    env: pod.containers.flatMap((c) => c.env),
+  };
+}
+
+/** As `kubectl patch --type strategic`: an entry replaces the one of its name. */
+function addServices(input: ServicesInput): KubeObject {
+  const { file, job, services } = input;
+  if (services.length === 0) return job;
+  const parsed = JobPodSchema.safeParse(job);
+  if (!parsed.success) throw templateError(file, issueLines(parsed.error).join("; "));
+  const pod = parsed.data.spec.template.spec;
+  const box = pod.containers.find((c) => c.name === BOX);
+  if (box === undefined) throw templateError(file, `no container "${BOX}"`);
+  for (const service of services) {
+    pod.initContainers = byName(pod.initContainers, service.sidecars);
+    pod.volumes = byName(pod.volumes, service.volumes);
+    box.env = byName(box.env, service.env);
+  }
+  return parsed.data;
+}
+
+function byName(base: Named[], added: Named[]): Named[] {
+  const names = new Set(added.map((entry) => entry.name));
+  return [...base.filter((entry) => !names.has(entry.name)), ...added];
 }
 
 type Placeholders = [string, string][];
