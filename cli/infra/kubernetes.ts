@@ -37,13 +37,12 @@ export interface TemplateFields {
   /** The resource class and its values from tenyard `task/classes.yaml`. */
   class: string;
   cpu: string;
-  cpuLimit: string;
   memory: string;
 }
 
 /** One class of tenyard `task/classes.yaml`; its RAM is both the request and the limit. */
 const ResourceClassSchema = z
-  .object({ cpu: z.string().min(1), cpu_limit: z.string().min(1), memory: z.string().min(1) })
+  .object({ cpu: z.string().min(1), memory: z.string().min(1) })
   .strict();
 
 const ClassesSchema = z.record(z.string(), ResourceClassSchema);
@@ -318,7 +317,6 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__ENV__", fields.env],
     ["__CLASS__", fields.class],
     ["__CPU__", fields.cpu],
-    ["__CPU_LIMIT__", fields.cpuLimit],
     ["__MEMORY__", fields.memory],
   ];
 }
