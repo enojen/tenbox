@@ -4,6 +4,7 @@ import {
   type BuildResult,
   buildArgs,
   buildKind,
+  type Finding,
   groupTiers,
   type KindPlan,
   parseBuild,
@@ -18,13 +19,7 @@ import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
-import {
-  AGENT_LABEL,
-  type NewTask,
-  newTaskOf,
-  type TaskRef,
-  type Tracker,
-} from "../../domain/tracker.ts";
+import { AGENT_LABEL, newTaskOf, type TaskRef, type Tracker } from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
@@ -74,8 +69,7 @@ export interface BuildDoneInput {
 
 /** `pr` only for an accepted `ready-for-you`: the draft PR result, or why it failed. */
 export interface BuildDoneResult extends TaskFileResult {
-  /** The tasks opened for the findings of the result, in their order. */
-  opened_tasks: TaskRef[];
+  findings: Finding[];
   pr?: PrResult | PrError;
 }
 
@@ -91,10 +85,9 @@ const FULL_TIER_TIMEOUT_SECONDS = 600;
 const FULL_TIER_TIMEOUT_MS = FULL_TIER_TIMEOUT_SECONDS * durations.MS_PER_SECOND;
 
 /**
- * Validates the build result, opens a task per finding and writes the result with its kind and
- * the opened tasks to the task's `.tenbox/build.json`. A `ready-for-you` result must pass its
- * checks and fit the limits of its kind before anything is written or opened, and then opens the
- * draft PR.
+ * Validates the build result, opens a task per finding and writes the result with its kind to
+ * the task's `.tenbox/build.json`. A `ready-for-you` result must pass its checks and fit the
+ * limits of its kind before anything is written or opened, and then opens the draft PR.
  */
 export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult> {
   const { id } = input;
@@ -105,15 +98,15 @@ export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult>
   const ready = result.status === BUILD_STATUS.readyForYou;
   if (ready) await assertChecksPass({ id, taskWorktree, kindPlan });
   if (ready) await assertDiffFits({ id, taskWorktree, kindPlan });
-  const openedTasks = await openFindings({ id, taskWorktree, result });
-  const saved = { ...result, kind: kindPlan.kind, opened_tasks: openedTasks };
+  const findings = await openFindings({ id, taskWorktree, result });
+  const saved = { ...result, kind: kindPlan.kind, findings };
   const file = await builds.save(taskWorktree, JSON.stringify(saved));
   await saveBuildStatus(taskWorktree);
   await notifyEnd(id, taskWorktree);
   await autoAnswers.run({ id, taskWorktree });
-  if (!ready) return { ok: true, task: id, file, opened_tasks: openedTasks };
+  if (!ready) return { ok: true, task: id, file, findings };
   const pr = await openDraftPr(id);
-  return { ok: true, task: id, file, opened_tasks: openedTasks, pr };
+  return { ok: true, task: id, file, findings, pr };
 }
 
 interface FindingsInput {
@@ -124,27 +117,35 @@ interface FindingsInput {
 
 /**
  * One task per finding in the tracker of the task worktree's manifest, labeled `agent`; a title
- * that is open already is reused. Without a tracker the findings stay in `build.json` only.
+ * that is open already is reused. Without a tracker the findings keep no task.
  */
-async function openFindings(input: FindingsInput): Promise<TaskRef[]> {
+async function openFindings(input: FindingsInput): Promise<Finding[]> {
   const { id, taskWorktree, result } = input;
-  if (result.findings.length === 0) return [];
+  const { findings } = result;
+  if (findings.length === 0) return findings;
   const { project } = await projects.get(taskWorktree);
   const manifest = await manifests.get(project.mainDir, taskWorktree);
-  if (manifest.tracker.kind === TRACKER_KIND.none) return [];
+  if (manifest.tracker.kind === TRACKER_KIND.none) return findings;
   const tracker = makeTracker(manifest.tracker);
-  const opened: TaskRef[] = [];
-  for (const finding of result.findings) {
-    const labels = [...finding.labels, AGENT_LABEL];
-    const task = newTaskOf({ ...finding, labels }, { task: id, tenbox: null });
-    const ref = await ensureFinding(tracker, task);
-    if (ref !== null) opened.push(ref);
+  const opened: Finding[] = [];
+  for (const finding of findings) {
+    const task = await ensureFinding({ id, tracker, finding });
+    opened.push({ ...finding, task });
   }
   return opened;
 }
 
-/** A tracker failure is one warning line, not the end of the build: the finding stays in the result. */
-async function ensureFinding(tracker: Tracker, task: NewTask): Promise<TaskRef | null> {
+interface FindingTask {
+  id: TaskId;
+  tracker: Tracker;
+  finding: Finding;
+}
+
+/** A tracker failure is one warning line, not the end of the build: the finding keeps no task. */
+async function ensureFinding(input: FindingTask): Promise<TaskRef | null> {
+  const { id, tracker, finding } = input;
+  const labels = [...finding.labels, AGENT_LABEL];
+  const task = newTaskOf({ ...finding, labels }, { task: id, tenbox: null });
   try {
     const ensured = await tasks.ensure(tracker, task);
     return { id: ensured.id, url: ensured.url };

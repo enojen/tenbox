@@ -62,7 +62,7 @@ function statsWith(output: (number | null)[], total: number | null): TaskStats {
     code: null,
     agents: output.map((out) => ({ ...NO_USAGE, output: out })),
     runs: [],
-    opened_tasks: [],
+    findings: [],
   };
 }
 
@@ -79,12 +79,13 @@ describe("closeComment", () => {
     const empty = { ...statsWith([], null), agents: null };
     expect(closeComment(empty)).toBe("0 min, 0k tokens, 2 rounds");
   });
-  test("the opened tasks follow as their urls", () => {
-    const opened = [
-      { id: "5", url: "https://github.com/o/r/issues/5" },
-      { id: "6", url: "https://github.com/o/r/issues/6" },
+  test("the opened findings follow as their urls; one with no task is left out", () => {
+    const findings = [
+      { title: "a", task: { id: "5", url: "https://github.com/o/r/issues/5" } },
+      { title: "b", task: null },
+      { title: "c", task: { id: "6", url: "https://github.com/o/r/issues/6" } },
     ];
-    const stats = { ...statsWith([1000], 10), opened_tasks: opened };
+    const stats = { ...statsWith([1000], 10), findings };
     expect(closeComment(stats)).toBe(
       "10 min, 1k tokens, 2 rounds, opened https://github.com/o/r/issues/5, https://github.com/o/r/issues/6",
     );

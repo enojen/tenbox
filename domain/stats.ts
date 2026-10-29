@@ -102,8 +102,12 @@ export interface TaskStats {
   agents: RunAgent[] | null;
   /** The runs since the task opened; finished is false for a run with no run file. */
   runs: RunMark[] | null;
-  /** The tasks the build opened for its findings, from `build.json`. */
-  opened_tasks: TaskRef[];
+  findings: StatsFinding[];
+}
+
+interface StatsFinding {
+  title: string;
+  task: TaskRef | null;
 }
 
 /** Null without a plan result. */
@@ -162,17 +166,17 @@ export function countPoints(input: PointsInput): StatsPoints[] {
 
 const TOKENS_PER_K = 1000;
 
-/** The close comment: total minutes, output tokens in thousands, number of rounds, opened tasks. */
+/** The close comment: total minutes, output tokens in thousands, number of rounds, opened findings. */
 export function closeComment(stats: TaskStats): string {
   const output = (stats.agents ?? []).reduce((sum, agent) => sum + (agent.output ?? 0), 0);
   const minutes = Math.round(stats.minutes.total ?? 0);
   const tokens = Math.round(output / TOKENS_PER_K);
   const cost = `${minutes} min, ${tokens}k tokens, ${stats.rounds.length} rounds`;
-  if (stats.opened_tasks.length === 0) return cost;
-  return `${cost}, opened ${stats.opened_tasks.map((task) => task.url).join(", ")}`;
+  const urls = stats.findings.flatMap((finding) => (finding.task ? [finding.task.url] : []));
+  return urls.length === 0 ? cost : `${cost}, opened ${urls.join(", ")}`;
 }
 
-/** Schema 5 has the same agents, only no `runs`; 6 has no `opened_tasks`. */
+/** Schema 5 has the same agents, only no `runs`; 6 has no `findings`. */
 const READABLE_SCHEMA = 5;
 const RUNS_SCHEMA = 6;
 

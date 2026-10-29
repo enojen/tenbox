@@ -420,7 +420,7 @@ describe("tenbox build done", () => {
       const calls = await files.exists(path.join(ghState(), "calls.log"));
       expect([run.code, run.json, calls]).toEqual([
         0,
-        { ok: true, task: "T-1", file: buildJson, opened_tasks: [] },
+        { ok: true, task: "T-1", file: buildJson, findings: [] },
         false,
       ]);
     },
@@ -446,11 +446,11 @@ describe("tenbox build done", () => {
 
   test("a valid result is written to build.json and its proofs to proofs.json", async () => {
     const run = await buildDone(...withJson({}));
-    const result = { ok: true, task: "T-1", file: buildJson, opened_tasks: [] };
+    const result = { ok: true, task: "T-1", file: buildJson, findings: [] };
     expect([run.code, run.json]).toEqual([0, result]);
     const written = await readJson(buildJson);
     const recorded = await readJson(proofsJson);
-    expect(written).toEqual({ ...valid, kind: "normal", findings: [], opened_tasks: [] });
+    expect(written).toEqual({ ...valid, kind: "normal", findings: [] });
     expect(recorded).toEqual([proof("first")]);
   });
 
@@ -484,7 +484,6 @@ describe("tenbox build done", () => {
       ...second,
       kind: "normal",
       findings: [],
-      opened_tasks: [],
       unproven: [
         { part: "01", reason: "r1" },
         { part: "02", reason: "r2" },
@@ -497,6 +496,11 @@ describe("tenbox build done", () => {
     const finding = (title: string) => ({ title, why: "w", what: "x", done: "d" });
     const worktreeManifest = (): string => path.join(taskWorktree(), "tenbox.yaml");
     const ISSUE_URL = "https://github.com/own/repo/issues/1";
+    const opened = (title: string) => ({
+      ...finding(title),
+      labels: [],
+      task: { id: "1", url: ISSUE_URL },
+    });
 
     /** The task worktree's `tenbox.yaml` names the tracker; the main checkout's names none. */
     async function withGithubTracker() {
@@ -509,7 +513,7 @@ describe("tenbox build done", () => {
     test("each finding becomes a task in the tracker of the worktree's manifest, labeled agent", async () => {
       const fake = await withGithubTracker();
       const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
-      expect([run.code, run.json.opened_tasks]).toEqual([0, [{ id: "1", url: ISSUE_URL }]]);
+      expect([run.code, run.json.findings]).toEqual([0, [opened("Login drops the port")]]);
       const [issue] = await fake.issues("own/repo");
       expect(issue).toMatchObject({
         title: "Login drops the port",
@@ -517,10 +521,7 @@ describe("tenbox build done", () => {
         body: "**Why**\nw\n\n**What**\nx\n\n**Done when**\nd\n\nFound by task T-1.",
       });
       const written = await readJson(buildJson);
-      expect(written).toMatchObject({
-        findings: [{ ...finding("Login drops the port"), labels: [] }],
-        opened_tasks: [{ id: "1", url: ISSUE_URL }],
-      });
+      expect(written).toMatchObject({ findings: [opened("Login drops the port")] });
     });
 
     test("a finding whose title is open already reuses that task", async () => {
@@ -528,19 +529,18 @@ describe("tenbox build done", () => {
       await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
       const run = await buildDone(...withJson({ findings: [finding("login drops the port")] }));
       const issues = await fake.issues("own/repo");
-      expect([run.json.opened_tasks, issues.length]).toEqual([[{ id: "1", url: ISSUE_URL }], 1]);
+      expect([run.json.findings, issues.length]).toEqual([[opened("login drops the port")], 1]);
     });
 
-    test("without a tracker the findings stay in build.json and no task is opened", async () => {
+    test("without a tracker the findings stay in build.json with no task, and nothing is opened", async () => {
       const fake = await installFakeGh(project.root);
       ghEnv = fake.env;
       const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
       const written = await readJson(buildJson);
       const calls = await fake.calls();
-      expect([run.code, run.json.opened_tasks, calls]).toEqual([0, [], ""]);
-      expect(written).toMatchObject({
-        findings: [{ ...finding("Login drops the port"), labels: [] }],
-      });
+      const kept = [{ ...finding("Login drops the port"), labels: [], task: null }];
+      expect([run.code, run.json.findings, calls]).toEqual([0, kept, ""]);
+      expect(written).toMatchObject({ findings: kept });
     });
 
     test("a tracker failure is one warning line; the result is written with no opened task", async () => {
@@ -548,7 +548,8 @@ describe("tenbox build done", () => {
       await installGh(FAILING_GH);
       const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
       const written = await files.exists(buildJson);
-      expect([run.code, run.json.opened_tasks, written]).toEqual([0, [], true]);
+      const kept = [{ ...finding("Login drops the port"), labels: [], task: null }];
+      expect([run.code, run.json.findings, written]).toEqual([0, kept, true]);
       expect(run.err).toContain('warning: could not open "Login drops the port": ');
     });
 

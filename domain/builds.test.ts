@@ -182,7 +182,7 @@ test("a diff over the limits of its kind is kind-raised with the review of the k
 
 const FINDING = { title: "t", why: "w", what: "x", done: "d" };
 
-test("a result without findings gets none; one with findings keeps them as drafts", () => {
+test("a result without findings gets none; one with findings keeps them, with no task yet", () => {
   const base = {
     status: "failed",
     round: 1,
@@ -193,7 +193,7 @@ test("a result without findings gets none; one with findings keeps them as draft
   };
   expect(parseBuild(JSON.stringify(base)).findings).toEqual([]);
   const withFinding = parseBuild(JSON.stringify({ ...base, findings: [FINDING] }));
-  expect(withFinding.findings).toEqual([{ ...FINDING, labels: [] }]);
+  expect(withFinding.findings).toEqual([{ ...FINDING, labels: [], task: null }]);
 });
 
 test("a finding without one of its sections is bad-input", () => {

@@ -686,7 +686,7 @@ describe("tenbox close", () => {
       title: "x",
       user: "me@example.com",
       forced: true,
-      opened_tasks: [],
+      findings: [],
       code: { added: 6, removed: 1, files: 4, test_added: 3 },
       plan: { parts: 2, difficulty: ["easy", "hard"], estimated_lines: 120 },
       runs: null,
