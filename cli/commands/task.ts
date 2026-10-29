@@ -1,7 +1,16 @@
-import { newTaskOf, parseTaskDraft, type TaskDraft, taskDraftOf } from "../../domain/tracker.ts";
+import {
+  AGENT_LABEL,
+  newTaskOf,
+  parseTaskDraft,
+  type TaskDraft,
+  type Tracker,
+  taskDraftOf,
+} from "../../domain/tracker.ts";
+import { manifests } from "../application/manifests.ts";
 import { projects } from "../application/projects.ts";
 import { tasks } from "../application/tasks.ts";
 import { env, log } from "../infra/env.ts";
+import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type { TaskNewResult } from "./results.ts";
 
@@ -15,13 +24,9 @@ export interface TaskDraftInput {
   labels: string[];
 }
 
-/** The label of a task an agent opened, so a person triages it. */
-const AGENT_LABEL = "agent";
-
 /** Writes the draft to the project's tracker, or returns the open task that has its title already. */
 export async function newTask(input: TaskDraftInput): Promise<TaskNewResult> {
-  const { manifest } = await projects.get(env().cwd);
-  const tracker = makeTracker(manifest.tracker);
+  const tracker = await trackerHere(env().cwd);
   const task = await tasks.ensure(tracker, newTaskOf(draftOf(input)));
   const verb = task.created ? "opened" : "exists already as";
   log(`${verb} ${task.id} · ${task.url}`);
@@ -33,6 +38,14 @@ export function draftOf(input: TaskDraftInput): TaskDraft {
   const draft = input.json === undefined ? taskDraftOf(flagsOf(input)) : parseTaskDraft(input.json);
   if (!env().agent || draft.labels.includes(AGENT_LABEL)) return draft;
   return { ...draft, labels: [...draft.labels, AGENT_LABEL] };
+}
+
+/** The tracker of the checkout the command runs in: a task worktree's own `tenbox.yaml` wins, as for `tenbox check`. */
+async function trackerHere(cwd: string): Promise<Tracker> {
+  const { project } = await projects.get(cwd);
+  const checkout = await git.findTopLevel(cwd);
+  const manifest = await manifests.get(project.mainDir, checkout ?? project.mainDir);
+  return makeTracker(manifest.tracker);
 }
 
 function flagsOf(input: TaskDraftInput): Record<string, unknown> {

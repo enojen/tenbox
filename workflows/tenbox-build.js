@@ -116,6 +116,13 @@ const BUILT = {
   required: ['status', 'proofs'],
 }
 const MAX_NICE_TO_HAVE = 3
+const MAX_FINDINGS = 2
+// A bug or a gap outside the task, as a task draft; `tenbox build done` opens it in the tracker.
+const FINDING = {
+  type: 'object',
+  properties: { title: NON_BLANK, why: NON_BLANK, what: NON_BLANK, done: NON_BLANK },
+  required: ['title', 'why', 'what', 'done'],
+}
 const REVIEW = {
   type: 'object',
   properties: {
@@ -126,8 +133,9 @@ const REVIEW = {
       type: 'array',
       items: { type: 'object', properties: { part: { type: 'string' }, reason: { type: 'string' } }, required: ['part', 'reason'] },
     },
+    findings: { type: 'array', items: FINDING, maxItems: MAX_FINDINGS },
   },
-  required: ['must_fix', 'nice_to_have', 'attention', 'unproven'],
+  required: ['must_fix', 'nice_to_have', 'attention', 'unproven', 'findings'],
 }
 
 // A ready build opens the draft PR in `tenbox build done`; a failed one shows in `pr.ok`.
@@ -194,7 +202,7 @@ let raisedKind = null
 const raisedAttention = []
 const record = async (end) => {
   const attention = [...await mergeAttention(), ...raisedAttention]
-  const result = { round: 0, proofs: [], nice_to_have: [], unproven: [], ...end, ...collected(), attention, ...(raisedKind && { kind: raisedKind }) }
+  const result = { round: 0, proofs: [], nice_to_have: [], unproven: [], findings: [], ...end, ...collected(), attention, ...(raisedKind && { kind: raisedKind }) }
   return { ...result, recorded: await recordBuild(result) }
 }
 // `tenbox build done` checks a ready build: a red full tier is one more round of its group,
@@ -213,10 +221,12 @@ const finish = async (done) => {
 const unproven = []
 // Every reviewed round's nice_to_have items: a scoped review no longer sees older hunks.
 const niceToHave = []
+// Every reviewed round's findings; `tenbox build done` opens one task per title.
+const findings = []
 // Every round's worker proofs, each with its part id; `tenbox close` counts them.
 const proofs = []
 const proofLines = () => proofs.map((p) => `- part ${p.part}: ${p.file} > ${p.test}: got ${p.failure}`).join('\n') || 'none'
-const collected = () => ({ nice_to_have: niceToHave, unproven, proofs })
+const collected = () => ({ nice_to_have: niceToHave, unproven, proofs, findings })
 
 // `reviewedCommit` is the checks commit of the last round that ran a review; a feedback round reviews only the lines after it.
 // `reviews` counts the scope's reviewed rounds.
@@ -341,6 +351,7 @@ const buildRounds = async (scope, start) => {
     reviewedRounds += 1
     for (const r of reviews) attentionItems.push(...r.attention.map((text) => ({ round, lens: r.lens, worktree: scope.worktree, text })))
     niceToHave.push(...reviews.flatMap((r) => r.nice_to_have))
+    findings.push(...reviews.flatMap((r) => r.findings))
     const mustFix = reviews.flatMap((r) => r.must_fix)
     if (mustFix.length) {
       feedback = mustFix.join('\n')

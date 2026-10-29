@@ -12,6 +12,7 @@ import {
   notificationHooks,
   tenbox,
 } from "../test/cli.ts";
+import { installFakeGh } from "../test/fakeGh.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -419,7 +420,7 @@ describe("tenbox build done", () => {
       const calls = await files.exists(path.join(ghState(), "calls.log"));
       expect([run.code, run.json, calls]).toEqual([
         0,
-        { ok: true, task: "T-1", file: buildJson },
+        { ok: true, task: "T-1", file: buildJson, findings: [] },
         false,
       ]);
     },
@@ -445,10 +446,11 @@ describe("tenbox build done", () => {
 
   test("a valid result is written to build.json and its proofs to proofs.json", async () => {
     const run = await buildDone(...withJson({}));
-    expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", file: buildJson }]);
+    const result = { ok: true, task: "T-1", file: buildJson, findings: [] };
+    expect([run.code, run.json]).toEqual([0, result]);
     const written = await readJson(buildJson);
     const recorded = await readJson(proofsJson);
-    expect(written).toEqual({ ...valid, kind: "normal" });
+    expect(written).toEqual({ ...valid, kind: "normal", findings: [] });
     expect(recorded).toEqual([proof("first")]);
   });
 
@@ -481,12 +483,84 @@ describe("tenbox build done", () => {
     expect(written).toEqual({
       ...second,
       kind: "normal",
+      findings: [],
       unproven: [
         { part: "01", reason: "r1" },
         { part: "02", reason: "r2" },
       ],
     });
     expect(recorded).toEqual([proof("first"), proof("second")]);
+  });
+
+  describe("findings", () => {
+    const finding = (title: string) => ({ title, why: "w", what: "x", done: "d" });
+    const worktreeManifest = (): string => path.join(taskWorktree(), "tenbox.yaml");
+    const ISSUE_URL = "https://github.com/own/repo/issues/1";
+    const opened = (title: string) => ({
+      ...finding(title),
+      labels: [],
+      task: { id: "1", url: ISSUE_URL },
+    });
+
+    /** The task worktree's `tenbox.yaml` names the tracker; the main checkout's names none. */
+    async function withGithubTracker() {
+      const fake = await installFakeGh(project.root);
+      ghEnv = fake.env;
+      await files.write(worktreeManifest(), `${CHECKS_MANIFEST}tracker: { kind: github }\n`);
+      return fake;
+    }
+
+    test("each finding becomes a task in the tracker of the worktree's manifest, labeled agent", async () => {
+      const fake = await withGithubTracker();
+      const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
+      expect([run.code, run.json.findings]).toEqual([0, [opened("Login drops the port")]]);
+      const [issue] = await fake.issues("own/repo");
+      expect(issue).toMatchObject({
+        title: "Login drops the port",
+        labels: ["agent"],
+        body: "**Why**\nw\n\n**What**\nx\n\n**Done when**\nd\n\nFound by task T-1.",
+      });
+      const written = await readJson(buildJson);
+      expect(written).toMatchObject({ findings: [opened("Login drops the port")] });
+    });
+
+    test("a finding whose title is open already reuses that task", async () => {
+      const fake = await withGithubTracker();
+      await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
+      const run = await buildDone(...withJson({ findings: [finding("login drops the port")] }));
+      const issues = await fake.issues("own/repo");
+      expect([run.json.findings, issues.length]).toEqual([[opened("login drops the port")], 1]);
+    });
+
+    test("without a tracker the findings stay in build.json with no task, and nothing is opened", async () => {
+      const fake = await installFakeGh(project.root);
+      ghEnv = fake.env;
+      const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
+      const written = await readJson(buildJson);
+      const calls = await fake.calls();
+      const kept = [{ ...finding("Login drops the port"), labels: [], task: null }];
+      expect([run.code, run.json.findings, calls]).toEqual([0, kept, ""]);
+      expect(written).toMatchObject({ findings: kept });
+    });
+
+    test("a tracker failure is one warning line; the result is written with no opened task", async () => {
+      await withGithubTracker();
+      await installGh(FAILING_GH);
+      const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
+      const written = await files.exists(buildJson);
+      const kept = [{ ...finding("Login drops the port"), labels: [], task: null }];
+      expect([run.code, run.json.findings, written]).toEqual([0, kept, true]);
+      expect(run.err).toContain('warning: could not open "Login drops the port": ');
+    });
+
+    test("a refused ready-for-you result opens nothing", async () => {
+      const fake = await withGithubTracker();
+      await checkedTask();
+      await commit({ "c.txt": "c\n" });
+      const run = await buildDone("--json", JSON.stringify({ ...ready, findings: [finding("x")] }));
+      const issues = await fake.issues("own/repo");
+      expect([run.json.code, issues]).toEqual(["checks-stale", []]);
+    });
   });
 
   const THIRTY_MINUTES_MS = 1_800_000;

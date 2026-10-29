@@ -37,7 +37,7 @@ export interface CommentRequest {
 }
 
 /** The title and the three sections of a task Tenbox opens: why, what, and when it is done. */
-const TaskDraftSchema = z.object({
+export const TaskDraftSchema = z.object({
   title: z.string().min(1),
   why: z.string().min(1),
   what: z.string().min(1),
@@ -47,10 +47,13 @@ const TaskDraftSchema = z.object({
 
 export type TaskDraft = z.infer<typeof TaskDraftSchema>;
 
-/** Where a reported task was found: the task that ran, if any, and the tenbox commit. */
+/** The label of a task an agent opened, so a person triages it. */
+export const AGENT_LABEL = "agent";
+
+/** Where an opened task was found: the task that ran, if any, and the tenbox commit for a report. */
 export interface TaskOrigin {
   task: string | null;
-  tenbox: string;
+  tenbox: string | null;
 }
 
 /** What an adapter writes: the title, the rendered body and the labels. */
@@ -61,10 +64,9 @@ export interface NewTask {
 }
 
 /** A task in the tracker, by its id and its page. */
-export interface TaskRef {
-  id: string;
-  url: string;
-}
+export const TaskRefSchema = z.object({ id: z.string(), url: z.string() });
+
+export type TaskRef = z.infer<typeof TaskRefSchema>;
 
 /** The port to the tracker; `infra/tracker/` holds one adapter per kind. */
 export interface Tracker {
@@ -116,7 +118,7 @@ export function labelsIntoBody(task: NewTask): NewTask {
 
 function originLine(origin: TaskOrigin): string {
   const found = origin.task === null ? "Found" : `Found by task ${origin.task}`;
-  return `${found} on tenbox ${origin.tenbox}.`;
+  return origin.tenbox === null ? `${found}.` : `${found} on tenbox ${origin.tenbox}.`;
 }
 
 /** The comments sorted by date, oldest first. */

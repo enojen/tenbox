@@ -11,11 +11,19 @@ const ROUND_PREFIX = /^round (\d+):/;
 const CHECK_COMMAND = /`(tenbox check[^`]*)`/;
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
+interface Finding {
+  title: string;
+  why: string;
+  what: string;
+  done: string;
+}
+
 interface ReviewReply {
   must_fix: string[];
   nice_to_have: string[];
   attention: string[];
   unproven: { part: string; reason: string }[];
+  findings: Finding[];
 }
 
 /** The parts of a JSON schema the tests read. */
@@ -65,7 +73,13 @@ const accepted = (commit = "sha") => ({ ok: true, commit });
 const green = (commit = "c", round = 1) => ({ ok: true, commit, file: "f", round });
 const redChecks = { ok: false, summary: "lint: 1 new failure", commit: "c", file: "f", round: 1 };
 const roundOf = (label: string): number => Number(label.match(ROUND_PREFIX)?.[1] ?? 0);
-const cleanReply: ReviewReply = { must_fix: [], nice_to_have: [], attention: [], unproven: [] };
+const cleanReply: ReviewReply = {
+  must_fix: [],
+  nice_to_have: [],
+  attention: [],
+  unproven: [],
+  findings: [],
+};
 const MERGE_LABEL = "merge attention";
 const RECORD_LABEL = "record build";
 
@@ -114,6 +128,7 @@ const unprovenReply = (part: string, reason: string, mustFix: string[]): ReviewR
   nice_to_have: [],
   attention: [],
   unproven: [{ part, reason }],
+  findings: [],
 });
 
 test("one part named by two lenses in one round gives one unproven item; a later round gives another", async () => {
@@ -283,11 +298,14 @@ async function runTwoReviewedRounds(round1: ReviewReply) {
   return { result, reviewerPrompts, reviewerSchema };
 }
 
+const FINDING: Finding = { title: "Login drops the port", why: "w", what: "x", done: "d" };
+
 const round1Reply: ReviewReply = {
   must_fix: ["fix"],
   nice_to_have: ["nice 1"],
   attention: ["hunk 1"],
   unproven: [],
+  findings: [FINDING],
 };
 
 test("the worker schema and the worker role name the card kinds of CARD_KIND", async () => {
@@ -313,11 +331,21 @@ test("a feedback round review is scoped to the diff since the last reviewed chec
   expect(reviewerPrompts[1]).toContain("git diff c1..HEAD");
 });
 
-test("attention and nice_to_have items of earlier reviewed rounds stay in the result", async () => {
+test("attention, nice_to_have and findings of earlier reviewed rounds stay in the result", async () => {
   const { result } = await runTwoReviewedRounds(round1Reply);
   expect(result.status).toBe("ready-for-you");
   expect(result.attention).toEqual(["hunk 1"]);
   expect(result.nice_to_have).toEqual(["nice 1"]);
+  expect(result.findings).toEqual([FINDING]);
+});
+
+test("the reviewer schema caps findings at 2 task drafts with every section", async () => {
+  const MAX_FINDINGS = 2;
+  const { reviewerSchema } = await runTwoReviewedRounds(round1Reply);
+  const findings = reviewerSchema?.properties?.findings;
+  expect(findings?.maxItems).toBe(MAX_FINDINGS);
+  expect(findings?.items?.required).toEqual(["title", "why", "what", "done"]);
+  expect(reviewerSchema?.required).toContain("findings");
 });
 
 const decisionCard = {

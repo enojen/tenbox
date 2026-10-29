@@ -15,9 +15,12 @@ import {
 import { CHECK_TIER, type CheckTier } from "./manifests.ts";
 import type { PlanResult } from "./plans.ts";
 import { ProofSchema } from "./proofs.ts";
+import { TaskDraftSchema, TaskRefSchema } from "./tracker.ts";
 import { jsons } from "./utils.ts";
 
 const UnprovenSchema = z.object({ part: z.string(), reason: z.string() });
+
+const FindingSchema = TaskDraftSchema.extend({ task: TaskRefSchema.nullable().default(null) });
 
 /** The end statuses of `/tenbox-build`. */
 export const BUILD_STATUS = {
@@ -35,6 +38,7 @@ const BuildResultSchema = z.looseObject({
   attention: z.array(z.string()),
   nice_to_have: z.array(z.string()),
   unproven: z.array(UnprovenSchema),
+  findings: z.array(FindingSchema).default([]),
   /** The part of the blocked worker, with `needs-you`. */
   part: z.string().optional(),
   decision: DecisionCardSchema.optional(),
@@ -51,6 +55,8 @@ export type BuildStatus = BuildResult["status"];
 
 /** A part a reviewer found without a proof; `part` is the `NN` of the part file name. */
 export type Unproven = BuildResult["unproven"][number];
+
+export type Finding = BuildResult["findings"][number];
 
 /** The build result in `--json` input; `bad-input` when it is not JSON or does not match. */
 export function parseBuild(text: string): BuildResult {
