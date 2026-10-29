@@ -17,7 +17,9 @@ with `gh`), `tenbox build` (starts `claude --bg` with `/tenbox-build` in the tas
 `tenbox start` does the same with `/tenbox-plan`, `tenbox attach` opens the session, `tenbox
 close` stops it), `tenbox stats` and `tenbox merge-check` (merge the open task PRs in a temporary
 worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`, which also
-pulls the base and deletes the remote branch after a MERGED PR) and the ClickUp tracker.
+pulls the base and deletes the remote branch after a MERGED PR), the ClickUp and GitHub trackers,
+`tenbox task new` (a task in the project's tracker from the command line) and `tenbox report`
+(a bug or a missing piece of Tenbox itself, as an issue of `enojen/tenbox` or `enojen/tenyard`).
 Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`),
 the login sync to the Secrets of the box (`machines/login/`), and `tenbox machine run` and `ls`
 (TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
@@ -98,7 +100,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
 | machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
-| resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
+| resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |

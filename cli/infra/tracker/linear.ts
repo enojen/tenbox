@@ -3,9 +3,11 @@ import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts"
 import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import {
   type CommentRequest,
+  type NewTask,
   oldestFirst,
   type StatusChange,
   TASK_STATUS,
+  type TaskRef,
   type TaskStatus,
   type Tracker,
   type TrackerComment,
@@ -52,8 +54,32 @@ const CommentsDataSchema = z.object({
     .nullable(),
 });
 
+const RefSchema = z.object({ identifier: z.string(), url: z.string() });
+
+const OpenIssuesDataSchema = z.object({ issues: z.object({ nodes: z.array(RefSchema) }) });
+
+const TeamsDataSchema = z.object({
+  teams: z.object({ nodes: z.array(z.object({ id: z.string() })) }),
+});
+
+const LabelsDataSchema = z.object({
+  issueLabels: z.object({ nodes: z.array(z.object({ id: z.string() })) }),
+});
+
+const LabelCreatedDataSchema = z.object({
+  issueLabelCreate: z.object({ issueLabel: z.object({ id: z.string() }) }),
+});
+
+const IssueCreatedDataSchema = z.object({ issueCreate: z.object({ issue: RefSchema }) });
+
 type State = z.infer<typeof StateSchema>;
 type Issue = z.infer<typeof IssueSchema>;
+
+/** Where `create` writes: the endpoint and the key of the team. */
+interface Team {
+  endpoint: Endpoint;
+  key: string;
+}
 
 const ISSUE_QUERY = `
   query($id: String!) {
@@ -81,6 +107,35 @@ const COMMENT_MUTATION = `
     commentCreate(input: { issueId: $issueId, body: $body }) { success }
   }`;
 
+/** The open issues of the team with exactly this title: not completed and not canceled. */
+const OPEN_ISSUES_QUERY = `
+  query($team: String!, $title: String!) {
+    issues(first: 1, filter: {
+      team: { key: { eq: $team } }, title: { eq: $title },
+      state: { type: { nin: ["completed", "canceled"] } }
+    }) { nodes { identifier url } }
+  }`;
+
+const TEAM_QUERY = `
+  query($key: String!) { teams(filter: { key: { eq: $key } }) { nodes { id } } }`;
+
+const LABEL_QUERY = `
+  query($name: String!) {
+    issueLabels(filter: { name: { eqIgnoreCase: $name } }) { nodes { id } }
+  }`;
+
+const LABEL_MUTATION = `
+  mutation($name: String!, $teamId: String!) {
+    issueLabelCreate(input: { name: $name, teamId: $teamId }) { issueLabel { id } }
+  }`;
+
+const CREATE_MUTATION = `
+  mutation($teamId: String!, $title: String!, $description: String!, $labelIds: [String!]!) {
+    issueCreate(input: {
+      teamId: $teamId, title: $title, description: $description, labelIds: $labelIds
+    }) { issue { identifier url } }
+  }`;
+
 /** Linear over its GraphQL API. The key comes from `tracker.api_key` or `LINEAR_API_KEY`. */
 export function linearTracker(config: TrackerConfig): Tracker {
   const endpoint = linearEndpoint(config);
@@ -90,7 +145,17 @@ export function linearTracker(config: TrackerConfig): Tracker {
     updateStatus: (id, status) => updateIssueStatus(endpoint, { id, status }),
     comment: (request) => commentOnIssue(endpoint, request),
     comments: (id) => fetchComments(endpoint, id),
+    findOpen: (title) => findOpenIssue(endpoint, config, title),
+    create: (task) => createIssue(endpoint, config, task),
   };
+}
+
+/** `tracker.team` names the team of a new issue; without it, nothing can be written. */
+function teamOf(endpoint: Endpoint, config: TrackerConfig): Team {
+  if (!config.team) {
+    throw trackerError("Linear: set tracker.team to the key of the team, for example TEN");
+  }
+  return { endpoint, key: config.team };
 }
 
 function linearEndpoint(config: TrackerConfig): Endpoint {
@@ -171,6 +236,71 @@ async function fetchComments(endpoint: Endpoint, id: string): Promise<TrackerCom
   return oldestFirst(
     nodes.map((n) => ({ author: n.user?.name ?? "unknown", date: n.createdAt, body: n.body })),
   );
+}
+
+async function findOpenIssue(
+  endpoint: Endpoint,
+  config: TrackerConfig,
+  title: string,
+): Promise<TaskRef | null> {
+  const team = teamOf(endpoint, config);
+  const data = await graphqlQuery({
+    endpoint: team.endpoint,
+    query: OPEN_ISSUES_QUERY,
+    variables: { team: team.key, title },
+    data: OpenIssuesDataSchema,
+  });
+  const found = data.issues.nodes[0];
+  return found === undefined ? null : { id: found.identifier, url: found.url };
+}
+
+async function createIssue(
+  endpoint: Endpoint,
+  config: TrackerConfig,
+  task: NewTask,
+): Promise<TaskRef> {
+  const team = teamOf(endpoint, config);
+  const teamId = await fetchTeamId(team);
+  const labelIds = await Promise.all(task.labels.map((name) => ensureLabel(team, teamId, name)));
+  const data = await graphqlQuery({
+    endpoint: team.endpoint,
+    query: CREATE_MUTATION,
+    variables: { teamId, title: task.title, description: task.body, labelIds },
+    data: IssueCreatedDataSchema,
+  });
+  const issue = data.issueCreate.issue;
+  return { id: issue.identifier, url: issue.url };
+}
+
+async function fetchTeamId(team: Team): Promise<string> {
+  const data = await graphqlQuery({
+    endpoint: team.endpoint,
+    query: TEAM_QUERY,
+    variables: { key: team.key },
+    data: TeamsDataSchema,
+  });
+  const found = data.teams.nodes[0];
+  if (found === undefined) throw trackerError(`Linear: no team with the key ${team.key}`);
+  return found.id;
+}
+
+/** The id of the label, created in the team when the workspace lacks it. */
+async function ensureLabel(team: Team, teamId: string, name: string): Promise<string> {
+  const data = await graphqlQuery({
+    endpoint: team.endpoint,
+    query: LABEL_QUERY,
+    variables: { name },
+    data: LabelsDataSchema,
+  });
+  const found = data.issueLabels.nodes[0];
+  if (found !== undefined) return found.id;
+  const created = await graphqlQuery({
+    endpoint: team.endpoint,
+    query: LABEL_MUTATION,
+    variables: { name, teamId },
+    data: LabelCreatedDataSchema,
+  });
+  return created.issueLabelCreate.issueLabel.id;
 }
 
 function pickState(states: State[], status: TaskStatus): State | undefined {

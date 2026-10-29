@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import type { ParseArgsOptionsConfig } from "node:util";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { TASK_KINDS, type TaskKind } from "../domain/kinds.ts";
@@ -9,6 +10,7 @@ import {
   idArg,
   intValue,
   parseCommandArgs,
+  stringListValue,
   stringValue,
   tierValue,
   type Values,
@@ -30,10 +32,12 @@ import { partDone } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
+import { REPORT_REPOS, type ReportRepo, report } from "./commands/report.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
 import { showStats } from "./commands/stats.ts";
 import { showStatus } from "./commands/status.ts";
+import { newTask, type TaskDraftInput } from "./commands/task.ts";
 import { isWaitKind, waitFor } from "./commands/wait.ts";
 import { ensureGroupWorktree } from "./commands/worktree.ts";
 import { env, log } from "./infra/env.ts";
@@ -69,6 +73,18 @@ const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
   "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
 const ATTACH_USAGE = "tenbox attach <id>";
+const DRAFT_USAGE =
+  "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
+const TASK_NEW_USAGE = `tenbox task new ${DRAFT_USAGE}`;
+const REPORT_USAGE = `tenbox report ${DRAFT_USAGE} [--repo tenbox|tenyard]`;
+const DRAFT_OPTIONS: ParseArgsOptionsConfig = {
+  title: { type: "string" },
+  why: { type: "string" },
+  what: { type: "string" },
+  done: { type: "string" },
+  json: { type: "string" },
+  label: { type: "string", multiple: true },
+};
 const HOOK_USAGE = "tenbox hook blocked <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const USAGE_EXIT_CODE = 2;
@@ -308,6 +324,24 @@ const COMMANDS: Record<string, Command> = {
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
     },
   },
+  task: {
+    usage: TASK_NEW_USAGE,
+    options: DRAFT_OPTIONS,
+    run: (positionals, values) => {
+      if (positionals.length !== 1 || positionals[0] !== "new") {
+        throw usageError(`usage: ${TASK_NEW_USAGE}`);
+      }
+      return newTask(draftValues(values));
+    },
+  },
+  report: {
+    usage: REPORT_USAGE,
+    options: { ...DRAFT_OPTIONS, repo: { type: "string", default: "tenbox" } },
+    run: (positionals, values) => {
+      if (positionals.length !== 0) throw usageError(`usage: ${REPORT_USAGE}`);
+      return report({ ...draftValues(values), repo: repoValue(values) });
+    },
+  },
   install: {
     usage: "tenbox install",
     options: {},
@@ -361,6 +395,26 @@ function printStack(e: unknown): void {
   if (!(e instanceof Error)) return;
   if (e instanceof TenboxError && !env().debug) return;
   log(e.stack ?? e.message);
+}
+
+/** The draft flags of `tenbox task new` and `tenbox report`. */
+function draftValues(values: Values): TaskDraftInput {
+  return {
+    json: stringValue(values, "json"),
+    title: stringValue(values, "title"),
+    why: stringValue(values, "why"),
+    what: stringValue(values, "what"),
+    done: stringValue(values, "done"),
+    labels: stringListValue(values, "label"),
+  };
+}
+
+/** `--repo`: `tenbox` when missing. */
+function repoValue(values: Values): ReportRepo {
+  const value = stringValue(values, "repo") ?? "tenbox";
+  const repo = REPORT_REPOS.find((candidate) => candidate === value);
+  if (repo === undefined) throw usageError(`--repo must be ${REPORT_REPOS.join(" or ")}`);
+  return repo;
 }
 
 /** `--kind`: undefined when missing. */

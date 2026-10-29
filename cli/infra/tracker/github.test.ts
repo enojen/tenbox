@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { processes } from "../processes.ts";
-import { githubTracker } from "./github.ts";
+import { githubIssues, githubTracker } from "./github.ts";
 
 type Run = typeof processes.run;
 
@@ -114,5 +114,116 @@ describe("github tracker", () => {
     await expect(githubTracker.getTask("23")).rejects.toThrow(
       "gh issue view failed: output does not fit",
     );
+  });
+});
+
+describe("github tracker: new tasks", () => {
+  const calls: string[][] = [];
+  afterEach(() => {
+    calls.length = 0;
+  });
+
+  /** One stdout per gh call, in order. */
+  function answerEach(outputs: string[]): void {
+    spyOn(processes, "run").mockImplementation((cmd) => {
+      calls.push(cmd);
+      return ok(outputs[calls.length - 1] ?? "");
+    });
+  }
+
+  const listed = JSON.stringify([
+    { number: 7, title: "Add Tenbox Login", url: "https://github.com/o/r/issues/7" },
+    { number: 8, title: "Add tenbox login page", url: "https://github.com/o/r/issues/8" },
+  ]);
+
+  test("findOpen searches the open issues by title and matches the whole title, ignoring case", async () => {
+    answerEach([listed]);
+    const found = await githubTracker.findOpen("add tenbox login");
+    expect(found).toEqual({ id: "7", url: "https://github.com/o/r/issues/7" });
+    expect(calls).toEqual([
+      [
+        "gh",
+        "issue",
+        "list",
+        "--state",
+        "open",
+        "--search",
+        "in:title add tenbox login",
+        "--limit",
+        "100",
+        "--json",
+        "number,title,url",
+      ],
+    ]);
+  });
+
+  test("findOpen is null when no open issue has exactly the title", async () => {
+    answerEach([listed]);
+    const found = await githubTracker.findOpen("Add tenbox");
+    expect(found).toBeNull();
+  });
+
+  test("create makes the labels the repository lacks, then the issue, and returns its number", async () => {
+    const labels = JSON.stringify([{ name: "feature" }]);
+    answerEach(["true", labels, "", "https://github.com/o/r/issues/9"]);
+    const task = { title: "T", body: "**Why**\nx", labels: ["feature", "agent"] };
+    const made = await githubTracker.create(task);
+    expect(made).toEqual({ id: "9", url: "https://github.com/o/r/issues/9" });
+    expect(calls).toEqual([
+      ["gh", "api", "repos/{owner}/{repo}", "--jq", ".permissions.push"],
+      ["gh", "label", "list", "--limit", "100", "--json", "name"],
+      ["gh", "label", "create", "agent"],
+      [
+        "gh",
+        "issue",
+        "create",
+        "--title",
+        "T",
+        "--body",
+        "**Why**\nx",
+        "--label",
+        "feature",
+        "--label",
+        "agent",
+      ],
+    ]);
+  });
+
+  test("without push access, create sets no label and names them on the first line of the body", async () => {
+    answerEach(["false", "https://github.com/o/r/issues/9"]);
+    const task = { title: "T", body: "**Why**\nx", labels: ["bug", "agent"] };
+    await githubTracker.create(task);
+    expect(calls).toEqual([
+      ["gh", "api", "repos/{owner}/{repo}", "--jq", ".permissions.push"],
+      [
+        "gh",
+        "issue",
+        "create",
+        "--title",
+        "T",
+        "--body",
+        "Suggested labels: bug, agent\n\n**Why**\nx",
+      ],
+    ]);
+  });
+
+  test("create fails with gh when the output is not an issue URL", async () => {
+    answerEach(["true", "[]", "done"]);
+    await expect(githubTracker.create({ title: "T", body: "b", labels: [] })).rejects.toThrow(
+      "gh issue create failed: not an issue URL: done",
+    );
+  });
+
+  test("the issues of a named repository pass --repo to every gh call", async () => {
+    answerEach(["[]", "true", "[]", "https://github.com/enojen/tenbox/issues/95"]);
+    const upstream = githubIssues("enojen/tenbox");
+    const found = await upstream.findOpen("T");
+    const made = await upstream.create({ title: "T", body: "b", labels: [] });
+    expect(found).toBeNull();
+    expect(made.id).toBe("95");
+    expect(calls[1]).toEqual(["gh", "api", "repos/enojen/tenbox", "--jq", ".permissions.push"]);
+    for (const call of calls) {
+      if (call[1] !== "api") expect(call.slice(-2)).toEqual(["--repo", "enojen/tenbox"]);
+    }
   });
 });

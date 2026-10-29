@@ -186,7 +186,6 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
     env: JSON.stringify(boxEnv),
     class: name,
     cpu: resources.cpu,
-    cpuLimit: resources.cpu_limit,
     memory: resources.memory,
   };
 }
