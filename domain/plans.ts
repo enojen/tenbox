@@ -40,7 +40,7 @@ const QuestionSchema = z.object({
 });
 
 /** One before and after of a part; `title` names the worker test that proves it. */
-const ExampleSchema = z.object({
+export const ExampleSchema = z.object({
   part: text,
   title: exampleText,
   before: exampleText,

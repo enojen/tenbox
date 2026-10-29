@@ -15,6 +15,9 @@ import type { ProjectId, TaskId } from "./ids.ts";
  *     decisions.md  questions.md   decisionsFile, questionsFile
  *     override.yaml                overrideFile
  *     auto-answer.log              autoAnswerLog
+ *     cards/                       cardsDir
+ *       NNNN-<kind>.json           cardFile
+ *       NNNN-<kind>.md             cardMdFile; only a task or plan card
  *     parts/                       partsDir
  *     rounds/<N>/                  roundDir
  *       checks.json                checksFile
@@ -65,6 +68,29 @@ export const questionsFile = (dir: string): string => path.join(dir, "questions.
 export const overrideFile = (dir: string): string => path.join(dir, "override.yaml");
 /** `auto-answer.log` in a `.tenbox/` folder: the output of the background `tenbox answer --auto`. */
 export const autoAnswerLog = (dir: string): string => path.join(dir, "auto-answer.log");
+/** `cards/` in a `.tenbox/` folder: every card of the task. */
+export const cardsDir = (dir: string): string => path.join(dir, "cards");
+
+/** The id and kind of a card: what names its files. */
+export interface CardName {
+  id: number;
+  kind: string;
+}
+
+/** Four digits keep the files in card order: `0001-task`. */
+const CARD_ID_DIGITS = 4;
+
+/** `cards/<NNNN>-<kind>.json`: what the code reads of a card. */
+export const cardFile = (cards: string, card: CardName): string =>
+  path.join(cards, `${cardName(card)}.json`);
+/** `cards/<NNNN>-<kind>.md`: the long text of a task or plan card. */
+export const cardMdFile = (cards: string, card: CardName): string =>
+  path.join(cards, `${cardName(card)}.md`);
+
+function cardName(card: CardName): string {
+  return `${String(card.id).padStart(CARD_ID_DIGITS, "0")}-${card.kind}`;
+}
+
 /** `parts/` in a `.tenbox/` folder. */
 export const partsDir = (dir: string): string => path.join(dir, "parts");
 /** `rounds/` in a `.tenbox/` folder. */

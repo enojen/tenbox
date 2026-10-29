@@ -254,8 +254,9 @@ const listParts = async (scope, round, feedback) => {
 }
 
 // A must_fix round needs no planner: one worker fixes every item of the round feedback.
+const FIX_PART = 'fix'
 const FIX_GOAL = 'fix every must_fix item of the round feedback. It has no part file: stay inside the files of the parts the items name'
-const fixListing = (lenses) => ({ parts: [{ id: 'fix', goal: FIX_GOAL, difficulty: 'easy' }], lenses })
+const fixListing = (lenses) => ({ parts: [{ id: FIX_PART, goal: FIX_GOAL, difficulty: 'easy' }], lenses })
 
 // `start` is the first round, its feedback, and its listing of parts and lenses when the args give one.
 const buildRounds = async (scope, start) => {
@@ -271,11 +272,13 @@ const buildRounds = async (scope, start) => {
   // The checks commit of the scope's last green part: `tenbox part done` accepts only a newer commit.
   let lastChecksCommit = null
   const partDoneCommand = (part) => `tenbox part done ${task} --part ${part.id} --commit <hash of your last commit>${lastChecksCommit ? ` --since ${lastChecksCommit}` : ''}${scope.checkFlag}`
-  // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed and reopens the part file.
+  // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt also
+  // carries what failed and reopens the part file. The must_fix worker has no part file.
   const buildPart = async (round, part, { attempt, failure, checkRound }) => {
     const fix = attempt === 'fix'
+    const reopenLine = part.id === FIX_PART ? '' : '\nSet `status: todo` in your part file first, then fix it.'
     const prompt = fix
-      ? `${partLine(part)} ${failure.what}: ${failure.why}\nSet \`status: todo\` in your part file first, then fix it.`
+      ? `${partLine(part)} Round feedback: ${feedback}\n${failure.what}: ${failure.why}${reopenLine}`
       : `${partLine(part)} Round feedback: ${feedback}${answerLine(round, part.id)}`
     const commandLine = `\nAfter your last commit, run \`${partDoneCommand(part)}\` and return its JSON as partDone, then run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
     const built = await agent(prompt + commandLine + worktreeLine(scope),

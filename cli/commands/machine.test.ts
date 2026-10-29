@@ -879,6 +879,14 @@ describe("machine", () => {
     expect(jobEnv(job).TENBOX_CMD).toBe(`tenbox start TEN-1 --title 'Fix it'\\''s $(x)'`);
   });
 
+  test("a title with $$ and $& reaches TENBOX_CMD unchanged", async () => {
+    const words = ["tenbox", "start", "TEN-1", "--title", "Save $$ and $& now"];
+    const run = await machine(["run", "TEN-1", "--", ...words]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_CMD).toBe("tenbox start TEN-1 --title 'Save $$ and $& now'");
+  });
+
   test("a client certificate and key are sent without a token", async () => {
     const user = { "client-certificate-data": base64("CERT"), "client-key-data": base64("KEY") };
     await files.write(kubeFile, kubeconfig({ server: api.url, user }));

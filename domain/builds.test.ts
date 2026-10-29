@@ -4,7 +4,11 @@ import {
   type BuildResult,
   buildArgs,
   buildKind,
+  type DecisionCard,
+  type DecisionKind,
+  getOption,
   groupTiers,
+  isAutoAllowed,
   parseBuild,
   readBuild,
 } from "./builds.ts";
@@ -216,4 +220,41 @@ test("readBuild reads build.json and refuses a broken one with bad-file", () => 
   expect(() => readBuild(needsYou({ ...card, recommended: 3 }), file)).toThrow(
     "/t/.tenbox/build.json is not valid",
   );
+});
+
+const decision = (auto: boolean, kind: DecisionKind = "scope"): DecisionCard => ({
+  title: "Which store?",
+  options: ["files", "sqlite"],
+  recommended: 2,
+  reason: "r",
+  auto,
+  kind,
+});
+
+const NEVER_AUTO_KINDS: DecisionKind[] = [
+  "migration",
+  "data-delete",
+  "feature-delete",
+  "contract",
+  "paid-service",
+  "locked-file",
+];
+const AUTO_KINDS: DecisionKind[] = ["scope", "other"];
+
+test.each(NEVER_AUTO_KINDS)("kind %s is never auto", (kind) => {
+  expect(isAutoAllowed(decision(true, kind))).toBe(false);
+});
+
+test.each(AUTO_KINDS)("kind %s with auto true may be auto-answered", (kind) => {
+  expect(isAutoAllowed(decision(true, kind))).toBe(true);
+});
+
+test("kind scope with auto false is not auto-answered", () => {
+  expect(isAutoAllowed(decision(false))).toBe(false);
+});
+
+test("getOption gives the text of a 1-based option and refuses any other number with usage", () => {
+  expect(getOption(decision(true), 2)).toBe("sqlite");
+  expect(() => getOption(decision(true), 3)).toThrow(expect.objectContaining({ code: "usage" }));
+  expect(() => getOption(decision(true), 1.5)).toThrow(expect.objectContaining({ code: "usage" }));
 });

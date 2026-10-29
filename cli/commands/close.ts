@@ -12,7 +12,7 @@ import { taskBranch } from "../../domain/names.ts";
 import type { Project } from "../../domain/projects.ts";
 import { closeComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
 import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
-import { TASK_STATE } from "../../domain/tasks.ts";
+import { TASK_STATE, type TaskFile } from "../../domain/tasks.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { taskWorktreeDir } from "../../domain/worktrees.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
@@ -81,12 +81,18 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const { id, force } = input;
   const { cwd, wtRoot, tenboxHome } = env();
   const { project, manifest } = await projects.get(cwd);
-  const tracker = makeTracker(manifest.tracker);
   const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
   const branch = taskBranch(manifest.names, id);
   // Read only: a project with no id yet has no task dirs, and close must not write the manifest.
   const projectId = manifest.id;
   const dir = projectId === undefined ? null : taskDir(tenboxHome, projectId, id);
+  // Before anything changes, so a broken `task.json` stops the close here and not halfway.
+  let task: TaskFile | null = null;
+  if (dir !== null) task = await tasks.find(dir);
+  // A task that `start` made from `--title` was never on the tracker.
+  const trackerConfig =
+    task?.tracker === TRACKER_KIND.none ? { kind: TRACKER_KIND.none } : manifest.tracker;
+  const tracker = makeTracker(trackerConfig);
   const { base } = manifest;
   const closeTarget = { mainDir: project.mainDir, taskWorktree, branch, base };
   const extra = await groups.listExtra({
