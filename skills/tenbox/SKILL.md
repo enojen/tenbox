@@ -44,4 +44,5 @@ skill and the reference disagree, the reference is right.
   the box and the Jobs). A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
   as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
-  "Machines" in the reference.
+  "Machines" in the reference. After its close Job ends, `tenbox machine rm <id>` deletes the
+  task's volume; run it only then, it cannot be undone.

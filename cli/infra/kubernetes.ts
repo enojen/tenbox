@@ -9,6 +9,7 @@ import { type Endpoint, type EndpointTls, http } from "./http.ts";
 const NAMESPACE = "tenbox";
 const JOBS_PATH = `/apis/batch/v1/namespaces/${NAMESPACE}/jobs`;
 const VOLUMES_PATH = `/api/v1/namespaces/${NAMESPACE}/persistentvolumeclaims`;
+const PODS_PATH = `/api/v1/namespaces/${NAMESPACE}/pods`;
 const SECRETS_PATH = `/api/v1/namespaces/${NAMESPACE}/secrets`;
 
 /** The API server of the kubeconfig's current context and how to log in to it. */
@@ -143,6 +144,12 @@ interface ObjectPost {
   object: KubeObject;
 }
 
+/** One volume of the namespace by name. */
+interface VolumeInput {
+  cluster: Cluster;
+  name: string;
+}
+
 /** An Opaque Secret of the namespace and its values by key. */
 interface SecretInput {
   cluster: Cluster;
@@ -158,10 +165,20 @@ export const kubernetes = {
   readService,
   addServices,
   listJobs,
+  findPod,
+  streamLog,
   ensureVolume,
+  removeVolume,
   saveSecret,
   createJob,
+  removeJob,
 };
+
+const KubeUserSchema = z.object({
+  token: z.string().optional(),
+  "client-certificate-data": z.string().optional(),
+  "client-key-data": z.string().optional(),
+});
 
 const KubeconfigSchema = z.object({
   "current-context": z.string().optional(),
@@ -185,18 +202,14 @@ const KubeconfigSchema = z.object({
     .array(
       z.object({
         name: z.string(),
-        user: z.object({
-          token: z.string().optional(),
-          "client-certificate-data": z.string().optional(),
-          "client-key-data": z.string().optional(),
-        }),
+        user: KubeUserSchema,
       }),
     )
     .default([]),
 });
 
 type Kubeconfig = z.infer<typeof KubeconfigSchema>;
-type KubeUser = Kubeconfig["users"][number]["user"];
+type KubeUser = z.infer<typeof KubeUserSchema>;
 
 /** The current context of the kubeconfig at `file`; no error names a credential. */
 async function readCluster(file: string): Promise<Cluster> {
@@ -361,6 +374,28 @@ const JobSchema = z.object({
 
 const JobListSchema = z.object({ items: z.array(JobSchema) });
 
+const PodListSchema = z.object({
+  items: z.array(
+    z.object({
+      metadata: z.object({ name: z.string(), creationTimestamp: z.string() }),
+      status: z.object({ phase: z.string().default("Pending") }).prefault({}),
+    }),
+  ),
+});
+
+/** One pod of a Job; `started` is false while it is Pending (image pull). */
+interface Pod {
+  name: string;
+  started: boolean;
+}
+
+/** One pod's log: `follow` keeps the stream open until the container ends. */
+interface LogInput {
+  cluster: Cluster;
+  pod: string;
+  follow: boolean;
+}
+
 const CreatedSchema = z.object({ metadata: z.object({ name: z.string() }) });
 
 function endpoint(cluster: Cluster, apiPath: string): Endpoint {
@@ -401,6 +436,12 @@ async function ensureVolume(post: ObjectPost): Promise<void> {
   });
 }
 
+/** Deletes the volume by name; false when it is gone already (404). */
+function removeVolume(input: VolumeInput): Promise<boolean> {
+  const { cluster, name } = input;
+  return http.remove(endpoint(cluster, `${VOLUMES_PATH}/${name}`));
+}
+
 /** Creates the Secret, or replaces an existing one (409) whole: a key left out is removed. */
 async function saveSecret(input: SecretInput): Promise<void> {
   const { cluster, name, values } = input;
@@ -417,10 +458,46 @@ async function saveSecret(input: SecretInput): Promise<void> {
   await http.put({ ...request, endpoint: endpoint(cluster, `${SECRETS_PATH}/${name}`) });
 }
 
+/** One Job to delete, by name. */
+interface JobRemoval {
+  cluster: Cluster;
+  name: string;
+}
+
+/**
+ * Deletes the Job and, in the background, its pods: the Job is gone from the list at once.
+ * False when it is gone already (404).
+ */
+function removeJob(removal: JobRemoval): Promise<boolean> {
+  const { cluster, name } = removal;
+  const apiPath = `${JOBS_PATH}/${name}?propagationPolicy=Background`;
+  return http.remove(endpoint(cluster, apiPath));
+}
+
 /** Creates the Job; the API URL of the created Job. */
 async function createJob(post: ObjectPost): Promise<string> {
   const { cluster, object } = post;
   const request = { endpoint: endpoint(cluster, JOBS_PATH), schema: CreatedSchema, body: object };
   const created = await http.post(request);
   return jobUrl(cluster, created.metadata.name);
+}
+
+/** The newest pod of the Job, null when it has none yet. */
+async function findPod(cluster: Cluster, job: string): Promise<Pod | null> {
+  const selector = encodeURIComponent(`job-name=${job}`);
+  const apiPath = `${PODS_PATH}?labelSelector=${selector}`;
+  const list = await http.get({ endpoint: endpoint(cluster, apiPath), schema: PodListSchema });
+  const newest = list.items.sort((a, b) =>
+    b.metadata.creationTimestamp.localeCompare(a.metadata.creationTimestamp),
+  )[0];
+  if (newest === undefined) return null;
+  return { name: newest.metadata.name, started: newest.status.phase !== "Pending" };
+}
+
+/** The log of the pod's container as text chunks. */
+function streamLog(input: LogInput): Promise<AsyncIterable<string>> {
+  const { cluster, pod, follow } = input;
+  const query = follow ? "?follow=true" : "";
+  const apiPath = `${PODS_PATH}/${pod}/log${query}`;
+  return http.stream({ endpoint: endpoint(cluster, apiPath), unlimited: follow });
 }

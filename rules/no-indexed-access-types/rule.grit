@@ -1,0 +1,9 @@
+language js
+
+TsIndexedAccessType(object_type=$object) as $access where {
+  not $object <: or {
+    TsTypeofType(),
+    TsParenthesizedType(ty=TsTypeofType())
+  },
+  register_diagnostic(span=$access, message="No indexed access type: name the type, or its schema, and use that name.")
+}

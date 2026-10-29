@@ -6,20 +6,18 @@ import { files } from "../infra/files.ts";
 
 const EXECUTABLE = 0o755;
 
-/** The issues the fake keeps per repository, as `tenbox task new` and `tenbox report` made them. */
-const FakeStateSchema = z.object({
-  issues: z.array(
-    z.object({
-      number: z.number(),
-      title: z.string(),
-      body: z.string(),
-      labels: z.array(z.string()),
-      url: z.string(),
-    }),
-  ),
+const FakeIssueSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  body: z.string(),
+  labels: z.array(z.string()),
+  url: z.string(),
 });
 
-type FakeIssue = z.infer<typeof FakeStateSchema>["issues"][number];
+/** The issues the fake keeps per repository, as `tenbox task new` and `tenbox report` made them. */
+const FakeStateSchema = z.object({ issues: z.array(FakeIssueSchema) });
+
+type FakeIssue = z.infer<typeof FakeIssueSchema>;
 
 /** A fake `gh` that keeps the issues and labels of each `--repo` in `GH_FAKE`. */
 const FAKE_GH = `#!/usr/bin/env node

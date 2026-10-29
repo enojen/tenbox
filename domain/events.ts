@@ -19,6 +19,27 @@ const FEEDBACK_FROM = { auto: "auto", human: "human" } as const;
 /** Who recorded a proof: the build or `tenbox proof`. */
 const PROOF_SOURCE = { worker: "worker", manual: "manual" } as const;
 
+/** The name of every event. */
+const EVENT_NAME = {
+  taskStarted: "task.started",
+  planStarted: "plan.started",
+  planDone: "plan.done",
+  planApproved: "plan.approved",
+  buildStarted: "build.started",
+  buildDone: "build.done",
+  feedbackSent: "feedback.sent",
+  roundStarted: "round.started",
+  roundChecked: "round.checked",
+  roundReviewed: "round.reviewed",
+  proofAdded: "proof.added",
+  workflowDone: "workflow.done",
+  prSaved: "pr.saved",
+  prMerged: "pr.merged",
+  taskClosed: "task.closed",
+} as const;
+
+export type EventName = (typeof EVENT_NAME)[keyof typeof EVENT_NAME];
+
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
 const nullableText = text.nullable();
@@ -62,7 +83,7 @@ const AgentSchema = z.object({
 });
 
 export const EventSchema = z.discriminatedUnion("event", [
-  taskEvent("task.started").extend({
+  taskEvent(EVENT_NAME.taskStarted).extend({
     project: text,
     title: nullableText,
     tracker: text,
@@ -70,8 +91,8 @@ export const EventSchema = z.discriminatedUnion("event", [
     branch: text,
     base: z.object({ ref: text, sha: text }),
   }),
-  taskEvent("plan.started").extend({ deep: z.boolean() }),
-  taskEvent("plan.done").extend({
+  taskEvent(EVENT_NAME.planStarted).extend({ deep: z.boolean() }),
+  taskEvent(EVENT_NAME.planDone).extend({
     plan_sha: planSha,
     estimated_lines: count,
     parts: z.array(PlanPartSchema),
@@ -79,27 +100,27 @@ export const EventSchema = z.discriminatedUnion("event", [
     questions: z.object({ total: count, blocking: count }),
     lenses: z.array(z.enum(["security", "contract"])),
   }),
-  taskEvent("plan.approved").extend({ plan_sha: planSha }),
-  taskEvent("build.started").extend({ max_rounds: count }),
-  taskEvent("build.done").extend({
+  taskEvent(EVENT_NAME.planApproved).extend({ plan_sha: planSha }),
+  taskEvent(EVENT_NAME.buildStarted).extend({ max_rounds: count }),
+  taskEvent(EVENT_NAME.buildDone).extend({
     status: z.enum(BUILD_DONE_STATUS),
     rounds: count,
   }),
-  taskEvent("feedback.sent").extend({
+  taskEvent(EVENT_NAME.feedbackSent).extend({
     round: text,
     from: z.enum(FEEDBACK_FROM),
     must_fix: count,
   }),
-  base.extend({ event: z.literal("round.started"), round: text }),
+  base.extend({ event: z.literal(EVENT_NAME.roundStarted), round: text }),
   base.extend({
-    event: z.literal("round.checked"),
+    event: z.literal(EVENT_NAME.roundChecked),
     round: text,
     commit: text,
     ok: z.boolean(),
     checks: z.array(CheckSchema),
   }),
   base.extend({
-    event: z.literal("round.reviewed"),
+    event: z.literal(EVENT_NAME.roundReviewed),
     round: text,
     must_fix: count,
     nice_to_have: count,
@@ -107,30 +128,27 @@ export const EventSchema = z.discriminatedUnion("event", [
     unproven: z.array(z.object({ part: text, reason: z.string() })),
   }),
   base.extend({
-    event: z.literal("proof.added"),
+    event: z.literal(EVENT_NAME.proofAdded),
     part: text,
     file: text,
     test: text,
     failure: z.string(),
     source: z.enum(PROOF_SOURCE),
   }),
-  taskEvent("workflow.done").extend({
+  taskEvent(EVENT_NAME.workflowDone).extend({
     workflow: text,
     run: text,
     agents: z.array(AgentSchema),
   }),
-  taskEvent("pr.saved").extend({
+  taskEvent(EVENT_NAME.prSaved).extend({
     number: count,
     url: text,
     state: z.enum(PR_STATE),
     draft: z.boolean(),
   }),
-  taskEvent("pr.merged").extend({ number: count }),
-  taskEvent("task.closed").extend({
+  taskEvent(EVENT_NAME.prMerged).extend({ number: count }),
+  taskEvent(EVENT_NAME.taskClosed).extend({
     forced: z.boolean(),
     code: z.object({ added: count, removed: count, files: count, test_added: count }),
   }),
 ]);
-
-type TenboxEvent = z.infer<typeof EventSchema>;
-export type EventName = TenboxEvent["event"];

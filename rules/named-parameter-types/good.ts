@@ -2,7 +2,7 @@ interface Shape {
   a: string;
   b: number;
 }
-type Name = Shape["a"];
+type Name = string;
 type WithoutA = Omit<Shape, "a">;
 
 export function named(p: Name, q: WithoutA, r: Shape): Pick<Shape, "a"> {

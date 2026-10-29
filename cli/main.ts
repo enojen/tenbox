@@ -26,7 +26,13 @@ import { decide } from "./commands/decide.ts";
 import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listTasks } from "./commands/list.ts";
-import { listMachineRuns, runOnMachine } from "./commands/machine.ts";
+import {
+  listMachineRuns,
+  removeMachineVolume,
+  runOnMachine,
+  showMachineLogs,
+  stopMachine,
+} from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { partDone } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
@@ -71,7 +77,7 @@ const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
-  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine ls";
+  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
@@ -315,10 +321,20 @@ const COMMANDS: Record<string, Command> = {
   },
   machine: {
     usage: MACHINE_USAGE,
-    options: {},
-    run: (positionals) => {
+    options: { follow: { type: "boolean", default: false } },
+    run: (positionals, values) => {
       const [action, ...rest] = positionals;
+      const follow = flagValue(values, "follow");
+      if (action === "logs") {
+        if (rest.length > 1) throw usageError(`usage: ${MACHINE_USAGE}`);
+        return showMachineLogs({ id: idArg(rest, MACHINE_USAGE), follow });
+      }
+      if (follow) throw usageError(`usage: ${MACHINE_USAGE}`);
       if (action === "ls" && rest.length === 0) return listMachineRuns();
+      if (action === "stop" && rest.length === 1) return stopMachine(idArg(rest, MACHINE_USAGE));
+      if (action === "rm" && rest.length === 1) {
+        return removeMachineVolume(idArg(rest, MACHINE_USAGE));
+      }
       if (action !== "run" || !hasCommandSeparator()) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });

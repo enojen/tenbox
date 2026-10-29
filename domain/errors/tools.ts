@@ -88,6 +88,13 @@ export function noProjectIdError(mainDir: string): TenboxError {
   );
 }
 
+export function noMachineRunError(task: string): TenboxError {
+  return new TenboxError(
+    `task ${task} has no Job on the cluster; start one with tenbox machine run`,
+    "no-machine-run",
+  );
+}
+
 export function machineBusyError(task: string, jobs: string[]): TenboxError {
   return new TenboxError(
     `task ${task} still runs on the cluster: ${jobs.join(", ")}; wait until it ends`,

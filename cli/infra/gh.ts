@@ -55,25 +55,23 @@ const IssueSchema = z.object({
 
 type Issue = z.infer<typeof IssueSchema>;
 
-/** The output of `gh issue view <n> --json comments`. */
-const IssueCommentsSchema = z.object({
-  comments: z.array(
-    z.object({
-      author: z.object({ login: z.string() }),
-      body: z.string(),
-      createdAt: z.iso.datetime(),
-    }),
-  ),
+const IssueCommentSchema = z.object({
+  author: z.object({ login: z.string() }),
+  body: z.string(),
+  createdAt: z.iso.datetime(),
 });
 
-type IssueComment = z.infer<typeof IssueCommentsSchema>["comments"][number];
+/** The output of `gh issue view <n> --json comments`. */
+const IssueCommentsSchema = z.object({ comments: z.array(IssueCommentSchema) });
+
+type IssueComment = z.infer<typeof IssueCommentSchema>;
+
+const ListedIssueSchema = z.object({ number: z.number(), title: z.string(), url: z.string() });
 
 /** The output of `gh issue list --json number,title,url`. */
-const IssueListSchema = z.array(
-  z.object({ number: z.number(), title: z.string(), url: z.string() }),
-);
+const IssueListSchema = z.array(ListedIssueSchema);
 
-type ListedIssue = z.infer<typeof IssueListSchema>[number];
+type ListedIssue = z.infer<typeof ListedIssueSchema>;
 
 /** The output of `gh label list --json name`. */
 const LabelListSchema = z.array(z.object({ name: z.string() }));
@@ -106,19 +104,19 @@ export const gh = {
 
 const PR_FIELDS = "number,url,isDraft,state,body,headRefName";
 
-/** The output of `gh pr list --json number,url,isDraft,state,body,headRefName`. */
-const PrListSchema = z.array(
-  z.object({
-    number: z.number(),
-    url: z.string(),
-    isDraft: z.boolean(),
-    state: z.enum(GH_STATE),
-    body: z.string(),
-    headRefName: z.string(),
-  }),
-);
+const ListedPrSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  isDraft: z.boolean(),
+  state: z.enum(GH_STATE),
+  body: z.string(),
+  headRefName: z.string(),
+});
 
-type ListedPr = z.infer<typeof PrListSchema>[number];
+/** The output of `gh pr list --json number,url,isDraft,state,body,headRefName`. */
+const PrListSchema = z.array(ListedPrSchema);
+
+type ListedPr = z.infer<typeof ListedPrSchema>;
 
 const toGroupPr = (pr: ListedPr): GroupPr => ({
   number: pr.number,

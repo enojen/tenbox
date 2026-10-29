@@ -74,3 +74,5 @@ uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API
 `tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
 does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
 volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
+
+After the close Job has ended (`tenbox machine ls`), `tenbox machine rm <id>` deletes the task's volume; it refuses with `machine-busy` while a Job of the task is active.

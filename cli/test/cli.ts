@@ -66,11 +66,14 @@ interface ClaudeCall {
   args: string[];
 }
 
+/** The kind of a session `claude agents --json` lists. */
+type FakeSessionKind = "background" | "interactive";
+
 /** A background session as `claude agents --json` lists it. */
 export interface FakeSession {
   id: string;
   cwd: string;
-  kind: "background" | "interactive";
+  kind: FakeSessionKind;
   startedAt: number;
   /** The `state` of a background session: working, blocked, done. */
   state?: string;
@@ -116,19 +119,21 @@ export async function makeFakeClaude(root: string): Promise<FakeClaude> {
   };
 }
 
-const HookSettings = z.object({
-  hooks: z.object({
-    Notification: z.array(
-      z.object({
-        matcher: z.string(),
-        hooks: z.array(z.object({ type: z.string(), command: z.string() })),
-      }),
-    ),
-  }),
+const NotificationHooksSchema = z.object({
+  Notification: z.array(
+    z.object({
+      matcher: z.string(),
+      hooks: z.array(z.object({ type: z.string(), command: z.string() })),
+    }),
+  ),
 });
 
+type NotificationHooks = z.infer<typeof NotificationHooksSchema>;
+
+const HookSettings = z.object({ hooks: NotificationHooksSchema });
+
 /** The `Notification` hooks in the `--settings` JSON of a `claude` call; null without a valid one. */
-export function notificationHooks(args: string[]): z.infer<typeof HookSettings>["hooks"] | null {
+export function notificationHooks(args: string[]): NotificationHooks | null {
   const at = args.indexOf("--settings");
   const result = jsons.check(HookSettings, args[at + 1] ?? "");
   return result.ok ? result.value.hooks : null;
