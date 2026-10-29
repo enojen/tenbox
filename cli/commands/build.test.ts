@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod } from "node:fs/promises";
+import { appendFile } from "node:fs/promises";
 import path from "node:path";
 import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
@@ -13,6 +13,7 @@ import {
   tenbox,
 } from "../test/cli.ts";
 import { installFakeGh } from "../test/fakeGh.ts";
+import { type FakeTool, fakeTool } from "../test/fakeTools.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
 import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -204,23 +205,44 @@ checks:
     e2e: "test ! -f full.txt || { cat full.txt; exit 1; }"
 `;
 
-/** A fake `gh` that logs its calls and keeps the PRs it creates in `prs.json`. */
-const FAKE_GH = `#!/usr/bin/env bun
-import fs from "node:fs";
-const dir = process.env.GH_FAKE;
-const args = process.argv.slice(2);
-const db = dir + "/prs.json";
-const prs = fs.existsSync(db) ? JSON.parse(fs.readFileSync(db, "utf8")) : [];
-const flag = (name) => args[args.indexOf(name) + 1];
-fs.appendFileSync(dir + "/calls.log", JSON.stringify(args) + "\\n");
-if (args[1] === "create") {
-  prs.push({ number: prs.length + 1, url: "https://example.com/pull/1", isDraft: args.includes("--draft"),
-    state: "OPEN", headRefName: flag("--head"), body: flag("--body") });
-  fs.writeFileSync(db, JSON.stringify(prs));
+/** A PR as the fake `gh` keeps it in `prs.json`. */
+interface FakePr {
+  number: number;
+  url: string;
+  isDraft: boolean;
+  state: string;
+  headRefName: string;
+  body: string;
 }
-if (args[1] === "list") console.log(JSON.stringify(prs.filter((p) => !args.includes("--head") || p.headRefName === flag("--head"))));
-`;
-const FAILING_GH = "#!/bin/sh\necho gh is down >&2\nexit 1\n";
+
+const flagOf = (args: string[], name: string): string => args[args.indexOf(name) + 1] ?? "";
+
+/** A fake `gh` that logs its calls and keeps the PRs it creates in `prs.json`. */
+function prGh(dir: string): FakeTool {
+  const db = path.join(dir, "prs.json");
+  return async (args) => {
+    await appendFile(path.join(dir, "calls.log"), `${JSON.stringify(args)}\n`);
+    const text = await files.read(db);
+    const prs: FakePr[] = JSON.parse(text ?? "[]");
+    if (args[1] === "list") {
+      const head = args.includes("--head") ? flagOf(args, "--head") : null;
+      return { stdout: `${JSON.stringify(prs.filter((p) => !head || p.headRefName === head))}\n` };
+    }
+    if (args[1] !== "create") return {};
+    prs.push({
+      number: prs.length + 1,
+      url: "https://example.com/pull/1",
+      isDraft: args.includes("--draft"),
+      state: "OPEN",
+      headRefName: flagOf(args, "--head"),
+      body: flagOf(args, "--body"),
+    });
+    await files.write(db, JSON.stringify(prs));
+    return {};
+  };
+}
+
+const failingGh: FakeTool = () => ({ code: 1, stderr: "gh is down\n" });
 
 describe("tenbox build done", () => {
   let buildJson: string;
@@ -258,13 +280,11 @@ describe("tenbox build done", () => {
   let ghEnv: Record<string, string> = {};
   const ghState = (): string => path.join(project.root, "gh-state");
 
-  /** Puts `script` first in `PATH` as `gh`. */
-  async function installGh(script: string): Promise<void> {
-    const bin = path.join(project.root, "gh-bin");
-    await files.write(path.join(bin, "gh"), script);
-    await chmod(path.join(bin, "gh"), 0o755);
+  /** Answers `gh` with `fake`; the fake PR one keeps its state in `ghState()`. */
+  async function installGh(fake: (dir: string) => FakeTool): Promise<void> {
     await files.write(path.join(ghState(), ".keep"), "");
-    ghEnv = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_FAKE: ghState() };
+    fakeTool("gh", fake(ghState()));
+    ghEnv = {};
   }
 
   /** Commits `changed` in the task worktree with an `origin` to push to, then runs `tenbox check`. */
@@ -290,7 +310,7 @@ describe("tenbox build done", () => {
     path.join(path.dirname(buildJson), "rounds", "1", "checks-full.json");
 
   describe("ready-for-you", () => {
-    beforeEach(() => installGh(FAKE_GH));
+    beforeEach(() => installGh(prGh));
 
     test("a commit after the last tenbox check is checks-stale and writes no build.json", async () => {
       await checkedTask();
@@ -402,7 +422,7 @@ describe("tenbox build done", () => {
     });
 
     test("a failing gh keeps build.json and gives pr.ok false", async () => {
-      await installGh(FAILING_GH);
+      await installGh(() => failingGh);
       await checkedTask();
       const run = await buildDone(...readyJson);
       const written = await files.exists(buildJson);
@@ -414,7 +434,7 @@ describe("tenbox build done", () => {
   test.each(["needs-you", "failed"])(
     "%s is written with no checks and opens no PR",
     async (status) => {
-      await installGh(FAKE_GH);
+      await installGh(prGh);
       await commit({ "b.txt": "b\n" });
       const run = await buildDone(...withJson({ status }));
       const calls = await files.exists(path.join(ghState(), "calls.log"));
@@ -504,7 +524,7 @@ describe("tenbox build done", () => {
 
     /** The task worktree's `tenbox.yaml` names the tracker; the main checkout's names none. */
     async function withGithubTracker() {
-      const fake = await installFakeGh(project.root);
+      const fake = await installFakeGh();
       ghEnv = fake.env;
       await files.write(worktreeManifest(), `${CHECKS_MANIFEST}tracker: { kind: github }\n`);
       return fake;
@@ -533,7 +553,7 @@ describe("tenbox build done", () => {
     });
 
     test("without a tracker the findings stay in build.json with no task, and nothing is opened", async () => {
-      const fake = await installFakeGh(project.root);
+      const fake = await installFakeGh();
       ghEnv = fake.env;
       const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
       const written = await readJson(buildJson);
@@ -545,7 +565,7 @@ describe("tenbox build done", () => {
 
     test("a tracker failure is one warning line; the result is written with no opened task", async () => {
       await withGithubTracker();
-      await installGh(FAILING_GH);
+      await installGh(() => failingGh);
       const run = await buildDone(...withJson({ findings: [finding("Login drops the port")] }));
       const written = await files.exists(buildJson);
       const kept = [{ ...finding("Login drops the port"), labels: [], task: null }];
@@ -641,7 +661,7 @@ describe("tenbox build done", () => {
     });
 
     test("ready-for-you detail counts round, attention, nice-to-have and unproven", async () => {
-      await installGh(FAKE_GH);
+      await installGh(prGh);
       await checkedTask();
       await buildDone(...readyJson);
       expect(ntfy.lines()).toEqual([
@@ -651,7 +671,7 @@ describe("tenbox build done", () => {
     });
 
     test("ready-for-you with empty lists shows zero counts", async () => {
-      await installGh(FAILING_GH);
+      await installGh(() => failingGh);
       await checkedTask();
       await buildDone(
         ...withJson({

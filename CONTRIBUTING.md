@@ -11,7 +11,7 @@ is done.
 4. Before you open the pull request, run the checks:
 
    ```sh
-   bunx tsc --noEmit
+   bunx tsgo --noEmit
    bun test cli domain server rules
    bunx biome format --write cli domain server rules
    bunx biome check --formatter-enabled=false cli domain server rules

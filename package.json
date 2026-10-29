@@ -11,11 +11,12 @@
   "scripts": {
     "tenbox": "bun run cli/main.ts",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/bun": "latest",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "drizzle-kit": "^0.31.11",
     "knip": "^6.41.0",
     "typescript": "^5"

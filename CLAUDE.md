@@ -185,7 +185,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql, kubernetes (the cluster API: Jobs and volumes); claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
-  test/         tempProject.ts, cli.ts (runs the real CLI), the end-to-end test and the
+  test/         tempProject.ts, cli.ts (runs the CLI in the test process, inProcess.ts, or as a process for stdin, bundle.ts), hermetic.ts (no real claude, gh or docker in PATH), fakeTools.ts (gh answered in the test process), the end-to-end test and the
                 layers test
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every

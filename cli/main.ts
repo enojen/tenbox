@@ -52,7 +52,8 @@ import { env, log } from "./infra/env.ts";
 import { processes } from "./infra/processes.ts";
 
 interface Command extends ArgSpec {
-  run(positionals: string[], values: Values): Promise<unknown>;
+  /** `argv` holds the `--` that `parseArgs` drops. */
+  run(positionals: string[], values: Values, argv: string[]): Promise<unknown>;
 }
 
 const START_USAGE =
@@ -95,6 +96,7 @@ const DRAFT_OPTIONS: ParseArgsOptionsConfig = {
 };
 const HOOK_USAGE = "tenbox hook blocked <id>";
 const DEFAULT_TIMEOUT_SECONDS = 600;
+const SUCCESS_EXIT_CODE = 0;
 const USAGE_EXIT_CODE = 2;
 const FAILURE_EXIT_CODE = 1;
 /** 128 + the signal number, as shells report it. */
@@ -324,7 +326,7 @@ const COMMANDS: Record<CommandName, Command> = {
   [COMMAND.machine]: {
     usage: MACHINE_USAGE,
     options: { follow: { type: "boolean", default: false } },
-    run: (positionals, values) => {
+    run: (positionals, values, argv) => {
       const [action, ...rest] = positionals;
       const follow = flagValue(values, "follow");
       if (action === "logs") {
@@ -337,7 +339,7 @@ const COMMANDS: Record<CommandName, Command> = {
       if (action === "rm" && rest.length === 1) {
         return removeMachineVolume(idArg(rest, MACHINE_USAGE));
       }
-      if (action !== "run" || !hasCommandSeparator()) throw usageError(`usage: ${MACHINE_USAGE}`);
+      if (action !== "run" || !argv.includes("--")) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
       return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
     },
@@ -367,9 +369,6 @@ const COMMANDS: Record<CommandName, Command> = {
   },
 };
 
-/** `parseArgs` drops `--`; the words after it must have been separated. */
-const hasCommandSeparator = (): boolean => process.argv.slice(2).includes("--");
-
 async function main(argv: string[]): Promise<void> {
   const [name, ...rest] = argv;
   if (name === "help" && rest[0] !== undefined) {
@@ -382,7 +381,7 @@ async function main(argv: string[]): Promise<void> {
   }
   const command = getCommand(name);
   const parsed = parseCommandArgs(command, rest);
-  const result = await command.run(parsed.positionals, parsed.values);
+  const result = await command.run(parsed.positionals, parsed.values, argv);
   emit(result);
 }
 
@@ -415,13 +414,11 @@ function toFailure(e: unknown): Failure {
   return { ok: false, error: e.message, code: e.code, ...details };
 }
 
-function exitWithFailure(e: unknown): never {
+function reportFailure(e: unknown): number {
   const failure = toFailure(e);
   emit(failure);
   printStack(e);
-  process.exit(
-    e instanceof TenboxError && e.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE,
-  );
+  return e instanceof TenboxError && e.code === "usage" ? USAGE_EXIT_CODE : FAILURE_EXIT_CODE;
 }
 
 /** Internal errors always show their stack; Tenbox's own errors only with TENBOX_DEBUG=1. */
@@ -469,9 +466,18 @@ function exitOnStop(): void {
   }
 }
 
-exitOnStop();
-try {
-  await main(process.argv.slice(2));
-} catch (e) {
-  exitWithFailure(e);
+/** One command: its JSON on stdout and its exit code, without leaving, so tests run it in theirs. */
+export async function runCli(argv: string[]): Promise<number> {
+  try {
+    await main(argv);
+    return SUCCESS_EXIT_CODE;
+  } catch (e) {
+    return reportFailure(e);
+  }
+}
+
+if (import.meta.main) {
+  exitOnStop();
+  const code = await runCli(process.argv.slice(2));
+  if (code !== SUCCESS_EXIT_CODE) process.exit(code);
 }

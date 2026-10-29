@@ -7,7 +7,7 @@ import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
 
-const installGh = (): Promise<FakeGh> => installFakeGh(project.root);
+const installGh = (): Promise<FakeGh> => installFakeGh();
 
 const draft = [
   "--title",
