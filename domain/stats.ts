@@ -12,11 +12,12 @@ import {
   type RunMinutes,
   type RunTimeline,
 } from "./runs.ts";
+import type { TaskRef } from "./tracker.ts";
 import { jsons } from "./utils.ts";
 
 /* The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels and the worker proofs. */
 
-export const STATS_SCHEMA = 6;
+export const STATS_SCHEMA = 7;
 
 const TEST_FILE_SUFFIX = ".test.ts";
 const TEST_DIR = "test";
@@ -101,6 +102,12 @@ export interface TaskStats {
   agents: RunAgent[] | null;
   /** The runs since the task opened; finished is false for a run with no run file. */
   runs: RunMark[] | null;
+  findings: StatsFinding[];
+}
+
+interface StatsFinding {
+  title: string;
+  task: TaskRef | null;
 }
 
 /** Null without a plan result. */
@@ -159,16 +166,19 @@ export function countPoints(input: PointsInput): StatsPoints[] {
 
 const TOKENS_PER_K = 1000;
 
-/** The close comment: total minutes, output tokens in thousands, number of rounds. */
-export function costComment(stats: TaskStats): string {
+/** The close comment: total minutes, output tokens in thousands, number of rounds, opened findings. */
+export function closeComment(stats: TaskStats): string {
   const output = (stats.agents ?? []).reduce((sum, agent) => sum + (agent.output ?? 0), 0);
   const minutes = Math.round(stats.minutes.total ?? 0);
   const tokens = Math.round(output / TOKENS_PER_K);
-  return `${minutes} min, ${tokens}k tokens, ${stats.rounds.length} rounds`;
+  const cost = `${minutes} min, ${tokens}k tokens, ${stats.rounds.length} rounds`;
+  const urls = stats.findings.flatMap((finding) => (finding.task ? [finding.task.url] : []));
+  return urls.length === 0 ? cost : `${cost}, opened ${urls.join(", ")}`;
 }
 
-/** Schema 5 has the same agents, only no `runs`. */
+/** Schema 5 has the same agents, only no `runs`; 6 has no `findings`. */
 const READABLE_SCHEMA = 5;
+const RUNS_SCHEMA = 6;
 
 const RunMarkSchema = z.object({
   workflow: z.string(),
@@ -177,7 +187,7 @@ const RunMarkSchema = z.object({
 });
 
 const StatsRecordSchema = z.object({
-  schema: z.union([z.literal(READABLE_SCHEMA), z.literal(STATS_SCHEMA)]),
+  schema: z.literal([READABLE_SCHEMA, RUNS_SCHEMA, STATS_SCHEMA]),
   agents: z.array(RunAgentSchema).nullable(),
   runs: z.array(RunMarkSchema).nullable().optional(),
 });

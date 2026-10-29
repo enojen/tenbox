@@ -37,6 +37,11 @@ test("newTaskOf with an origin ends the body with the task and the tenbox commit
   expect(task.body.endsWith("\n\nFound by task TEN-301 on tenbox 6a5aae0.")).toBe(true);
 });
 
+test("newTaskOf with an origin without a tenbox commit names only the task", () => {
+  const task = newTaskOf(draft, { task: "T-1", tenbox: null });
+  expect(task.body.endsWith("\n\nFound by task T-1.")).toBe(true);
+});
+
 test("newTaskOf with an origin without a task names only the tenbox commit", () => {
   const task = newTaskOf(draft, { task: null, tenbox: "6a5aae0" });
   expect(task.body.endsWith("\n\nFound on tenbox 6a5aae0.")).toBe(true);

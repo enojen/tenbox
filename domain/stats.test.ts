@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  costComment,
+  closeComment,
   countPlan,
   countPoints,
   distinctProofs,
@@ -28,7 +28,7 @@ const NO_USAGE = {
 
 function statsWith(output: (number | null)[], total: number | null): TaskStats {
   return {
-    schema: 6,
+    schema: 7,
     project: "p",
     task: "T-1",
     title: null,
@@ -62,21 +62,33 @@ function statsWith(output: (number | null)[], total: number | null): TaskStats {
     code: null,
     agents: output.map((out) => ({ ...NO_USAGE, output: out })),
     runs: [],
+    findings: [],
   };
 }
 
-describe("costComment", () => {
+describe("closeComment", () => {
   test("sums output tokens over the agents in thousands", () => {
-    expect(costComment(statsWith([40_000, null, 48_400], 384))).toBe(
+    expect(closeComment(statsWith([40_000, null, 48_400], 384))).toBe(
       "384 min, 88k tokens, 2 rounds",
     );
   });
   test("rounds the minutes to a whole number", () => {
-    expect(costComment(statsWith([1000], 384.7))).toBe("385 min, 1k tokens, 2 rounds");
+    expect(closeComment(statsWith([1000], 384.7))).toBe("385 min, 1k tokens, 2 rounds");
   });
   test("without agents or minutes it is 0 min, 0k tokens", () => {
     const empty = { ...statsWith([], null), agents: null };
-    expect(costComment(empty)).toBe("0 min, 0k tokens, 2 rounds");
+    expect(closeComment(empty)).toBe("0 min, 0k tokens, 2 rounds");
+  });
+  test("the opened findings follow as their urls; one with no task is left out", () => {
+    const findings = [
+      { title: "a", task: { id: "5", url: "https://github.com/o/r/issues/5" } },
+      { title: "b", task: null },
+      { title: "c", task: { id: "6", url: "https://github.com/o/r/issues/6" } },
+    ];
+    const stats = { ...statsWith([1000], 10), findings };
+    expect(closeComment(stats)).toBe(
+      "10 min, 1k tokens, 2 rounds, opened https://github.com/o/r/issues/5, https://github.com/o/r/issues/6",
+    );
   });
 });
 
@@ -201,10 +213,12 @@ test("readStatsRecord gives the agents of a schema 5 stats.json with no runs, or
   });
 });
 
-test("readStatsRecord gives the agents and runs of a schema 6 stats.json", () => {
+test("readStatsRecord gives the agents and runs of a schema 6 or 7 stats.json", () => {
   const run = { workflow: "tenbox-build", started: "2026-10-14T10:00:00.000Z", finished: false };
   const text = JSON.stringify({ schema: 6, agents: [AGENT], runs: [run] });
+  const latest = JSON.stringify({ schema: 7, agents: [AGENT], runs: [run] });
   expect(readStatsRecord(text, STATS_FILE)).toEqual({ agents: [AGENT], runs: [run] });
+  expect(readStatsRecord(latest, STATS_FILE)).toEqual({ agents: [AGENT], runs: [run] });
 });
 
 test.each([

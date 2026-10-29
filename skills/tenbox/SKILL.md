@@ -35,6 +35,13 @@ skill and the reference disagree, the reference is right.
 - Change a task only with tenbox commands, never by editing its `.tenbox/` files.
 - The approval of a plan, the answer to a question or a decision card, and the merge
   belong to the user. Show them what tenbox printed and wait.
+- A bug or a gap outside the task at hand, seen on the way: open it with `tenbox task new`
+  in the project's tracker (title, why, what, done when) and go on; the task at hand stays
+  small. In a build, the reviewer returns such items as `findings` and `tenbox build done`
+  opens them.
+- A bug or a missing piece of Tenbox itself: show the user the draft and run
+  `tenbox report` only after they say yes, never alone (`--repo tenyard` for the cluster,
+  the box and the Jobs). A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
   as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
   "Machines" in the reference. After its close Job ends, `tenbox machine rm <id>` deletes the
