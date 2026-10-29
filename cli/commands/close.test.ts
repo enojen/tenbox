@@ -10,6 +10,7 @@ import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { checkResult } from "../test/checkResult.ts";
 import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
+import { type FakeTool, fakeTool } from "../test/fakeTools.ts";
 import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
@@ -797,15 +798,26 @@ describe("tenbox close a task with groups", () => {
     ],
   };
   const ODD_BRANCH = "odd-name";
-  const FAKE_GH = `#!/usr/bin/env bun
-import fs from "node:fs";
-const prs = JSON.parse(fs.readFileSync(process.env.GH_PRS, "utf8"));
-const [a, b, c] = process.argv.slice(2);
-const view = (pr) => ({ state: pr.state, headRefOid: pr.head, mergeCommit: { oid: "m" }, createdAt: "2026-01-01T00:00:00Z" });
-if (a === "pr" && b === "list") console.log(JSON.stringify(prs));
-if (a === "pr" && b === "view") console.log(JSON.stringify(view(prs.find((p) => p.headRefName === c))));
-if (a === "api") console.log("1");
-`;
+  /** A fake `gh` that answers from the PRs in `prs`. */
+  const groupGh =
+    (prs: string): FakeTool =>
+    async (args) => {
+      const text = await files.read(prs);
+      const list: { headRefName: string; state: string; head: string }[] = JSON.parse(text ?? "[]");
+      const [group, action, branch] = args;
+      if (group === "api") return { stdout: "1\n" };
+      if (group !== "pr") return {};
+      if (action === "list") return { stdout: `${JSON.stringify(list)}\n` };
+      const pr = list.find((p) => p.headRefName === branch);
+      if (action !== "view" || pr === undefined) return {};
+      const view = {
+        state: pr.state,
+        headRefOid: pr.head,
+        mergeCommit: { oid: "m" },
+        createdAt: "2026-01-01T00:00:00Z",
+      };
+      return { stdout: `${JSON.stringify(view)}\n` };
+    };
 
   interface GroupTask {
     groupWorktree: string;
@@ -842,10 +854,8 @@ if (a === "api") console.log("1");
     });
     const list = [pr(1, "MERGED", head1, "feat/T-1"), pr(2, state2, head2, ODD_BRANCH)];
     await files.write(prs, JSON.stringify(list));
-    const bin = path.join(project.root, "gbin");
-    await files.write(path.join(bin, "gh"), FAKE_GH);
-    await chmod(path.join(bin, "gh"), EXECUTABLE);
-    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}`, GH_PRS: prs };
+    fakeTool("gh", groupGh(prs));
+    const env = {};
     return { groupWorktree, origin, prs, env };
   }
 
