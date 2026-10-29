@@ -48,4 +48,12 @@ describe("tenbox help", () => {
     expect(run.json).toMatchObject({ ok: false, code: "usage" });
     expect(String(run.json.error)).toContain("nope");
   });
+
+  test("a name of Object.prototype is an unknown command", async () => {
+    for (const args of [["help", "constructor"], ["help", "__proto__"], ["toString"]]) {
+      const run = await tenbox(args, cwd);
+      expect(run.code).toBe(2);
+      expect(run.json).toMatchObject({ ok: false, code: "usage" });
+    }
+  });
 });

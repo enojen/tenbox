@@ -380,12 +380,16 @@ async function main(argv: string[]): Promise<void> {
     printHelp();
     return;
   }
-  const commandName = COMMAND_NAMES.find((c) => c === name);
-  if (commandName === undefined) throw usageError(`unknown command: ${name}`);
-  const command = COMMANDS[commandName];
+  const command = getCommand(name);
   const parsed = parseCommandArgs(command, rest);
   const result = await command.run(parsed.positionals, parsed.values);
   emit(result);
+}
+
+function getCommand(name: string): Command {
+  const commandName = COMMAND_NAMES.find((c) => c === name);
+  if (commandName === undefined) throw usageError(`unknown command: ${name}`);
+  return COMMANDS[commandName];
 }
 
 function emit(value: unknown): void {
@@ -399,8 +403,7 @@ function printHelp(): void {
 }
 
 function printCommandHelp(name: string): void {
-  const command = COMMANDS[name];
-  if (!command) throw usageError(`unknown command: ${name}`);
+  const command = getCommand(name);
   const result = commandHelp({ name, usage: command.usage });
   process.stderr.write(`${result.help}\n`);
   emit(result);
