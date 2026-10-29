@@ -92,13 +92,13 @@ test("inside a Claude Code session the issue gets the agent label, made when the
   expect(calls).toContain("label create agent");
 });
 
-test("without a tracker it refuses with no-tracker and points at --upstream", async () => {
+test("without a tracker it refuses with no-tracker and points at tenbox report", async () => {
   await files.write(path.join(project.mainDir, "tenbox.yaml"), "project: demo\n");
   const gh = await installGh();
   const run = await tenbox(["task", "new", ...draft], project.mainDir, gh.env);
   expect(run.code).toBe(1);
   expect(run.json.code).toBe("no-tracker");
-  expect(run.json.error).toContain("--upstream");
+  expect(run.json.error).toContain("tenbox report");
 });
 
 test("anything but task new is a usage error", async () => {

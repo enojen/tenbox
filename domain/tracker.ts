@@ -47,7 +47,7 @@ const TaskDraftSchema = z.object({
 
 export type TaskDraft = z.infer<typeof TaskDraftSchema>;
 
-/** Where a task opened upstream was found: the task that ran, if any, and the tenbox commit. */
+/** Where a reported task was found: the task that ran, if any, and the tenbox commit. */
 export interface TaskOrigin {
   task: string | null;
   tenbox: string;
@@ -96,7 +96,7 @@ export function parseTaskDraft(text: string): TaskDraft {
   return result.value;
 }
 
-/** The task as the tracker gets it: the house body, and the origin line of an upstream task. */
+/** The task as the tracker gets it: the house body, and the origin line of a reported task. */
 export function newTaskOf(draft: TaskDraft, origin?: TaskOrigin): NewTask {
   const sections = [
     `**Why**\n${draft.why}`,

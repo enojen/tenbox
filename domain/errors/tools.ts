@@ -46,7 +46,7 @@ export function noTrackerError(id: string): TenboxError {
 
 export function noTrackerToWriteError(): TenboxError {
   return new TenboxError(
-    "no tracker configured; add tracker: to tenbox.yaml, or pass --upstream for a Tenbox task",
+    "no tracker configured; add tracker: to tenbox.yaml, or use tenbox report for a Tenbox task",
     "no-tracker",
   );
 }
