@@ -41,7 +41,7 @@ spec:
           image: __IMAGE__
           resources:
             requests: { cpu: __CPU__, memory: __MEMORY__ }
-            limits: { cpu: __CPU_LIMIT__, memory: __MEMORY__ }
+            limits: { memory: __MEMORY__ }
           env:
             - { name: TENBOX_TASK, value: "__TASK__" }
             - { name: TENBOX_PROJECT, value: "__PROJECT__" }
@@ -59,9 +59,9 @@ spec:
           persistentVolumeClaim: { claimName: task-__NAME__ }
 `;
 
-const CLASSES = `plan: { cpu: 250m, cpu_limit: "2", memory: 1536Mi }
-build: { cpu: 500m, cpu_limit: "4", memory: 2Gi }
-heavy: { cpu: 500m, cpu_limit: "4", memory: 5Gi }
+const CLASSES = `plan: { cpu: 250m, memory: 1536Mi }
+build: { cpu: 500m, memory: 2Gi }
+heavy: { cpu: 500m, memory: 3Gi }
 `;
 
 const POSTGRES_SERVICE = `spec:
@@ -229,8 +229,8 @@ function jobClass(call: ApiCall | undefined) {
 }
 
 /** The resources a class of `CLASSES` gives the box: the RAM request is its limit. */
-function classResources(cpu: string, cpuLimit: string, memory: string) {
-  return { requests: { cpu, memory }, limits: { cpu: cpuLimit, memory } };
+function classResources(cpu: string, memory: string) {
+  return { requests: { cpu, memory }, limits: { memory } };
 }
 
 /** The `valueFrom` of one env entry of the box container in a posted Job. */
@@ -456,7 +456,7 @@ describe("machine", () => {
     const job = posts().find((c) => c.path === JOBS_PATH);
     expect(jobClass(job)).toEqual({
       label: "plan",
-      resources: classResources("250m", "2", "1536Mi"),
+      resources: classResources("250m", "1536Mi"),
     });
   });
 
@@ -466,7 +466,7 @@ describe("machine", () => {
     const job = posts().find((c) => c.path === JOBS_PATH);
     expect(jobClass(job)).toEqual({
       label: "build",
-      resources: classResources("500m", "4", "2Gi"),
+      resources: classResources("500m", "2Gi"),
     });
   });
 
@@ -477,7 +477,7 @@ describe("machine", () => {
     const job = posts().find((c) => c.path === JOBS_PATH);
     expect(jobClass(job)).toEqual({
       label: "heavy",
-      resources: classResources("500m", "4", "5Gi"),
+      resources: classResources("500m", "3Gi"),
     });
   });
 
@@ -492,7 +492,8 @@ describe("machine", () => {
 
   test.each([
     ["missing", null],
-    ["a class without memory", `build: { cpu: 500m, cpu_limit: "4" }\n`],
+    ["a class without memory", `build: { cpu: 500m }\n`],
+    ["a class with a CPU limit", `build: { cpu: 500m, cpu_limit: "4", memory: 2Gi }\n`],
   ])("a classes.yaml that is %s is a template error before any request", async (_name, text) => {
     const file = path.join(template, "classes.yaml");
     if (text === null) await files.remove(file);
