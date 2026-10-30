@@ -31,6 +31,7 @@ const run = (...args: string[]): Promise<CliRun> => tenbox(args, project.mainDir
 const taskWorktree = (): string => path.join(project.wtRoot, "demo", "T-1");
 const planFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.md");
 const planJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.json");
+const taskJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "task.json");
 
 const PARTS = [{ id: "01", difficulty: "hard" }];
 const RECIPE = { model: "opus", effort: "high", lenses: [], tier: "fast" };
@@ -184,13 +185,23 @@ describe("tenbox build", () => {
     expect(prompts).toEqual([SENT]);
   });
 
-  test("a claude --bg that fails gives its message", async () => {
+  test("a claude --bg that fails gives its message and keeps the status approved", async () => {
     await setup();
     await approve();
     await fake.failWith("Workspace not trusted. Run `claude` once.");
     const built = await run("build", "T-1");
     expect([built.code, built.json.code]).toEqual([1, "claude"]);
     expect(built.json.error).toContain("Workspace not trusted");
+    const status = await readStatus(taskJsonFile());
+    expect(status).toBe("approved");
+  });
+
+  test("a sent build sets the status building", async () => {
+    await setup();
+    await approve();
+    await run("build", "T-1");
+    const status = await readStatus(taskJsonFile());
+    expect(status).toBe("building");
   });
 });
 
