@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { jsons, objects } from "../../domain/utils.ts";
+import { builds } from "../application/builds.ts";
 import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -17,7 +18,8 @@ let fake: FakeClaude;
 let real: string;
 
 const run = (...args: string[]): Promise<CliRun> => tenbox(args, project.mainDir, fake.env);
-const tenboxDir = (): string => path.join(project.wtRoot, "demo", "T-1", ".tenbox");
+const taskWorktree = (): string => path.join(project.wtRoot, "demo", "T-1");
+const tenboxDir = (): string => path.join(taskWorktree(), ".tenbox");
 const scriptPath = (): string => path.join(sessionDir(), "workflows", "scripts", "b.js");
 const sessionDir = (): string => path.join(projectDir(env().claudeDir, real), SESSION);
 
@@ -41,12 +43,22 @@ const needsYou = {
   decision: card,
 };
 
-async function setup(build: object | null = needsYou): Promise<void> {
+async function startTask(): Promise<void> {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n" });
   fake = await makeFakeClaude(project.root);
   await run("start", "T-1", "--title", "x", "--no-claude");
-  real = await files.realPath(path.join(project.wtRoot, "demo", "T-1"));
+  real = await files.realPath(taskWorktree());
+}
+
+async function setup(build: object | null = needsYou): Promise<void> {
+  await startTask();
   if (build !== null) await run("build", "done", "T-1", "--json", JSON.stringify(build));
+}
+
+/** As `setup`, without the auto answer timer of `build done`: the test's answerer is the only one. */
+async function setupWithoutTimer(build: object = needsYou): Promise<void> {
+  await startTask();
+  await builds.save(taskWorktree(), JSON.stringify(build));
 }
 
 async function writeBuildRun(args: string = "T-1"): Promise<void> {
@@ -233,7 +245,7 @@ describe("tenbox answer --auto", () => {
   });
 
   test("after the deadline it answers with the recommended option and notes auto", async () => {
-    await setup();
+    await setupWithoutTimer();
     await writeBuildRun();
     const deadline = await setDeadline(SOON_MS);
     const answered = await run("answer", "T-1", "--auto");
@@ -251,7 +263,7 @@ describe("tenbox answer --auto", () => {
   });
 
   test("a card with auto false is skipped and nothing changes", async () => {
-    await setup({ ...needsYou, decision: { ...card, auto: false } });
+    await setupWithoutTimer({ ...needsYou, decision: { ...card, auto: false } });
     await writeBuildRun();
     const answered = await run("answer", "T-1", "--auto");
     expect([answered.code, answered.json]).toEqual([
@@ -265,7 +277,7 @@ describe("tenbox answer --auto", () => {
   });
 
   test("a never-auto card with auto true is skipped after its deadline and nothing changes", async () => {
-    await setup({ ...needsYou, decision: { ...card, kind: "migration" } });
+    await setupWithoutTimer({ ...needsYou, decision: { ...card, kind: "migration" } });
     await writeBuildRun();
     await setDeadline(-1_000);
     const answered = await run("answer", "T-1", "--auto");
@@ -281,7 +293,7 @@ describe("tenbox answer --auto", () => {
   });
 
   test("an answered card is skipped and keeps its answer", async () => {
-    await setup();
+    await setupWithoutTimer();
     await writeBuildRun();
     await run("answer", "T-1", "2");
     const answered = await run("answer", "T-1", "--auto");
@@ -291,7 +303,7 @@ describe("tenbox answer --auto", () => {
   });
 
   test("a card whose deadline changes while it waits is skipped", async () => {
-    await setup();
+    await setupWithoutTimer();
     await writeBuildRun();
     await setDeadline(LATER_MS);
     const waiting = run("answer", "T-1", "--auto");
