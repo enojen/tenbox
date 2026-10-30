@@ -33,7 +33,17 @@ const ENOENT = "ENOENT";
 const running = new Set<number>();
 
 /** Runs a program without a shell: Tenbox starts only git, gh, docker, claude and itself. */
-export const processes = { run, runInTerminal, runSelf, selfCommand, stopAll, which };
+export const processes = { run, runInTerminal, runSelf, selfCommand, stopAll, which, isRunning };
+
+/** True while a process of this user has the pid; signal 0 only checks. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
