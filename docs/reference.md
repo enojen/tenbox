@@ -97,8 +97,12 @@ The base is the manifest `base`, `main` by default; `--base` overrides it for `s
 already have. The failure lines of the base (the baseline) are kept per project, check and
 commit under `~/wt/.baselines/`. `tenbox check` uses the baseline of the base commit, else
 the newest one it has. With none at all, it runs the check once in the main checkout when
-that sits at the base commit, and saves the result. Without any baseline, every failure
-line is new.
+that sits at the base commit, and saves the result. An older baseline lacks the failures main
+gained since: when a check has new failures against one (or against none), it takes the base
+commit's own baseline first, in a temporary detached worktree at that commit (`setup`, then the
+check, then the worktree is removed), saves it, and judges again. Each check result names its
+baseline: `{ sha, source, failures }`, `source` one of `exact`, `newest`, `main`, `base` (taken in
+the temporary worktree) or `none`.
 
 **Flaky.** A check with a new failure runs once more. A new failure line that is missing from the
 second run is flaky: it does not fail the check and is listed in `flaky` in the result and in
