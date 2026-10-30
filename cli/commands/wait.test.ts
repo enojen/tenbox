@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
+import { TASK_STATE } from "../../domain/tasks.ts";
+import { tasks } from "../application/tasks.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
@@ -173,6 +175,31 @@ describe("tenbox wait", () => {
       await files.write(planFile(), "{}");
       const run = await wait("--for", "any", "--timeout", "1");
       expect([run.code, run.json.code]).toEqual([1, "wait-timeout"]);
+    });
+
+    describe("after a new tenbox build", () => {
+      beforeEach(async () => {
+        await files.write(buildFile(), result({}));
+        await tasks.saveStatus(tenboxDir, TASK_STATE.building);
+      });
+
+      test.each(["build", "decision", "any"])(
+        "%s does not return on the build.json of the build before",
+        async (kind) => {
+          const run = await wait("--for", kind, "--timeout", "1");
+          expect([run.code, run.json.code]).toEqual([1, "wait-timeout"]);
+        },
+      );
+
+      test("build returns once build done saves the new result", async () => {
+        const done = result({ status: "ready-for-you", decision: undefined });
+        setTimeout(async () => {
+          await files.write(buildFile(), done);
+          await tasks.saveStatus(tenboxDir, "ready-for-you");
+        }, WRITE_DELAY_MS);
+        const run = await wait("--for", "build", "--timeout", "10");
+        expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", file: buildFile() }]);
+      });
     });
   });
 });
