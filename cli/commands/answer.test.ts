@@ -55,7 +55,6 @@ async function setup(build: object | null = needsYou): Promise<void> {
   if (build !== null) await run("build", "done", "T-1", "--json", JSON.stringify(build));
 }
 
-/** As `setup`, without the auto answer timer of `build done`: the test's answerer is the only one. */
 async function setupWithoutTimer(build: object = needsYou): Promise<void> {
   await startTask();
   await builds.save(taskWorktree(), JSON.stringify(build));

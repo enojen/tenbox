@@ -111,10 +111,6 @@ async function find(file: string): Promise<CheckResult | null> {
   return text === null ? null : readCheckResult(text, file);
 }
 
-/**
- * The result of the newest round of `roundsRoot` that has a `checks.json`; a check that was
- * stopped leaves its round without one.
- */
 async function findLatest(roundsRoot: string): Promise<CheckResult | null> {
   const names = await files.list(roundsDir(roundsRoot));
   for (const round of roundNumbers(names).reverse()) {
