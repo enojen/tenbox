@@ -1,7 +1,8 @@
 import { failedState } from "../../domain/errors/index.ts";
 import { noSessionError, sessionBusyError } from "../../domain/errors/tasks.ts";
-import { noCommandError } from "../../domain/errors/tools.ts";
+import { claudeError, noCommandError } from "../../domain/errors/tools.ts";
 import type { TaskId } from "../../domain/ids.ts";
+import { durations } from "../../domain/utils.ts";
 import {
   type BackgroundSession,
   type ClaudeResume,
@@ -9,8 +10,14 @@ import {
   type ClaudeStart,
   claude,
 } from "../infra/claude/background.ts";
-import { log } from "../infra/env.ts";
+import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
+import { pollUntil } from "../infra/poll.ts";
+import { processes } from "../infra/processes.ts";
+
+const STOP_WAIT_SECONDS = 10;
+const STOP_WAIT_MS = STOP_WAIT_SECONDS * durations.MS_PER_SECOND;
+const STOP_POLL_MS = 200;
 
 const SESSION_START_STATE = {
   started: "started",
@@ -50,7 +57,7 @@ interface SessionEnsureInput {
 }
 
 /** The task's background `claude` sessions, all started in its task worktree. */
-export const sessions = { ensure, run, resume, attach, stop, findState, findStates };
+export const sessions = { ensure, run, resume, attach, stop, findCurrent, findState, findStates };
 
 /** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
@@ -77,10 +84,15 @@ async function run(target: SessionTarget, start: ClaudeStart): Promise<void> {
   await claude.startBackground(claudeRun, start);
 }
 
-/** `tenbox answer`: stops the task's sessions, then wakes the one that ran the workflow. */
+/**
+ * `tenbox answer`: stops the task's sessions, then wakes the one that ran the workflow. `claude
+ * stop` returns before the session ends, and a resume before then starts a copy under a new id,
+ * which cannot find the run's journal; so it waits until their processes have ended.
+ */
 async function resume(target: SessionTarget, resumed: ClaudeResume): Promise<void> {
   const claudeRun = await requireRun(target);
-  await stop(target);
+  const stopped = await stopAll(claudeRun);
+  await waitEnded(stopped);
   await claude.resumeBackground(claudeRun, resumed);
 }
 
@@ -100,9 +112,35 @@ async function stop(target: SessionTarget): Promise<SessionStopState> {
   if (!exists) return SESSION_STOP_STATE.skipped;
   const claudeRun = await openRun(target);
   if (claudeRun === null) return SESSION_STOP_STATE.skipped;
+  const stopped = await stopAll(claudeRun);
+  return stopped.length > 0 ? SESSION_STOP_STATE.stopped : SESSION_STOP_STATE.skipped;
+}
+
+/** Returns the sessions it stopped. */
+async function stopAll(claudeRun: ClaudeRun): Promise<BackgroundSession[]> {
   const found = await claude.listBackground(claudeRun);
   for (const session of found) await claude.stop(claudeRun, session.id);
-  return found.length > 0 ? SESSION_STOP_STATE.stopped : SESSION_STOP_STATE.skipped;
+  return found;
+}
+
+async function waitEnded(stopped: BackgroundSession[]): Promise<void> {
+  const running = () => stopped.filter((session) => processes.isRunning(session.pid));
+  const check = async () => (running().length > 0 ? null : true);
+  const deadlineMs = Date.now() + STOP_WAIT_MS;
+  const ended = await pollUntil({ check, deadlineMs, intervalMs: STOP_POLL_MS });
+  if (ended !== null) return;
+  const ids = running().map((session) => session.id);
+  throw claudeError("stop", `${ids.join(", ")} still running after ${STOP_WAIT_SECONDS} s`);
+}
+
+/** The background session of the task worktree that runs this command; null outside one. */
+async function findCurrent(target: SessionTarget): Promise<BackgroundSession | null> {
+  const current = env().claudeSession;
+  if (current === null) return null;
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) return null;
+  const found = await claude.listBackground(claudeRun);
+  return found.find((session) => session.sessionId === current) ?? null;
 }
 
 /** The `claude` binary in the task worktree, whose real path Claude Code records; null without `claude`. */

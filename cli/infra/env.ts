@@ -2,6 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import { DEFAULT_FAILURE_PATTERN } from "../../domain/failures.ts";
 
+export const CLAUDE_SESSION_VAR = "CLAUDE_CODE_SESSION_ID";
+
 export interface Env {
   cwd: string;
   /** `~/wt`; `TENBOX_WT_ROOT` overrides. */
@@ -22,6 +24,8 @@ export interface Env {
   home: string;
   /** `TENBOX_DEBUG=1`: log every run and print a stack for every error. */
   debug: boolean;
+  /** `CLAUDE_CODE_SESSION_ID`: the full id of the Claude Code session that runs this command. */
+  claudeSession: string | null;
   /** `CLAUDECODE` is set: the command runs inside a Claude Code session, so an agent runs it. */
   agent: boolean;
 }
@@ -40,6 +44,7 @@ export function env(): Env {
     kubeconfig: process.env.KUBECONFIG ?? path.join(os.homedir(), ".kube", "config"),
     home: os.homedir(),
     debug: process.env.TENBOX_DEBUG === "1",
+    claudeSession: process.env[CLAUDE_SESSION_VAR] ?? null,
     agent: Boolean(process.env.CLAUDECODE),
   };
 }

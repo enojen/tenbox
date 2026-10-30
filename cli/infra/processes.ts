@@ -2,7 +2,7 @@ import { closeSync, openSync } from "node:fs";
 import type { TenboxError } from "../../domain/errors/index.ts";
 import { noCommandError, noDirError } from "../../domain/errors/tools.ts";
 import { elapsedMs } from "./clock.ts";
-import { env, log } from "./env.ts";
+import { CLAUDE_SESSION_VAR, env, log } from "./env.ts";
 import { files } from "./files.ts";
 import { hasErrorCode } from "./nodeErrors.ts";
 
@@ -33,7 +33,17 @@ const ENOENT = "ENOENT";
 const running = new Set<number>();
 
 /** Runs a program without a shell: Tenbox starts only git, gh, docker, claude and itself. */
-export const processes = { run, runInTerminal, runSelf, selfCommand, stopAll, which };
+export const processes = { run, runInTerminal, runSelf, selfCommand, stopAll, which, isRunning };
+
+/** True while a process of this user has the pid; signal 0 only checks. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Path of a program in the current PATH; Bun.which alone reads the PATH from startup. */
 function which(name: string): string | null {
@@ -89,7 +99,7 @@ function runSelf(self: SelfRun): void {
   try {
     const proc = Bun.spawn(selfCommand(self.args), {
       cwd: self.cwd,
-      env: process.env,
+      env: outsideClaudeSession(),
       stdio: ["ignore", log, log],
       detached: true,
     });
@@ -97,6 +107,11 @@ function runSelf(self: SelfRun): void {
   } finally {
     closeSync(log);
   }
+}
+
+function outsideClaudeSession(): Record<string, string | undefined> {
+  const entries = Object.entries(process.env);
+  return Object.fromEntries(entries.filter(([name]) => name !== CLAUDE_SESSION_VAR));
 }
 
 async function start(
