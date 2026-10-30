@@ -11,8 +11,10 @@ import {
   roundsDir,
   tenboxDir,
 } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { durations } from "../../domain/utils.ts";
 import { builds } from "../application/builds.ts";
+import { tasks } from "../application/tasks.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { files } from "../infra/files.ts";
 import { pollUntil } from "../infra/poll.ts";
@@ -78,13 +80,20 @@ export function waitFor(
   return waitForFile({ ...input, kind: input.kind });
 }
 
+/**
+ * For `build`, a `build.json` counts only once no build runs, as the one of the build before
+ * stays until the new one is saved.
+ */
 async function waitForFile(input: WaitInput & { kind: WaitFileKind }): Promise<TaskFileResult> {
   const { id, kind, timeoutSeconds } = input;
   const taskWorktree = await worktrees.get(id);
-  const file = FILE_OF[kind](tenboxDir(taskWorktree));
+  const dir = tenboxDir(taskWorktree);
+  const file = FILE_OF[kind](dir);
   const check = async (): Promise<TaskFileResult | null> => {
     const exists = await files.exists(file);
-    return exists ? { ok: true, task: id, file } : null;
+    const building = await isBuilding(dir);
+    if (!exists || (kind === WAIT_KIND.build && building)) return null;
+    return { ok: true, task: id, file };
   };
   return pollOrTimeout({ what: file, timeoutSeconds, check });
 }
@@ -138,8 +147,19 @@ async function findChange(input: RoundChangeInput): Promise<WaitRoundResult | nu
   return null;
 }
 
-/** The unanswered card of a `needs-you` `build.json`; null when there is none. */
+/**
+ * True while `task.json` says `building`: from `tenbox build`, `decide` or `answer` until
+ * `build done`.
+ */
+async function isBuilding(dir: string): Promise<boolean> {
+  const task = await tasks.find(dir);
+  return task?.status === TASK_STATE.building;
+}
+
+/** The unanswered card of a `needs-you` `build.json`; null when there is none or a build runs. */
 async function findOpenDecision(dir: string): Promise<DecisionCard | null> {
+  const building = await isBuilding(dir);
+  if (building) return null;
   const build = await builds.find(dir);
   if (build?.status !== BUILD_STATUS.needsYou || build.answered !== undefined) return null;
   return build.decision ?? null;
