@@ -1,12 +1,14 @@
 import { answerNote, argsWithAnswer, getOpenCard } from "../../domain/answers.ts";
 import { getOption } from "../../domain/cards.ts";
+import { COMMAND } from "../../domain/commands.ts";
 import { noRunError } from "../../domain/errors/tasks.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import { tenboxDir } from "../../domain/taskDirs.ts";
+import { answerLog, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
 import { resumePrompt } from "../infra/claude/background.ts";
-import { claudeSessions } from "../infra/claude/sessionFiles.ts";
+import { claudeSessions, type ResumableRun } from "../infra/claude/sessionFiles.ts";
 import { files } from "../infra/files.ts";
+import { processes } from "../infra/processes.ts";
 import { builds } from "./builds.ts";
 import { decisions } from "./decisions.ts";
 import { sessions } from "./sessions.ts";
@@ -34,6 +36,8 @@ export interface AnswerSaved {
   run: string;
   /** The full id of the session that runs it again. */
   session: string;
+  /** Set when a tenbox of its own answers: its log file. */
+  log?: string;
 }
 
 const BUILD_WORKFLOW = "tenbox-build";
@@ -51,6 +55,8 @@ async function save(input: AnswerInput): Promise<AnswerSaved> {
   const cwd = await files.realPath(taskWorktree);
   const run = await claudeSessions.findLastRun(cwd, BUILD_WORKFLOW);
   if (run === null) throw noRunError(id);
+  const current = await sessions.findCurrent({ id, taskWorktree });
+  if (current !== null) return answerOutsideSession(input, run);
   const note = answerNote({ card: open.card, option, text, auto });
   await decisions.save(taskWorktree, [{ answer: note }]);
   const answered = { option, at: new Date().toISOString(), auto };
@@ -66,4 +72,13 @@ async function save(input: AnswerInput): Promise<AnswerSaved> {
   }
   await tasks.saveStatus(tenboxDir(taskWorktree), TASK_STATE.building);
   return { option, run: run.runId, session: run.session };
+}
+
+/** `sessions.resume` stops the task's sessions, so one of them cannot run it and go on. */
+function answerOutsideSession(input: AnswerInput, run: ResumableRun): AnswerSaved {
+  const { id, taskWorktree, option } = input;
+  const log = answerLog(tenboxDir(taskWorktree));
+  const args = [COMMAND.answer, id, String(option)];
+  processes.runSelf({ args, cwd: taskWorktree, logFile: log });
+  return { option, run: run.runId, session: run.session, log };
 }

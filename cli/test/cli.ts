@@ -86,6 +86,7 @@ type FakeSessionKind = "background" | "interactive";
 /** A background session as `claude agents --json` lists it. */
 export interface FakeSession {
   id: string;
+  sessionId?: string;
   cwd: string;
   kind: FakeSessionKind;
   startedAt: number;

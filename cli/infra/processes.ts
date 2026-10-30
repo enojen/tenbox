@@ -2,7 +2,7 @@ import { closeSync, openSync } from "node:fs";
 import type { TenboxError } from "../../domain/errors/index.ts";
 import { noCommandError, noDirError } from "../../domain/errors/tools.ts";
 import { elapsedMs } from "./clock.ts";
-import { env, log } from "./env.ts";
+import { CLAUDE_SESSION_VAR, env, log } from "./env.ts";
 import { files } from "./files.ts";
 import { hasErrorCode } from "./nodeErrors.ts";
 
@@ -89,7 +89,7 @@ function runSelf(self: SelfRun): void {
   try {
     const proc = Bun.spawn(selfCommand(self.args), {
       cwd: self.cwd,
-      env: process.env,
+      env: outsideClaudeSession(),
       stdio: ["ignore", log, log],
       detached: true,
     });
@@ -97,6 +97,11 @@ function runSelf(self: SelfRun): void {
   } finally {
     closeSync(log);
   }
+}
+
+function outsideClaudeSession(): Record<string, string | undefined> {
+  const entries = Object.entries(process.env);
+  return Object.fromEntries(entries.filter(([name]) => name !== CLAUDE_SESSION_VAR));
 }
 
 async function start(

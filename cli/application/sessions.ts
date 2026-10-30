@@ -9,7 +9,7 @@ import {
   type ClaudeStart,
   claude,
 } from "../infra/claude/background.ts";
-import { log } from "../infra/env.ts";
+import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 
 const SESSION_START_STATE = {
@@ -50,7 +50,7 @@ interface SessionEnsureInput {
 }
 
 /** The task's background `claude` sessions, all started in its task worktree. */
-export const sessions = { ensure, run, resume, attach, stop, findState, findStates };
+export const sessions = { ensure, run, resume, attach, stop, findCurrent, findState, findStates };
 
 /** `tenbox start`: starts the plan unless a session of the task worktree is listed. */
 async function ensure(input: SessionEnsureInput): Promise<SessionStartInfo> {
@@ -103,6 +103,16 @@ async function stop(target: SessionTarget): Promise<SessionStopState> {
   const found = await claude.listBackground(claudeRun);
   for (const session of found) await claude.stop(claudeRun, session.id);
   return found.length > 0 ? SESSION_STOP_STATE.stopped : SESSION_STOP_STATE.skipped;
+}
+
+/** The background session of the task worktree that runs this command; null outside one. */
+async function findCurrent(target: SessionTarget): Promise<BackgroundSession | null> {
+  const current = env().claudeSession;
+  if (current === null) return null;
+  const claudeRun = await openRun(target);
+  if (claudeRun === null) return null;
+  const found = await claude.listBackground(claudeRun);
+  return found.find((session) => session.sessionId === current) ?? null;
 }
 
 /** The `claude` binary in the task worktree, whose real path Claude Code records; null without `claude`. */
