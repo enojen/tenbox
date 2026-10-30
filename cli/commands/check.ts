@@ -50,6 +50,7 @@ interface Round {
   project: Project;
   checks: Record<string, string>;
   pattern: string;
+  setup: string | undefined;
   head: string;
   base: string;
   baseSha: string;
@@ -59,6 +60,8 @@ interface Round {
 interface CheckSetup {
   checks: Record<string, string>;
   pattern: string;
+  /** The manifest's `setup`, for a baseline taken at the base commit. */
+  setup: string | undefined;
 }
 
 interface RoundDir {
@@ -125,7 +128,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
     manifest,
     taskWorktree,
   });
-  const setup = await getChecks(project.mainDir, taskWorktree, input.tier);
+  const checkSetup = await getChecks(project.mainDir, taskWorktree, input.tier);
   const { number, dir } = await ensureRound(groupRoot(taskWorktree, group), input);
   const { head, baseSha } = await getCommits(cwd, base);
   const timeoutMs = input.timeoutMs;
@@ -137,7 +140,7 @@ async function prepareRound(input: CheckInput): Promise<Round> {
     taskWorktree,
     cwd,
     project,
-    ...setup,
+    ...checkSetup,
     head,
     base,
     baseSha,
@@ -159,6 +162,7 @@ async function getChecks(
   return {
     checks: manifest.checks[tier],
     pattern: manifest.failure_pattern ?? env().failurePattern,
+    setup: manifest.setup,
   };
 }
 
@@ -188,8 +192,8 @@ async function getCommits(taskWorktree: string, base: string): Promise<Commits> 
 }
 
 async function runCheck(round: Round, check: NamedCheck): Promise<CheckRun> {
-  const { project, cwd, pattern, baseSha, timeoutMs } = round;
-  const request = { ...check, project, cwd, pattern, baseSha, timeoutMs };
+  const { project, cwd, pattern, setup, baseSha, timeoutMs } = round;
+  const request = { ...check, project, cwd, pattern, setup, baseSha, timeoutMs };
   const { outcome, output } = await checks.run(request);
   const logFile = checkLogFile(round.dir, check.name);
   await files.write(logFile, output);

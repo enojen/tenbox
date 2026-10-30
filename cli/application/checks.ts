@@ -1,5 +1,10 @@
 import { type CheckOutcome, type CheckResult, readCheckResult } from "../../domain/checks.ts";
-import { compareWithBaseline, findFlaky, parseFailures } from "../../domain/failures.ts";
+import {
+  compareWithBaseline,
+  type FailureLine,
+  findFlaky,
+  parseFailures,
+} from "../../domain/failures.ts";
 import type { Project } from "../../domain/projects.ts";
 import { roundNumbers } from "../../domain/rounds.ts";
 import { checksFile, roundDir, roundsDir } from "../../domain/taskDirs.ts";
@@ -7,7 +12,7 @@ import { elapsedMs } from "../infra/clock.ts";
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { type ShellResult, shell } from "../infra/shell.ts";
-import { baselines } from "./baselines.ts";
+import { type BaselineHit, baselines } from "./baselines.ts";
 
 /**
  * One check run and judged: only failures the base commit did not have count. `find` reads what
@@ -22,6 +27,8 @@ interface CheckRequest {
   name: string;
   cmd: string;
   pattern: string;
+  /** The manifest's `setup`, for a baseline taken at the base commit. */
+  setup: string | undefined;
   baseSha: string;
   timeoutMs: number;
 }
@@ -37,8 +44,8 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
   log(`tenbox check: ${name}: ${cmd}`);
   const started = performance.now();
   const first = await shell.run(cmd, { cwd, timeoutMs });
-  const hit = await baselines.find({ ...request, taskWorktree: cwd, check: name });
   const firstFailures = parseFailures(first.output, shell.exitCode(first), pattern);
+  const hit = await findBaseline(request, firstFailures);
   const firstJudged = compareWithBaseline(hit?.lines ?? [], firstFailures);
   const second = await rerunWhenNew({ request, newCount: firstJudged.newFailures.length });
   const last = second ?? first;
@@ -70,6 +77,22 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
     outcome,
     output: second ? `${first.output}\n--- rerun ---\n${second.output}` : first.output,
   };
+}
+
+/**
+ * An older baseline lacks the failures main gained since; new failures against one take the base
+ * commit's own before they count.
+ */
+async function findBaseline(
+  request: CheckRequest,
+  failures: FailureLine[],
+): Promise<BaselineHit | null> {
+  const baseline = { ...request, taskWorktree: request.cwd, check: request.name };
+  const hit = await baselines.find(baseline);
+  if (hit?.sha === request.baseSha) return hit;
+  const { newFailures } = compareWithBaseline(hit?.lines ?? [], failures);
+  if (newFailures.length === 0) return hit;
+  return baselines.takeAtBase(baseline);
 }
 
 interface RerunRequest {

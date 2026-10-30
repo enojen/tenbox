@@ -115,8 +115,8 @@ describe("runChecks", () => {
   });
 
   test("main moved on and no exact baseline: newest by mtime, given round kept", async () => {
-    await baselineStore.save(KEY, { sha: "old1", lines: lines("FAIL  x") }, META);
-    await baselineStore.save(KEY, { sha: "old2", lines: lines() }, META);
+    await baselineStore.save(KEY, { sha: "old1", lines: lines() }, META);
+    await baselineStore.save(KEY, { sha: "old2", lines: lines("FAIL  x") }, META);
     const past = new Date(Date.now() - MINUTE_MS);
     await utimes(path.join(env().baselinesRoot, "demo", "unit", "old1.txt"), past, past);
     await git.run(["commit", "-q", "--allow-empty", "-m", "moved"], project.mainDir);
@@ -124,11 +124,29 @@ describe("runChecks", () => {
     const r = await runChecks(input(7));
     expect(r.round).toBe(7);
     expect(r.checks[0]).toMatchObject({
-      baseline: { sha: "old2", source: "newest", failures: 0 },
-      new_failures: ["FAIL  x"],
+      baseline: { sha: "old2", source: "newest", failures: 1 },
+      new_failures: [],
     });
     const ran = await calls();
-    const expectedDirs = await realDirs(taskWorktree, taskWorktree);
+    const expectedDirs = await realDirs(taskWorktree);
+    expect(ran).toEqual(expectedDirs);
+  });
+
+  test("new failures against an older baseline: takes the base commit's own in a temporary worktree", async () => {
+    const baseSha = await baseShaOf();
+    await baselineStore.save(KEY, { sha: "old", lines: lines() }, META);
+    const r = await runChecks(input());
+    expect(r.ok).toBe(true);
+    expect(r.checks[0]).toMatchObject({
+      new_failures: [],
+      baseline: { sha: baseSha, source: "base", failures: 1 },
+    });
+    const saved = await files.read(
+      path.join(env().baselinesRoot, "demo", "unit", `${baseSha}.txt`),
+    );
+    expect(saved).toBe("FAIL  old\n");
+    const ran = await calls();
+    const expectedDirs = await realDirs(taskWorktree);
     expect(ran).toEqual(expectedDirs);
   });
 });
