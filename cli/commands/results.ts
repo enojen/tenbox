@@ -10,7 +10,7 @@ import type { StatsProof } from "../../domain/proofs.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/prs.ts";
 import type { RoundStatus } from "../../domain/rounds.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
-import type { StatusReport } from "../../domain/statusReports.ts";
+import type { ListedReport, StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
 import type { MachineRunRow, MachineVolume } from "../application/machines.ts";
@@ -300,10 +300,10 @@ export interface StatusResult extends StatusReport {
   ok: true;
 }
 
-/** `tenbox list`: the status report of each task worktree of the project. */
+/** `tenbox list`: the status report of each task worktree of the project, or its error. */
 export interface ListResult {
   ok: true;
-  tasks: StatusReport[];
+  tasks: ListedReport[];
 }
 
 /** `tenbox wait --for decision|any`: what ended the wait; `decision` is the open card, else null. */
