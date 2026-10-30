@@ -80,4 +80,35 @@ describe("tenbox list", () => {
     const run = await list();
     expect(run.json.tasks).toMatchObject([{ task: "T-1" }]);
   });
+
+  test("leaves out a file and a directory whose name is not a task id", async () => {
+    await start("T-1");
+    await files.write(path.join(project.wtRoot, "demo", "1-a.ci.log"), "log\n");
+    await files.write(path.join(project.wtRoot, "demo", "lib-1.2.3", ".tenbox", "x"), "");
+    const run = await list();
+    expect(run.code).toBe(0);
+    expect(run.json.tasks).toMatchObject([{ task: "T-1" }]);
+  });
+
+  test("a task whose report fails gives its error and the list goes on", async () => {
+    await start("T-1");
+    await start("T-2");
+    const checks = path.join(
+      project.wtRoot,
+      "demo",
+      "T-1",
+      ".tenbox",
+      "rounds",
+      "1",
+      "checks.json",
+    );
+    await files.write(checks, '{ "ok": true }\n');
+    const run = await list();
+    expect(run.code).toBe(0);
+    expect(run.json.tasks).toMatchObject([
+      { task: "T-1", code: "bad-file", error: expect.stringContaining("checks.json") },
+      { task: "T-2", status: "started" },
+    ]);
+    expect(run.err).toContain("T-1 · bad-file · ");
+  });
 });

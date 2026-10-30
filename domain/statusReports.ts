@@ -29,8 +29,19 @@ export interface StatusReport {
   checks: ReportChecks | null;
 }
 
+/** A task whose status report failed in `tenbox list`: the error as a failed command prints it. */
+export interface FailedReport {
+  task: string;
+  error: string;
+  code: string;
+}
+
+/** One task of `tenbox list`. */
+export type ListedReport = StatusReport | FailedReport;
+
 /** One line for `tenbox list` on stderr. */
-export function reportLine(report: StatusReport): string {
+export function reportLine(report: ListedReport): string {
+  if ("error" in report) return [report.task, report.code, report.error].join(" · ");
   const { task, status, round, parts, session, pr } = report;
   const total = parts.todo + parts.doing + parts.done + parts.blocked;
   return [

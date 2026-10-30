@@ -1,10 +1,15 @@
 import path from "node:path";
 import { TenboxError } from "../../domain/errors/index.ts";
-import { type TaskId, taskId } from "../../domain/ids.ts";
+import { isSafeName, type TaskId, taskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import { taskBranch } from "../../domain/names.ts";
 import { roundNumbers } from "../../domain/rounds.ts";
-import type { ReportChecks, ReportPr, StatusReport } from "../../domain/statusReports.ts";
+import type {
+  ListedReport,
+  ReportChecks,
+  ReportPr,
+  StatusReport,
+} from "../../domain/statusReports.ts";
 import { approvedFile, checksFile, roundDir, roundsDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { taskWorktreeDir, taskWorktreeNames } from "../../domain/worktrees.ts";
 import { env, log } from "../infra/env.ts";
@@ -77,19 +82,31 @@ async function findChecks(dir: string, rounds: number[]): Promise<ReportChecks |
   return null;
 }
 
-/** The status report of every task worktree of the project around the current directory, by id. */
-async function list(): Promise<StatusReport[]> {
+/**
+ * The status report of every task worktree of the project around the current directory, by id.
+ * A name that is not a task id is left out; a task whose report fails gives its error.
+ */
+async function list(): Promise<ListedReport[]> {
   const { cwd, wtRoot } = env();
   const { project } = await projects.get(cwd);
   const dir = path.join(wtRoot, project.name);
   const names = await files.list(dir);
   const targets: SessionTarget[] = [];
-  for (const name of taskWorktreeNames(names).sort()) {
+  for (const name of taskWorktreeNames(names.filter(isSafeName)).sort()) {
     const id = taskId(name);
     const taskWorktree = taskWorktreeDir(wtRoot, project.name, id);
     const started = await files.isDir(tenboxDir(taskWorktree));
     if (started) targets.push({ id, taskWorktree });
   }
   const states = await sessions.findStates({ dir, targets });
-  return Promise.all(states.map(report));
+  return Promise.all(states.map(listed));
+}
+
+async function listed(source: TargetState): Promise<ListedReport> {
+  try {
+    return await report(source);
+  } catch (e) {
+    if (!(e instanceof TenboxError)) throw e;
+    return { task: source.id, error: e.message, code: e.code };
+  }
 }
