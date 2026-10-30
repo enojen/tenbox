@@ -1,9 +1,9 @@
-import { readProofs, type StatsProof } from "../../domain/proofs.ts";
+import { readProofs, type StatsProof, withNewProofs } from "../../domain/proofs.ts";
 import { proofsFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { files } from "../infra/files.ts";
 
 /** Proofs: the worker proofs `tenbox proof` records in `.tenbox/proofs.json`, a JSON array. */
-export const proofs = { read, append, appendAll };
+export const proofs = { read, append, appendNew };
 
 /** None when the file is missing; `bad-file` unless it is an array of valid proofs. */
 async function read(taskWorktree: string): Promise<StatsProof[]> {
@@ -13,14 +13,19 @@ async function read(taskWorktree: string): Promise<StatsProof[]> {
 }
 
 /** Returns the path of `proofs.json`. */
-function append(taskWorktree: string, proof: StatsProof): Promise<string> {
-  return appendAll(taskWorktree, [proof]);
+async function append(taskWorktree: string, proof: StatsProof): Promise<string> {
+  const recorded = await read(taskWorktree);
+  return write(taskWorktree, [...recorded, proof]);
 }
 
-/** Returns the path of `proofs.json`. */
-async function appendAll(taskWorktree: string, added: StatsProof[]): Promise<string> {
+/** Appends only the proofs `proofs.json` does not hold yet; returns its path. */
+async function appendNew(taskWorktree: string, added: StatsProof[]): Promise<string> {
   const recorded = await read(taskWorktree);
+  return write(taskWorktree, withNewProofs(recorded, added));
+}
+
+async function write(taskWorktree: string, all: StatsProof[]): Promise<string> {
   const file = proofsFile(tenboxDir(taskWorktree));
-  await files.writeJson(file, [...recorded, ...added]);
+  await files.writeJson(file, all);
   return file;
 }

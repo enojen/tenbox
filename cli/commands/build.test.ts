@@ -544,6 +544,13 @@ describe("tenbox build done", () => {
     expect(recorded).toEqual([proof("first"), proof("second")]);
   });
 
+  test("a second result of the same run appends only the proofs not yet recorded", async () => {
+    await buildDone(...withJson({}));
+    await buildDone(...withJson({ round: 2, proofs: [proof("first"), proof("second")] }));
+    const recorded = await readJson(proofsJson);
+    expect(recorded).toEqual([proof("first"), proof("second")]);
+  });
+
   describe("findings", () => {
     const finding = (title: string) => ({ title, why: "w", what: "x", done: "d" });
     const worktreeManifest = (): string => path.join(taskWorktree(), "tenbox.yaml");
