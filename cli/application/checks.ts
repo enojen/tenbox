@@ -1,6 +1,8 @@
 import { type CheckOutcome, type CheckResult, readCheckResult } from "../../domain/checks.ts";
 import { compareWithBaseline, findFlaky, parseFailures } from "../../domain/failures.ts";
 import type { Project } from "../../domain/projects.ts";
+import { roundNumbers } from "../../domain/rounds.ts";
+import { checksFile, roundDir, roundsDir } from "../../domain/taskDirs.ts";
 import { elapsedMs } from "../infra/clock.ts";
 import { log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
@@ -11,7 +13,7 @@ import { baselines } from "./baselines.ts";
  * One check run and judged: only failures the base commit did not have count. `find` reads what
  * `tenbox check` wrote to a round.
  */
-export const checks = { run, summarize, find };
+export const checks = { run, summarize, find, findLatest };
 
 interface CheckRequest {
   project: Project;
@@ -107,4 +109,17 @@ function describeFlaky(outcome: CheckOutcome): string {
 async function find(file: string): Promise<CheckResult | null> {
   const text = await files.read(file);
   return text === null ? null : readCheckResult(text, file);
+}
+
+/**
+ * The result of the newest round of `roundsRoot` that has a `checks.json`; a check that was
+ * stopped leaves its round without one.
+ */
+async function findLatest(roundsRoot: string): Promise<CheckResult | null> {
+  const names = await files.list(roundsDir(roundsRoot));
+  for (const round of roundNumbers(names).reverse()) {
+    const result = await find(checksFile(roundDir(roundsRoot, round)));
+    if (result !== null) return result;
+  }
+  return null;
 }
