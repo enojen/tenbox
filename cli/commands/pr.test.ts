@@ -573,3 +573,17 @@ test("--wait keeps polling through a pending line until the checks pass", async 
   expect(slept).toBeGreaterThan(0);
   expect(slept).toBeLessThan(HALF_HOUR_MS);
 });
+
+test("a plan.json that is no longer valid is bad-file and pushes nothing", async () => {
+  await makeGroupTask();
+  const file = path.join(taskWorktree, ".tenbox", "plan.json");
+  const text = await files.read(file);
+  const { examples: _examples, ...plan } = JSON.parse(text ?? "null");
+  await files.write(file, JSON.stringify({ ...plan, criteria: ["c"] }));
+  const gh = await installGh();
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  const branches = await originBranches();
+  expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "bad-file"]);
+  expect(run.json.error).toContain("examples");
+  expect(branches).toBe("");
+});
