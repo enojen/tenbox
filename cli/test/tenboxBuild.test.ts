@@ -639,7 +639,6 @@ test("the record schema keeps pr with its groups, and the result has no top-leve
 
 interface GroupRunOptions {
   groups: Group[];
-  /** Parts `tenbox build` leaves out of the args, as their part files say done. */
   doneParts?: string[];
   blockedPart?: string;
   redGroup?: number;

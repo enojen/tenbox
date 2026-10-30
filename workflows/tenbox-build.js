@@ -372,7 +372,6 @@ const openWorktree = (group) => group.id === 1
   : agent(`Run \`tenbox worktree ${task} --group ${group.id}\` and return its JSON.`,
     { agentType: 'runner', schema: WORKTREE, phase: 'Build', label: `round 1: g${group.id} worktree` })
 const WAITING = 'waiting'
-// The group's scope, its worktree opened the first time a round needs it; `{ end }` when it cannot open.
 const ensureScope = async (group, round) => {
   if (scopes.has(group.id)) return { scope: scopes.get(group.id) }
   const opened = await openWorktree(group)
@@ -386,7 +385,6 @@ const ensureScope = async (group, round) => {
 const buildGroup = async (group, runs) => {
   const needs = await Promise.all(group.needs.map((id) => runs.get(id)))
   if (needs.some((end) => end.status !== BUILD_STATUS.readyForYou)) return { status: WAITING }
-  // `tenbox build` leaves out the done parts: a group with none left was built before.
   const parts = input.parts.filter((part) => group.parts.includes(part.id))
   if (!parts.length) return { status: BUILD_STATUS.readyForYou, round: 0 }
   const { scope, end } = await ensureScope(group, 0)

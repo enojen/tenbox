@@ -90,14 +90,10 @@ export interface BuildArgs {
 export interface BuildArgsInput {
   task: string;
   plan: PlanResult;
-  /** The ids of the parts whose part file says `done`. */
   done: string[];
 }
 
-/**
- * The args of a plan, with its lenses and group recipes as its kind gives them. A done part is
- * left out: its worker would have nothing to commit.
- */
+/** The args of a plan, with its lenses and group recipes as its kind gives them. */
 export function buildArgs(input: BuildArgsInput): BuildArgs {
   const { task, plan, done } = input;
   const parts = plan.parts.filter((part) => !done.includes(part.id));

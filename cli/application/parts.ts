@@ -28,7 +28,6 @@ async function get(dir: string): Promise<PartCounts> {
   return countParts(statuses.map((part) => part.status));
 }
 
-/** The ids of the parts whose part file says `status: done`. */
 async function readDone(dir: string): Promise<string[]> {
   const statuses = await readStatuses(dir);
   return statuses.filter((part) => part.status === PART_STATUS.done).map((part) => part.id);
