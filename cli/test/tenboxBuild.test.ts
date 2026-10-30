@@ -639,6 +639,8 @@ test("the record schema keeps pr with its groups, and the result has no top-leve
 
 interface GroupRunOptions {
   groups: Group[];
+  /** Parts `tenbox build` leaves out of the args, as their part files say done. */
+  doneParts?: string[];
   blockedPart?: string;
   redGroup?: number;
 }
@@ -693,7 +695,8 @@ async function runGroups(options: GroupRunOptions): Promise<GroupRun> {
     events.push(`end ${agentOptions.label}`);
     return answer;
   };
-  const parts = options.groups.flatMap((group) => group.parts);
+  const done = options.doneParts ?? [];
+  const parts = options.groups.flatMap((group) => group.parts).filter((id) => !done.includes(id));
   const args = planArgs(parts, [], { groups: options.groups, maxRounds: 1 });
   const result = await runWorkflow(args, agent);
   return { result, calls, events };
@@ -741,6 +744,16 @@ test("each group builds the plan parts of its group only", async () => {
   const { calls } = await runGroups({ groups: [groupFor(1, ["01", "03"]), groupFor(2, ["02"])] });
   const workers = calls.filter((call) => call.agentType === "worker").map((call) => call.label);
   expect(workers.sort()).toEqual(["round 1: g1 01", "round 1: g1 03", "round 1: g2 02"]);
+});
+
+test("a group whose parts are all done runs no agent and is ready for the group that needs it", async () => {
+  const { calls, result } = await runGroups({
+    groups: [groupFor(1, ["01", "02"]), groupFor(2, ["03"], [1])],
+    doneParts: ["01", "02"],
+  });
+  const group1 = calls.filter((call) => groupOf(call.label) === 1);
+  const workers = calls.filter((call) => call.agentType === "worker").map((call) => call.label);
+  expect([group1.length, workers, result.status]).toEqual([0, ["round 1: g2 03"], "ready-for-you"]);
 });
 
 test("the recipe sets the workers' model and effort and the group's lenses", async () => {
@@ -807,6 +820,25 @@ test("a red full tier of group 2 gives group 2 the next round in its worktree", 
   const round2 = calls.filter((call) => roundOf(call.label) === 2).map((call) => call.label);
   expect(round2).toEqual(["round 2: g2 parts", "round 2: g2 01", "round 2: g2 base"]);
   expect(calls.find((call) => call.label === "round 2: g2 01")?.prompt).toContain("/wt/TB-1-2");
+  expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
+});
+
+test("a red full tier of a group whose parts were all done gives it the next round in its worktree", async () => {
+  const groups = [groupFor(1, ["01"]), groupFor(2, ["02"])];
+  let records = 0;
+  const red = { ...refusal("check-failed", "full"), details: { group: 2, tier: "full" } };
+  const { calls, recorder } = recording(
+    scripted({
+      runner: async (prompt, options) => {
+        if (options.label !== RECORD_LABEL) return runnerReply(prompt, options.label);
+        records += 1;
+        return records === 1 ? red : { ok: true, file: "f" };
+      },
+    }),
+  );
+  const result = await runWorkflow(planArgs(["01"], [], { groups }), recorder);
+  const worker2 = calls.find((call) => call.label === "round 2: g2 01");
+  expect(worker2?.prompt).toContain("/wt/TB-1-2");
   expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
 });
 
@@ -1010,7 +1042,7 @@ const raised = {
 };
 
 /** A run whose first `build done` answers `kind-raised`; `groups` are the plan groups. */
-async function runKindRaised(groups: Group[] = []) {
+async function runKindRaised(groups: Group[] = [], doneParts: string[] = []) {
   let records = 0;
   const { calls, recorder } = recording(
     scripted({
@@ -1021,7 +1053,8 @@ async function runKindRaised(groups: Group[] = []) {
       },
     }),
   );
-  const parts = groups.length ? groups.flatMap((group) => group.parts) : ["01"];
+  const planned = groups.length ? groups.flatMap((group) => group.parts) : ["01"];
+  const parts = planned.filter((id) => !doneParts.includes(id));
   const args = planArgs(parts, [], { kind: "small", reviews: 1, groups });
   const result = await runWorkflow(args, recorder);
   const round2 = calls.filter((call) => roundOf(call.label) === 2);
@@ -1058,5 +1091,15 @@ test("kind-raised gives every group one more round in its own worktree", async (
   ]);
   const checks2 = round2.find((call) => call.label === "round 2: g2 checks");
   expect(checks2?.prompt).toContain("tenbox check TB-1 --group 2");
+  expect(result).toMatchObject({ status: "ready-for-you", kind: "normal" });
+});
+
+test("kind-raised also reviews a group whose parts were all done, in its own worktree", async () => {
+  const groups = [groupFor(1, ["01"]), groupFor(2, ["02"])];
+  const { result, round2 } = await runKindRaised(groups, ["02"]);
+  const labels = round2.map((call) => call.label);
+  expect(labels).toContain("round 2: g2 checks");
+  const base2 = round2.find((call) => call.label === "round 2: g2 base");
+  expect(base2?.prompt).toContain("/wt/TB-1-2");
   expect(result).toMatchObject({ status: "ready-for-you", kind: "normal" });
 });
