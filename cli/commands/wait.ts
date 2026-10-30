@@ -80,10 +80,6 @@ export function waitFor(
   return waitForFile({ ...input, kind: input.kind });
 }
 
-/**
- * For `build`, a `build.json` counts only once no build runs, as the one of the build before
- * stays until the new one is saved.
- */
 async function waitForFile(input: WaitInput & { kind: WaitFileKind }): Promise<TaskFileResult> {
   const { id, kind, timeoutSeconds } = input;
   const taskWorktree = await worktrees.get(id);
@@ -147,16 +143,12 @@ async function findChange(input: RoundChangeInput): Promise<WaitRoundResult | nu
   return null;
 }
 
-/**
- * True while `task.json` says `building`: from `tenbox build`, `decide` or `answer` until
- * `build done`.
- */
 async function isBuilding(dir: string): Promise<boolean> {
   const task = await tasks.find(dir);
   return task?.status === TASK_STATE.building;
 }
 
-/** The unanswered card of a `needs-you` `build.json`; null when there is none or a build runs. */
+/** The unanswered card of a `needs-you` `build.json`; null when there is none. */
 async function findOpenDecision(dir: string): Promise<DecisionCard | null> {
   const building = await isBuilding(dir);
   if (building) return null;
