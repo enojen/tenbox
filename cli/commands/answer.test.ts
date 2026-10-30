@@ -141,6 +141,18 @@ describe("tenbox answer", () => {
     expect(prompt).toContain(JSON.stringify({ task: "T-1", answer }));
   });
 
+  test("resumes only once the process of the stopped session has ended", async () => {
+    await setup();
+    await writeBuildRun();
+    const session = Bun.spawn(["sleep", "1"]);
+    await fake.setSessions([
+      { id: "6b17f570", cwd: real, kind: "background", startedAt: 1, pid: session.pid },
+    ]);
+    const answered = await run("answer", "T-1", "2");
+    expect(answered.code).toBe(0);
+    expect(session.exitCode).toBe(0);
+  });
+
   test("run in a session of the task, a tenbox of its own stops the sessions and resumes", async () => {
     await setup();
     await writeBuildRun();

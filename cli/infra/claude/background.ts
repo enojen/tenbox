@@ -30,6 +30,8 @@ export interface BackgroundSession {
   busy: boolean;
   /** The `state` of `claude agents`: working, blocked, done; `unknown` when it has none. */
   state: string;
+  /** The session's process; it ends a little after `claude stop` returns. */
+  pid: number;
 }
 
 /** A command run in one directory with the `claude` binary found in `PATH`. */
@@ -158,6 +160,7 @@ async function listUnder(run: ClaudeRun): Promise<BackgroundSession[]> {
         startedAt,
         busy: BUSY_STATES.includes(known),
         state: known,
+        pid,
       });
     }
   }
