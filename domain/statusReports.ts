@@ -30,7 +30,7 @@ export interface StatusReport {
 }
 
 /** A task whose status report failed in `tenbox list`: the error as a failed command prints it. */
-export interface FailedReport {
+interface FailedReport {
   task: string;
   error: string;
   code: string;
