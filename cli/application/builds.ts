@@ -16,7 +16,7 @@ export const builds = { save, update, find };
 async function save(taskWorktree: string, buildText: string): Promise<string> {
   const result = addDeadline(parseBuild(buildText), new Date());
   const earlier = await find(tenboxDir(taskWorktree));
-  await proofs.appendAll(taskWorktree, result.proofs.map(trimProof));
+  await proofs.appendNew(taskWorktree, result.proofs.map(trimProof));
   const unproven = [...(earlier?.unproven ?? []), ...result.unproven];
   const file = buildFile(tenboxDir(taskWorktree));
   await files.writeJson(file, { ...result, unproven });
