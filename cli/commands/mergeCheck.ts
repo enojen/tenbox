@@ -97,7 +97,8 @@ async function setupAndCheck(merge: Merge, dir: string): Promise<CheckOutcome[]>
   const pattern = manifest.failure_pattern ?? env().failurePattern;
   const outcomes: CheckOutcome[] = [];
   for (const [name, cmd] of Object.entries(everyCheck)) {
-    const request = { project, cwd: dir, name, cmd, pattern, baseSha: base.sha, timeoutMs };
+    const { setup } = manifest;
+    const request = { project, cwd: dir, name, cmd, pattern, setup, baseSha: base.sha, timeoutMs };
     const { outcome } = await checks.run(request);
     outcomes.push(outcome);
   }

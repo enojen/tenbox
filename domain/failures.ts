@@ -19,11 +19,15 @@ export function failureLine(raw: string): FailureLine {
 }
 
 /** The failures `main` already has at commit `sha`. A task is only blamed for failures not in here. */
-/** Where a check's baseline came from: the base commit, the newest stored, taken in main, or none. */
+/**
+ * Where a check's baseline came from: the base commit, the newest stored, taken in main, taken at
+ * the base commit in a temporary worktree, or none.
+ */
 export const BASELINE_SOURCE = {
   exact: "exact",
   newest: "newest",
   main: "main",
+  base: "base",
   none: "none",
 } as const;
 
