@@ -14,6 +14,7 @@ import type { ProjectId, TaskId } from "./ids.ts";
  *     proofs.json  stats.json      proofsFile, statsFile
  *     decisions.md  questions.md   decisionsFile, questionsFile
  *     override.yaml                overrideFile
+ *     answer.log                   answerLog
  *     auto-answer.log              autoAnswerLog
  *     parts/                       partsDir
  *     rounds/<N>/                  roundDir
@@ -63,6 +64,8 @@ export const decisionsFile = (dir: string): string => path.join(dir, "decisions.
 export const questionsFile = (dir: string): string => path.join(dir, "questions.md");
 /** `override.yaml` in a `.tenbox/` folder: the last manifest layer. */
 export const overrideFile = (dir: string): string => path.join(dir, "override.yaml");
+/** `answer.log` in a `.tenbox/` folder: the output of a `tenbox answer` run from a task session. */
+export const answerLog = (dir: string): string => path.join(dir, "answer.log");
 /** `auto-answer.log` in a `.tenbox/` folder: the output of the background `tenbox answer --auto`. */
 export const autoAnswerLog = (dir: string): string => path.join(dir, "auto-answer.log");
 /** `parts/` in a `.tenbox/` folder. */

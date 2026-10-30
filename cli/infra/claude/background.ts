@@ -22,6 +22,8 @@ export interface ClaudeStart {
 export interface BackgroundSession {
   /** The id that `claude attach` and `claude stop` take. */
   id: string;
+  /** The full id, as `CLAUDE_CODE_SESSION_ID` in the commands the session runs. */
+  sessionId: string | undefined;
   cwd: string;
   startedAt: number;
   /** True while the session works or waits for a person. */
@@ -83,6 +85,7 @@ export function resumePrompt(run: ResumableRun, args: object): string {
 const AgentListSchema = z.array(
   z.object({
     id: z.string().optional(),
+    sessionId: z.string().optional(),
     cwd: z.string(),
     kind: z.string(),
     startedAt: z.number(),
@@ -145,10 +148,17 @@ async function listUnder(run: ClaudeRun): Promise<BackgroundSession[]> {
   const result = jsons.check(AgentListSchema, stdout);
   if (!result.ok) throw claudeError("agents", "output is not a session list");
   const sessions: BackgroundSession[] = [];
-  for (const { id, cwd, kind, startedAt, state, pid } of result.value) {
+  for (const { id, sessionId, cwd, kind, startedAt, state, pid } of result.value) {
     if (kind === BACKGROUND && id !== undefined && pid !== undefined) {
       const known = state ?? UNKNOWN_STATE;
-      sessions.push({ id, cwd, startedAt, busy: BUSY_STATES.includes(known), state: known });
+      sessions.push({
+        id,
+        sessionId,
+        cwd,
+        startedAt,
+        busy: BUSY_STATES.includes(known),
+        state: known,
+      });
     }
   }
   return sessions;

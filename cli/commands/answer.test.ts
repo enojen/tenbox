@@ -141,6 +141,31 @@ describe("tenbox answer", () => {
     expect(prompt).toContain(JSON.stringify({ task: "T-1", answer }));
   });
 
+  test("run in a session of the task, a tenbox of its own stops the sessions and resumes", async () => {
+    await setup();
+    await writeBuildRun();
+    await fake.setSessions([
+      { id: "6b17f570", sessionId: SESSION, cwd: real, kind: "background", startedAt: 1, pid: 11 },
+    ]);
+    const inSession = { ...fake.env, CLAUDE_CODE_SESSION_ID: SESSION };
+    const answered = await tenbox(["answer", "T-1", "2"], project.mainDir, inSession);
+    const log = path.join(tenboxDir(), "answer.log");
+    expect([answered.code, answered.json]).toEqual([
+      0,
+      { ok: true, task: "T-1", option: 2, run: RUN_ID, session: SESSION, log },
+    ]);
+    await waitForText("task.json", "building");
+    const calls = await fake.calls();
+    expect(calls.map((call) => call.args.slice(0, 2))).toEqual([
+      ["agents", "--json"],
+      ["agents", "--json"],
+      ["stop", "6b17f570"],
+      ["--bg", "--resume"],
+    ]);
+    const build = await readBuild();
+    expect(build?.answered).toMatchObject({ option: 2, auto: false });
+  });
+
   test("a card answered by hand or with --auto sets the status building", async () => {
     await setup();
     await writeBuildRun();
