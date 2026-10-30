@@ -19,6 +19,7 @@ import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { AGENT_LABEL, newTaskOf, type TaskRef, type Tracker } from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
@@ -58,6 +59,7 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
     prompt: sent,
   };
   await sessions.run({ id, taskWorktree }, start);
+  await tasks.saveStatus(taskDir, TASK_STATE.building);
   return { ok: true, task: id, sent };
 }
 
