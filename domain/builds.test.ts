@@ -11,7 +11,7 @@ import {
 import type { DiffFile } from "./diffs.ts";
 import type { Group, Recipe } from "./groups.ts";
 import type { TaskKind } from "./kinds.ts";
-import type { PlanResult } from "./plans.ts";
+import type { PlanPart, PlanResult } from "./plans.ts";
 
 const IN_30_MINUTES = "2026-10-14T12:30:00.000Z";
 
@@ -93,7 +93,7 @@ const plan = (kind: TaskKind, groups?: Group[]): PlanResult => ({
 });
 
 test("the build args of a small plan drop the lenses and force the fast tier, with one review", () => {
-  const args = buildArgs({ task: "T-1", plan: plan("small", [GROUP]) });
+  const args = buildArgs({ task: "T-1", plan: plan("small", [GROUP]), done: [] });
   const recipe = { ...FAST, lenses: [] };
   expect(args).toEqual({
     task: "T-1",
@@ -105,8 +105,18 @@ test("the build args of a small plan drop the lenses and force the fast tier, wi
   });
 });
 
+test("the build args leave out the done parts and keep every group", () => {
+  const parts: PlanPart[] = [
+    { id: "01", difficulty: "easy" },
+    { id: "02", difficulty: "hard" },
+  ];
+  const twoParts = { ...plan("normal", [GROUP]), parts };
+  const args = buildArgs({ task: "T-1", plan: twoParts, done: ["01"] });
+  expect([args.parts, args.groups]).toEqual([[{ id: "02", difficulty: "hard" }], [GROUP]]);
+});
+
 test("the build args of a normal plan keep its lenses and recipes and give three reviews", () => {
-  const args = buildArgs({ task: "T-1", plan: plan("normal", [GROUP]) });
+  const args = buildArgs({ task: "T-1", plan: plan("normal", [GROUP]), done: [] });
   expect([args.kind, args.reviews, args.lenses, args.groups]).toEqual([
     "normal",
     3,
@@ -117,7 +127,7 @@ test("the build args of a normal plan keep its lenses and recipes and give three
 
 test("the build args of a large plan ask for every lens and the full tier", () => {
   const fast = { ...GROUP, recipe: { ...FAST, lenses: [] } };
-  const args = buildArgs({ task: "T-1", plan: plan("large", [fast]) });
+  const args = buildArgs({ task: "T-1", plan: plan("large", [fast]), done: [] });
   expect([args.lenses, args.groups?.[0]?.recipe]).toEqual([
     ["security", "contract"],
     { ...RECIPE, lenses: ["security", "contract"], tier: "full" },

@@ -91,6 +91,18 @@ describe("tenbox build", () => {
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
+  test("leaves out a part whose part file says done", async () => {
+    await setup();
+    const parts = [...PARTS, { id: "02", difficulty: "easy" }];
+    await approve({ ...planResult(), parts });
+    const partsDir = path.join(taskWorktree(), ".tenbox", "parts");
+    await files.write(path.join(partsDir, "01-a.md"), "# 01\nstatus: done\n");
+    await files.write(path.join(partsDir, "02-b.md"), "# 02\nstatus: blocked\n");
+    const built = await run("build", "T-1");
+    const args = { ...ARGS, parts: [{ id: "02", difficulty: "easy" }] };
+    expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
+  });
+
   test("sends the kind, its review rounds and the lenses and recipes the kind gives", async () => {
     await setup();
     const recipe = { ...RECIPE, lenses: ["contract"], tier: "full" };

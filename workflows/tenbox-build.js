@@ -372,17 +372,25 @@ const openWorktree = (group) => group.id === 1
   : agent(`Run \`tenbox worktree ${task} --group ${group.id}\` and return its JSON.`,
     { agentType: 'runner', schema: WORKTREE, phase: 'Build', label: `round 1: g${group.id} worktree` })
 const WAITING = 'waiting'
-const buildGroup = async (group, runs) => {
-  const needs = await Promise.all(group.needs.map((id) => runs.get(id)))
-  if (needs.some((end) => end.status !== BUILD_STATUS.readyForYou)) return { status: WAITING }
+// The group's scope, its worktree opened the first time a round needs it; `{ end }` when it cannot open.
+const ensureScope = async (group, round) => {
+  if (scopes.has(group.id)) return { scope: scopes.get(group.id) }
   const opened = await openWorktree(group)
   if (!opened?.ok || opened.worktree === undefined) {
-    return { status: BUILD_STATUS.failed, round: 0, feedback: opened?.error ?? 'tenbox worktree did not run' }
+    return { end: { status: BUILD_STATUS.failed, round, feedback: opened?.error ?? 'tenbox worktree did not run' } }
   }
   const scope = groupScope(group, opened.worktree)
   scopes.set(group.id, scope)
+  return { scope }
+}
+const buildGroup = async (group, runs) => {
+  const needs = await Promise.all(group.needs.map((id) => runs.get(id)))
+  if (needs.some((end) => end.status !== BUILD_STATUS.readyForYou)) return { status: WAITING }
+  // `tenbox build` leaves out the done parts: a group with none left was built before.
   const parts = input.parts.filter((part) => group.parts.includes(part.id))
-  return buildRounds(scope, firstStart({ parts, lenses: group.recipe.lenses }))
+  if (!parts.length) return { status: BUILD_STATUS.readyForYou, round: 0 }
+  const { scope, end } = await ensureScope(group, 0)
+  return end ?? buildRounds(scope, firstStart({ parts, lenses: group.recipe.lenses }))
 }
 // needs-you wins with the lowest such group, then failed, else every group is ready-for-you.
 const groupsEnd = (groups, ends) => {
@@ -408,9 +416,10 @@ const groups = input.groups ?? []
 const end = groups.length
   ? await buildGroups(groups)
   : await buildRounds(TASK_SCOPE, firstStart({ parts: input.parts, lenses: input.lenses ?? [] }))
-const fullTierRound = (done) => {
-  const scope = scopes.get(done.recorded.details.group) ?? TASK_SCOPE
-  return buildRounds(scope, { round: done.round + 1, feedback: done.recorded.error, listing: null })
+const fullTierRound = async (done) => {
+  const group = groups.find((g) => g.id === done.recorded.details.group)
+  const { scope, end } = group ? await ensureScope(group, done.round) : { scope: TASK_SCOPE }
+  return end ?? buildRounds(scope, { round: done.round + 1, feedback: done.recorded.error, listing: null })
 }
 // The new lenses never saw the diff: each scope reviews all of it again, with no parts to build.
 const raiseKind = async (done) => {
@@ -424,7 +433,11 @@ const raiseKind = async (done) => {
     return buildRounds(scope, start)
   }
   if (!groups.length) return rerun(TASK_SCOPE)
-  return groupsEnd(groups, await Promise.all(groups.map((group) => rerun(scopes.get(group.id)))))
+  const rerunGroup = async (group) => {
+    const { scope, end } = await ensureScope(group, done.round)
+    return end ?? rerun(scope)
+  }
+  return groupsEnd(groups, await Promise.all(groups.map(rerunGroup)))
 }
 let done = await record(end)
 while (redFullTier(done) || kindRaised(done)) {

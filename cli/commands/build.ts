@@ -27,6 +27,7 @@ import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
 import { manifests } from "../application/manifests.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
+import { parts } from "../application/parts.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
@@ -50,7 +51,8 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const { manifest } = await projects.get(taskWorktree);
   const taskDir = await files.realPath(tenboxDir(taskWorktree));
   const plan = await plans.get(taskDir);
-  const sent = `/tenbox-build ${JSON.stringify(buildArgs({ task: id, plan }))}`;
+  const done = await parts.readDone(taskDir);
+  const sent = `/tenbox-build ${JSON.stringify(buildArgs({ task: id, plan, done }))}`;
   const start = {
     id,
     model: manifest.model,
