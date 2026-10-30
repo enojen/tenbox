@@ -48,6 +48,10 @@ it: Bash goes back to the session directory after each call.
    `round` of its first JSON, when the command has no `--round`. Return the JSON fields of
    the last run as `checks`, also when it stays red. Never edit `checks.json`:
    `tenbox build done` reads it to verify the build.
+   Run it in one Bash call with `timeout: 600000`, so it ends in the foreground. When a
+   call still moves it to the background, wait for that run to end and read its output: never
+   start a second `tenbox check` and never kill a running one, as a stopped check leaves its
+   round without `checks.json`.
 8. Finish your part file: `status: done`, and a `result:` line with what was built, the
    number of tests, and the commit hash. Set `status: done` only after the part's tests and
    the last `tenbox check` are green.

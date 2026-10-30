@@ -31,6 +31,7 @@ const run = (...args: string[]): Promise<CliRun> => tenbox(args, project.mainDir
 const taskWorktree = (): string => path.join(project.wtRoot, "demo", "T-1");
 const planFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.md");
 const planJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.json");
+const taskJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "task.json");
 
 const PARTS = [{ id: "01", difficulty: "hard" }];
 const RECIPE = { model: "opus", effort: "high", lenses: [], tier: "fast" };
@@ -87,6 +88,18 @@ describe("tenbox build", () => {
     await approve(planResult(GROUPS));
     const built = await run("build", "T-1");
     const args = { ...ARGS, groups: GROUPS };
+    expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
+  });
+
+  test("leaves out a part whose part file says done", async () => {
+    await setup();
+    const parts = [...PARTS, { id: "02", difficulty: "easy" }];
+    await approve({ ...planResult(), parts });
+    const partsDir = path.join(taskWorktree(), ".tenbox", "parts");
+    await files.write(path.join(partsDir, "01-a.md"), "# 01\nstatus: done\n");
+    await files.write(path.join(partsDir, "02-b.md"), "# 02\nstatus: blocked\n");
+    const built = await run("build", "T-1");
+    const args = { ...ARGS, parts: [{ id: "02", difficulty: "easy" }] };
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
@@ -184,13 +197,23 @@ describe("tenbox build", () => {
     expect(prompts).toEqual([SENT]);
   });
 
-  test("a claude --bg that fails gives its message", async () => {
+  test("a claude --bg that fails gives its message and keeps the status approved", async () => {
     await setup();
     await approve();
     await fake.failWith("Workspace not trusted. Run `claude` once.");
     const built = await run("build", "T-1");
     expect([built.code, built.json.code]).toEqual([1, "claude"]);
     expect(built.json.error).toContain("Workspace not trusted");
+    const status = await readStatus(taskJsonFile());
+    expect(status).toBe("approved");
+  });
+
+  test("a sent build sets the status building", async () => {
+    await setup();
+    await approve();
+    await run("build", "T-1");
+    const status = await readStatus(taskJsonFile());
+    expect(status).toBe("building");
   });
 });
 
@@ -318,6 +341,15 @@ describe("tenbox build done", () => {
       const run = await buildDone(...readyJson);
       const written = await files.exists(buildJson);
       expect([run.code, run.json.code, written]).toEqual([1, "checks-stale", false]);
+    });
+
+    test("a round a stopped check left empty does not hide the green round before it", async () => {
+      await checkedTask();
+      const stopped = path.join(path.dirname(buildJson), "rounds", "2", "checks");
+      await files.mkdir(stopped);
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([run.code, run.json.error, written]).toEqual([0, undefined, true]);
     });
 
     test("a red checks.json at HEAD is check-failed with its summary and writes no build.json", async () => {
@@ -548,6 +580,13 @@ describe("tenbox build done", () => {
         { part: "02", reason: "r2" },
       ],
     });
+    expect(recorded).toEqual([proof("first"), proof("second")]);
+  });
+
+  test("a second result of the same run appends only the proofs not yet recorded", async () => {
+    await buildDone(...withJson({}));
+    await buildDone(...withJson({ round: 2, proofs: [proof("first"), proof("second")] }));
+    const recorded = await readJson(proofsJson);
     expect(recorded).toEqual([proof("first"), proof("second")]);
   });
 

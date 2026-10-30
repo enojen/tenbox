@@ -25,3 +25,15 @@ export function readProofs(text: string, file: string): StatsProof[] {
   if (!result.ok) throw badFileError(file, result.issues);
   return result.value;
 }
+
+const sameProof = (a: StatsProof, b: StatsProof): boolean =>
+  a.part === b.part && a.file === b.file && a.test === b.test && a.failure === b.failure;
+
+/** `recorded`, then each added proof with a part, file, test and failure not seen yet. */
+export function withNewProofs(recorded: StatsProof[], added: StatsProof[]): StatsProof[] {
+  const all = [...recorded];
+  for (const proof of added) {
+    if (!all.some((seen) => sameProof(seen, proof))) all.push(proof);
+  }
+  return all;
+}

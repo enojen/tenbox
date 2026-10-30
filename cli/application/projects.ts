@@ -1,3 +1,4 @@
+import path from "node:path";
 import { noRepoError } from "../../domain/errors/git.ts";
 import type { ProjectId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
@@ -19,10 +20,10 @@ interface ProjectAndManifest {
 /** The project that contains `cwd`, from the shared `.git` directory. */
 async function get(cwd: string): Promise<ProjectAndManifest> {
   const commonDir = await git.findCommonDir(cwd);
-  const mainDir = await git.findMainDir(cwd);
-  if (commonDir === null || mainDir === null) {
+  if (commonDir === null) {
     throw noRepoError(cwd);
   }
+  const mainDir = path.dirname(commonDir);
   const manifest = await manifests.get(mainDir);
   const project = { name: projectName(mainDir, manifest.project), mainDir, commonDir };
   return { project, manifest };

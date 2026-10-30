@@ -19,6 +19,7 @@ import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
+import { TASK_STATE } from "../../domain/tasks.ts";
 import { AGENT_LABEL, newTaskOf, type TaskRef, type Tracker } from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
@@ -26,6 +27,7 @@ import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
 import { manifests } from "../application/manifests.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
+import { parts } from "../application/parts.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
 import { sessions } from "../application/sessions.ts";
@@ -49,7 +51,8 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const { manifest } = await projects.get(taskWorktree);
   const taskDir = await files.realPath(tenboxDir(taskWorktree));
   const plan = await plans.get(taskDir);
-  const sent = `/tenbox-build ${JSON.stringify(buildArgs({ task: id, plan }))}`;
+  const done = await parts.readDone(taskDir);
+  const sent = `/tenbox-build ${JSON.stringify(buildArgs({ task: id, plan, done }))}`;
   const start = {
     id,
     model: manifest.model,
@@ -58,6 +61,7 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
     prompt: sent,
   };
   await sessions.run({ id, taskWorktree }, start);
+  await tasks.saveStatus(taskDir, TASK_STATE.building);
   return { ok: true, task: id, sent };
 }
 

@@ -23,15 +23,7 @@ import {
   prBody,
   prTitle,
 } from "../../domain/prs.ts";
-import { roundNumbers } from "../../domain/rounds.ts";
-import {
-  checksFile,
-  groupRoot,
-  planMdFile,
-  roundDir,
-  roundsDir,
-  tenboxDir,
-} from "../../domain/taskDirs.ts";
+import { groupRoot, planMdFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { checks } from "../application/checks.ts";
 import { groups } from "../application/groups.ts";
@@ -286,16 +278,8 @@ async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   };
 }
 
-/** The check result of the group's highest round; null when it has no `checks.json`. */
-export async function findLatestChecks(
-  taskWorktree: string,
-  group: number,
-): Promise<CheckResult | null> {
-  const dir = groupRoot(taskWorktree, group);
-  const names = await files.list(roundsDir(dir));
-  const latest = roundNumbers(names).at(-1);
-  if (latest === undefined) return null;
-  return checks.find(checksFile(roundDir(dir, latest)));
+export function findLatestChecks(taskWorktree: string, group: number): Promise<CheckResult | null> {
+  return checks.findLatest(groupRoot(taskWorktree, group));
 }
 
 interface CreateOrUpdateInput {

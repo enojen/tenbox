@@ -166,15 +166,17 @@ export interface BuildArgs {
 export interface BuildArgsInput {
   task: string;
   plan: PlanResult;
+  done: string[];
 }
 
 /** The args of a plan, with its lenses and group recipes as its kind gives them. */
 export function buildArgs(input: BuildArgsInput): BuildArgs {
-  const { task, plan } = input;
+  const { task, plan, done } = input;
+  const parts = plan.parts.filter((part) => !done.includes(part.id));
   const { kind } = plan;
   const { lenses, reviews } = reviewOf({ kind, lenses: plan.lenses, tier: UNGROUPED_TIER });
   const groups = plan.groups?.map((group) => withKind(group, kind));
-  return { task, kind, reviews, parts: plan.parts, lenses, ...(groups && { groups }) };
+  return { task, kind, reviews, parts, lenses, ...(groups && { groups }) };
 }
 
 function withKind(group: Group, kind: TaskKind): Group {
