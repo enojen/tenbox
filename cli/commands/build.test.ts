@@ -331,6 +331,15 @@ describe("tenbox build done", () => {
       expect([run.code, run.json.code, written]).toEqual([1, "checks-stale", false]);
     });
 
+    test("a round a stopped check left empty does not hide the green round before it", async () => {
+      await checkedTask();
+      const stopped = path.join(path.dirname(buildJson), "rounds", "2", "checks");
+      await files.mkdir(stopped);
+      const run = await buildDone(...readyJson);
+      const written = await files.exists(buildJson);
+      expect([run.code, run.json.error, written]).toEqual([0, undefined, true]);
+    });
+
     test("a red checks.json at HEAD is check-failed with its summary and writes no build.json", async () => {
       await checkedTask({ "fast.txt": " FAIL  fast one\n" });
       const run = await buildDone(...readyJson);
