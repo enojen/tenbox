@@ -1,3 +1,4 @@
+import { readCheckOk } from "../../domain/checks.ts";
 import { noStatsError, oldStatsError } from "../../domain/errors/stats.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { type StatsProof, trimProof } from "../../domain/proofs.ts";
@@ -24,7 +25,6 @@ import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { builds } from "./builds.ts";
-import { checks } from "./checks.ts";
 import { parts } from "./parts.ts";
 import { plans } from "./plans.ts";
 import { tasks } from "./tasks.ts";
@@ -159,8 +159,8 @@ async function readRounds(dir: string): Promise<StatsRound[]> {
     const file = checksFile(roundDir(dir, number));
     const checkedAt = await findMtime(file);
     if (builtAt !== null && checkedAt !== null && checkedAt > builtAt) continue;
-    const result = await checks.find(file);
-    rounds.push({ number, checks_passed: result?.ok ?? null });
+    const text = await files.read(file);
+    rounds.push({ number, checks_passed: text === null ? null : readCheckOk(text, file) });
   }
   return rounds;
 }

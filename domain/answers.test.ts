@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { addDeadline, autoCardOf, getOpenCard } from "./answers.ts";
-import { type BuildResult, parseBuild } from "./builds.ts";
-import type { DecisionCard } from "./cards.ts";
+import { type BuildResult, type DecisionCard, parseBuild } from "./builds.ts";
 
 const card: DecisionCard = {
   title: "Which store?",

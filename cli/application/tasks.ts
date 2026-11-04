@@ -129,7 +129,7 @@ async function updateStatusOf(change: TaskDirStatus): Promise<StatusUpdate> {
   }
 }
 
-/** Writes the state into `task.json` of `dir`; a missing or invalid file is left alone. */
+/** Writes the state into `task.json` of `dir`; a missing file is left alone, an invalid one is `bad-file`. */
 async function saveStatus(dir: string, status: string): Promise<void> {
   const task = await find(dir);
   if (task === null) return;

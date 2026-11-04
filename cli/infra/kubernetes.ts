@@ -346,8 +346,9 @@ function fillObject(value: KubeObject, fields: Placeholders): KubeObject {
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillValue(v, fields)]));
 }
 
+/** A function replacement, so `$$` and `$&` in a value stay as they are. */
 function fillText(text: string, fields: Placeholders): string {
-  return fields.reduce((out, [field, value]) => out.replaceAll(field, value), text);
+  return fields.reduce((out, [field, value]) => out.replaceAll(field, () => value), text);
 }
 
 const JobSchema = z.object({

@@ -27,6 +27,9 @@ interface Scope {
 
 const WHOLE_WORKTREE = ["."];
 
+/** The part id `/tenbox-build` gives its must_fix worker: no part file, so the whole worktree. */
+const FIX_PART = "fix";
+
 /** Checks that the worker's commit holds the part: new, on HEAD, touching its files, nothing left over. */
 export async function partDone(input: PartDoneInput): Promise<PartDoneResult> {
   const { id, part } = input;
@@ -48,14 +51,14 @@ async function getScope(input: PartDoneInput): Promise<Scope> {
   const taskWorktree = await worktrees.get(id);
   const plan = await plans.find(tenboxDir(taskWorktree));
   const found = plan?.parts.find((candidate) => candidate.id === part);
-  if (!found) throw unknownPartError(part);
+  if (!found && part !== FIX_PART) throw unknownPartError(part);
   const { project, manifest } = await projects.get(taskWorktree);
   const group = input.group ?? 1;
   const checkout = await groups.ensure({ id, group, project, manifest, taskWorktree });
   const cwd = checkout.worktree;
   const since = await findSince(input, { cwd, base: manifest.base });
   if (since === null) throw noBaseError(manifest.base, "has no common ancestor with HEAD");
-  const paths = found.files && found.files.length > 0 ? found.files : WHOLE_WORKTREE;
+  const paths = found?.files && found.files.length > 0 ? found.files : WHOLE_WORKTREE;
   return { cwd, paths, since };
 }
 

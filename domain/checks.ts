@@ -48,6 +48,16 @@ export type CheckRun = z.infer<typeof CheckRunSchema>;
 export type BaseInfo = z.infer<typeof BaseInfoSchema>;
 export type CheckResult = z.infer<typeof CheckResultSchema>;
 
+/** Only `ok`: stats read it from every round, also from a `checks.json` written before `tier` or `flaky`. */
+const CheckOkSchema = z.looseObject({ ok: z.boolean() });
+
+/** `ok` in the text of `checks.json`; `bad-file` when it is not JSON or has no boolean `ok`. */
+export function readCheckOk(text: string, file: string): boolean {
+  const result = jsons.check(CheckOkSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value.ok;
+}
+
 /** The check result in the text of `checks.json`; `bad-file` when it is not JSON or does not match. */
 export function readCheckResult(text: string, file: string): CheckResult {
   const result = jsons.check(CheckResultSchema, text);

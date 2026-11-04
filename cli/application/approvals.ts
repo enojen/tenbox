@@ -11,7 +11,7 @@ import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 
 /** Approvals: `approved.json` in the task dir, written by `tenbox approve`. */
-export const approvals = { save, update, get };
+export const approvals = { save, update, get, findCurrent };
 
 /**
  * Records the approval of the current `plan.json`, checked as `tenbox plan done` checks it:
@@ -54,6 +54,14 @@ async function get(taskWorktree: string, id: TaskId): Promise<Approval> {
     throw planChangedError(id);
   }
   return approval;
+}
+
+/** The approval of the current `plan.json`; null when there is none or `plan.json` changed since. */
+async function findCurrent(dir: string): Promise<Approval | null> {
+  const approval = await find(dir);
+  if (approval === null) return null;
+  const changed = await planChanged(dir, approval);
+  return changed ? null : approval;
 }
 
 /** The approval in `dir`; null when `approved.json` is missing, `bad-file` when it is not valid. */
