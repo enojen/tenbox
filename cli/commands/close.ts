@@ -29,7 +29,7 @@ import {
 } from "../application/worktrees/index.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
-import { gh } from "../infra/gh.ts";
+import { GH_STATE, gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type {
@@ -254,6 +254,8 @@ async function headNotInBase(
   return inBase ? null : `its branch head is not in ${remote}`;
 }
 
+type GhPr = NonNullable<Awaited<ReturnType<typeof gh.findPr>>>;
+
 interface Merge {
   source: (typeof MERGE_SOURCE)[keyof typeof MERGE_SOURCE];
   /** The merge commit GitHub reports; null when there is none. */
@@ -264,15 +266,29 @@ interface Merge {
 const UNMERGED: Merge = { source: MERGE_SOURCE.unmerged, commit: null, pr: null };
 const MERGED_IN_GIT: Merge = { source: MERGE_SOURCE.git, commit: null, pr: null };
 
-/** A found PR decides alone; without one, a test merge into the base decides. */
+/**
+ * A MERGED PR at the branch head decides, else a test merge into the base; when either says
+ * unmerged, a head in `origin/<base>` still counts as merged.
+ */
 async function findMerge(target: CloseTarget): Promise<Merge> {
-  const { mainDir, branch } = target;
+  const { mainDir, branch, base } = target;
   await fastForwardBranch(target);
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
   if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
-  if (pr === null) return findTestMerge(target);
-  if (!gh.isMergedAt(pr, head)) return UNMERGED;
+  const first = pr === null ? await findTestMerge(target) : pullRequestMerge(pr, head);
+  if (first.source !== MERGE_SOURCE.unmerged) return first;
+  const notInBase = await headNotInBase(mainDir, head, `origin/${base}`);
+  if (notInBase !== null) return UNMERGED;
+  if (pr?.state === GH_STATE.merged) return githubMerge(pr);
+  return MERGED_IN_GIT;
+}
+
+function pullRequestMerge(pr: GhPr, head: string): Merge {
+  return gh.isMergedAt(pr, head) ? githubMerge(pr) : UNMERGED;
+}
+
+function githubMerge(pr: GhPr): Merge {
   return {
     source: MERGE_SOURCE.github,
     commit: pr.mergeCommit?.oid ?? null,
