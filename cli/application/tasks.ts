@@ -1,7 +1,7 @@
 import { failedState } from "../../domain/errors/index.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { TaskKind } from "../../domain/kinds.ts";
-import { TRACKER_KIND } from "../../domain/manifests.ts";
+import { TRACKER_KIND, type TrackerConfig } from "../../domain/manifests.ts";
 import { partsDir, roundsDir, taskFile, taskMdFile, tenboxDir } from "../../domain/taskDirs.ts";
 import {
   readTaskFile,
@@ -10,8 +10,15 @@ import {
   type TaskFile,
   taskFileOf,
 } from "../../domain/tasks.ts";
-import type { NewTask, TaskRef, TaskStatus, Tracker } from "../../domain/tracker.ts";
+import {
+  type NewTask,
+  STATUS_SKIPPED,
+  type TaskRef,
+  type TaskStatus,
+  type Tracker,
+} from "../../domain/tracker.ts";
 import { files } from "../infra/files.ts";
+import { makeTracker } from "../infra/tracker/index.ts";
 
 interface TaskSource {
   id: TaskId;
@@ -22,9 +29,6 @@ interface TaskSource {
 /** The status of a task that has a title and no tracker. */
 const UNTRACKED_STATUS = "todo";
 
-/** The tracker step when Tenbox does not change the status. */
-const STATUS_SKIPPED = "skipped";
-
 /** The real status name the tracker set, `skipped` or `failed: <reason>`. */
 export type StatusUpdate = string;
 
@@ -34,7 +38,7 @@ interface EnsuredTask extends TaskRef {
 }
 
 /** Tasks: one tracker item each, with its files in the task dir, reached as `.tenbox` in the task worktree. */
-export const tasks = { get, find, ensure, ensureFiles, updateStatus, saveStatus };
+export const tasks = { get, find, ensure, ensureFiles, updateStatus, updateStatusOf, saveStatus };
 
 /** From the title when one is given, else from the tracker. */
 async function get(source: TaskSource, tracker: Tracker): Promise<Task> {
@@ -96,6 +100,30 @@ async function updateStatus(
   if (source.title || tracker.kind === TRACKER_KIND.none) return STATUS_SKIPPED;
   try {
     return await tracker.updateStatus(source.id, status);
+  } catch (e) {
+    return failedState(e);
+  }
+}
+
+/** The task of `task.json` in a task dir, and the tracker its status goes to. */
+interface TaskDirStatus {
+  id: TaskId;
+  dir: string;
+  tracker: TrackerConfig;
+  status: TaskStatus;
+}
+
+/**
+ * As `updateStatus` for the task of `task.json` in the task dir; without the file, or with
+ * `tracker: none` in it, it is skipped. A tracker that cannot be made is reported, not thrown.
+ */
+async function updateStatusOf(change: TaskDirStatus): Promise<StatusUpdate> {
+  const { id, dir, tracker, status } = change;
+  const task = await find(dir);
+  if (task === null || task.tracker === TRACKER_KIND.none) return STATUS_SKIPPED;
+  try {
+    const made = makeTracker(tracker);
+    return await updateStatus({ id, title: undefined }, made, status);
   } catch (e) {
     return failedState(e);
   }

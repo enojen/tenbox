@@ -32,6 +32,28 @@ describe("linear comments", () => {
   });
 });
 
+describe("linear updateStatus", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+  test("queued and review are skipped without a request", async () => {
+    let calls = 0;
+    globalThis.fetch = Object.assign(
+      async () => {
+        calls += 1;
+        return Response.json({});
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = linearTracker({ kind: "linear", api_key: "k" });
+    const queued = await tracker.updateStatus("T-1", "queued");
+    const review = await tracker.updateStatus("T-1", "review");
+    expect([queued, review]).toEqual(["skipped", "skipped"]);
+    expect(calls).toBe(0);
+  });
+});
+
 describe("linear new tasks", () => {
   const saved = globalThis.fetch;
   afterEach(() => {
