@@ -3,8 +3,10 @@ import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts"
 import { type StatusNames, TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import {
   type CommentRequest,
+  isOptionalStatus,
   type NewTask,
   oldestFirst,
+  STATUS_SKIPPED,
   type StatusChange,
   type TaskRef,
   type TaskStatus,
@@ -15,7 +17,12 @@ import {
 import { type Endpoint, http } from "../http.ts";
 import { findApiKey } from "./apiKeys.ts";
 
-const DEFAULT_NAMES = { in_progress: "in progress", done: "done" } as const;
+const DEFAULT_NAMES = {
+  queued: "queued",
+  in_progress: "in progress",
+  review: "in review",
+  done: "done",
+} as const;
 
 const API = "https://api.clickup.com/api/v2";
 
@@ -160,6 +167,7 @@ async function setStatus(connection: Connection, change: StatusChange): Promise<
     names: connection.names,
     listId,
   });
+  if (status === null) return STATUS_SKIPPED;
   await http.put({
     endpoint: endpoint(connection, `/task/${encodeURIComponent(task.id)}`),
     body: { status },
@@ -188,12 +196,17 @@ async function getComments(connection: Connection, id: string): Promise<TrackerC
   );
 }
 
-/** The list status to set: the configured name, else the one named "in progress" or "done". */
-export function pickStatus(choice: StatusChoice): string {
+/**
+ * The list status to set: the configured name, else the default one of `DEFAULT_NAMES`. Null for
+ * an optional status the project does not name and the list lacks: the list does not use it.
+ */
+export function pickStatus(choice: StatusChoice): string | null {
   const sorted = [...choice.statuses].sort((a, b) => a.orderindex - b.orderindex);
-  const name = choice.names[choice.status] ?? DEFAULT_NAMES[choice.status];
+  const configured = choice.names[choice.status];
+  const name = configured ?? DEFAULT_NAMES[choice.status];
   const found = sorted.find((s) => s.status.toLowerCase() === name.toLowerCase());
   if (found) return found.status;
+  if (configured === undefined && isOptionalStatus(choice.status)) return null;
   const has = sorted.map((s) => s.status).join(", ");
   const setting = `{ ${choice.status}: "<status name>" }`;
   const message = `ClickUp: no status "${name}" in list ${choice.listId}; it has: ${has}`;

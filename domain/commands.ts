@@ -1,6 +1,7 @@
 /** The tenbox CLI commands: the first word after `tenbox`. */
 export const COMMAND = {
   start: "start",
+  queue: "queue",
   check: "check",
   worktree: "worktree",
   mergeCheck: "merge-check",

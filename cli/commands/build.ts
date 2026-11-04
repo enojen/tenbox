@@ -20,7 +20,14 @@ import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notificati
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
-import { AGENT_LABEL, newTaskOf, type TaskRef, type Tracker } from "../../domain/tracker.ts";
+import {
+  AGENT_LABEL,
+  newTaskOf,
+  TASK_STATUS,
+  type TaskRef,
+  type TaskStatus,
+  type Tracker,
+} from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
@@ -39,7 +46,7 @@ import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import { runChecks } from "./check.ts";
 import { assertChecked, findLatestChecks, openPr } from "./pr.ts";
-import type { PrError, PrResult, SendBuildResult, TaskFileResult } from "./results.ts";
+import type { PrError, PrResult, SendBuildResult, TaskFileResult, TrackerInfo } from "./results.ts";
 
 /**
  * Checks the approval, then starts `claude --bg` in the task worktree with `/tenbox-build` and
@@ -62,7 +69,8 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   };
   await sessions.run({ id, taskWorktree }, start);
   await tasks.saveStatus(taskDir, TASK_STATE.building);
-  return { ok: true, task: id, sent };
+  const tracker = await setTrackerStatus({ id, taskWorktree, status: TASK_STATUS.inProgress });
+  return { ok: true, task: id, sent, tracker };
 }
 
 export interface BuildDoneInput {
@@ -71,10 +79,11 @@ export interface BuildDoneInput {
   json: string;
 }
 
-/** `pr` only for an accepted `ready-for-you`: the draft PR result, or why it failed. */
+/** `pr` and `tracker` only for an accepted `ready-for-you`: the draft PR result, or why it failed. */
 export interface BuildDoneResult extends TaskFileResult {
   findings: Finding[];
   pr?: PrResult | PrError;
+  tracker?: TrackerInfo;
 }
 
 /** One group of the task whose checks `build done` verifies. */
@@ -110,7 +119,24 @@ export async function buildDone(input: BuildDoneInput): Promise<BuildDoneResult>
   await autoAnswers.run({ id, taskWorktree });
   if (!ready) return { ok: true, task: id, file, findings };
   const pr = await openDraftPr(id);
-  return { ok: true, task: id, file, findings, pr };
+  const tracker = await setTrackerStatus({ id, taskWorktree, status: TASK_STATUS.review });
+  return { ok: true, task: id, file, findings, pr, tracker };
+}
+
+interface TrackerStatusInput {
+  id: TaskId;
+  taskWorktree: string;
+  status: TaskStatus;
+}
+
+/** The status goes to the tracker of the task worktree's manifest, as the findings do. */
+async function setTrackerStatus(input: TrackerStatusInput): Promise<TrackerInfo> {
+  const { id, taskWorktree, status } = input;
+  const { project } = await projects.get(taskWorktree);
+  const { tracker } = await manifests.get(project.mainDir, taskWorktree);
+  const dir = tenboxDir(taskWorktree);
+  const update = await tasks.updateStatusOf({ id, dir, tracker, status });
+  return { kind: tracker.kind, status: update };
 }
 
 interface FindingsInput {

@@ -15,9 +15,11 @@ export const TRACKER_KIND = {
 
 export const TrackerKindSchema = z.enum(TRACKER_KIND);
 
-/** The tracker's own names for the two statuses Tenbox sets; a tracker's list may differ. */
+/** The tracker's own names for the statuses Tenbox sets; a tracker's list may differ. */
 const StatusNamesSchema = z.object({
+  queued: z.string().min(1).optional(),
   in_progress: z.string().min(1).optional(),
+  review: z.string().min(1).optional(),
   done: z.string().min(1).optional(),
 });
 

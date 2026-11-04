@@ -3,10 +3,23 @@ import { badInputError, issueLines } from "./errors/index.ts";
 import type { TrackerKind } from "./manifests.ts";
 import { jsons } from "./utils.ts";
 
-/** The two statuses Tenbox sets on a tracker task. */
-export const TASK_STATUS = { inProgress: "in_progress", done: "done" } as const;
+/** The statuses Tenbox sets on a tracker task; `queued` and `review` are optional. */
+export const TASK_STATUS = {
+  queued: "queued",
+  inProgress: "in_progress",
+  review: "review",
+  done: "done",
+} as const;
 
 export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
+
+/** A tracker without such a status skips it: the task keeps the status it has. */
+export function isOptionalStatus(status: TaskStatus): boolean {
+  return status === TASK_STATUS.queued || status === TASK_STATUS.review;
+}
+
+/** What a status change gives when the tracker does not change the status. */
+export const STATUS_SKIPPED = "skipped";
 
 export interface TrackerTask {
   id: string;

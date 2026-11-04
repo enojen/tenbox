@@ -47,6 +47,21 @@ describe("pickStatus", () => {
       'ClickUp: no status "doing" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { done: "<status name>" }',
     );
   });
+  test("review is the status named in review", () => {
+    expect(pickStatus({ statuses, status: "review", names: {}, listId: LIST_ID })).toBe(
+      "In Review",
+    );
+  });
+  test("an optional status the list lacks and the project does not name gives null", () => {
+    expect(pickStatus({ statuses, status: "queued", names: {}, listId: LIST_ID })).toBeNull();
+  });
+  test("an optional status the project names but the list lacks is an error", () => {
+    const names = { queued: "waiting" };
+    const pick = () => pickStatus({ statuses, status: "queued", names, listId: LIST_ID });
+    expect(pick).toThrow(
+      'ClickUp: no status "waiting" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { queued: "<status name>" }',
+    );
+  });
 });
 
 describe("clickupTracker", () => {
@@ -112,6 +127,28 @@ describe("clickup updateStatus", () => {
     const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
     const name = await tracker.updateStatus("abc", "in_progress");
     expect(name).toBe("In Progress");
+  });
+  test("an optional status the list lacks is skipped with no PUT", async () => {
+    const methods: string[] = [];
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        methods.push(init?.method ?? "GET");
+        if (String(url).includes("/list/")) return Response.json({ statuses });
+        return Response.json({
+          id: "abc",
+          name: "t",
+          markdown_description: null,
+          url: "u",
+          status: { status: "Open" },
+          list: { id: LIST_ID },
+        });
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k" });
+    const name = await tracker.updateStatus("abc", "queued");
+    expect(name).toBe("skipped");
+    expect(methods).not.toContain("PUT");
   });
 });
 

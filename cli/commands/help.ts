@@ -37,6 +37,14 @@ Output: { ok, task, title, project, worktree, branch, base, created, task_md, se
 Example:
   tenbox start TEN-301 --kind small`,
 
+  queue: `Sets the tracker task to queued: it waits for a free slot and has no worktree yet.
+
+Output: { ok, task, tracker }
+  tracker.status is the status name set, or skipped when the tracker has no queued status.
+
+Example:
+  tenbox queue TEN-301`,
+
   check: `Runs the checks of the manifest in the task worktree and compares them with the baseline.
 
 Flags:
@@ -152,7 +160,8 @@ Example:
 Input (build done, --json, required): the build result
   { status, round, proofs, attention, nice-to-have, unproven }
 
-Output: build { ok, task, sent }; build done { ok, task, file, findings, pr? }
+Output: build { ok, task, sent, tracker }; build done { ok, task, file, findings, pr?, tracker? }
+  build sets the tracker task to in progress; a ready-for-you build done sets it to review.
 
 Example:
   tenbox build TEN-301`,

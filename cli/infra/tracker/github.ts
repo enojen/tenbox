@@ -1,9 +1,11 @@
 import { TRACKER_KIND } from "../../../domain/manifests.ts";
 import {
   type CommentRequest,
+  isOptionalStatus,
   labelsIntoBody,
   type NewTask,
   oldestFirst,
+  STATUS_SKIPPED,
   type StatusChange,
   TASK_STATUS,
   type TaskRef,
@@ -44,7 +46,9 @@ async function fetchTask(target: IssueTarget, id: string): Promise<TrackerTask> 
   };
 }
 
+/** An issue is only open or closed, so the optional statuses are skipped. */
 async function updateIssueStatus(target: IssueTarget, change: StatusChange): Promise<string> {
+  if (isOptionalStatus(change.status)) return STATUS_SKIPPED;
   const issue = await gh.viewIssue(target, change.id);
   if (change.status !== TASK_STATUS.done || issue.state === ISSUE_STATE.closed) {
     return issue.state;

@@ -40,6 +40,7 @@ import { partDone } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
+import { queueTask } from "./commands/queue.ts";
 import { REPORT_REPOS, type ReportRepo, report } from "./commands/report.ts";
 import type { Failure } from "./commands/results.ts";
 import { startTask } from "./commands/start.ts";
@@ -58,6 +59,7 @@ interface Command extends ArgSpec {
 
 const START_USAGE =
   'tenbox start <id> [--title "..."] [--base <branch>] [--kind docs|small|normal|large] [--no-setup] [--no-claude]';
+const QUEUE_USAGE = "tenbox queue <id>";
 const CHECK_USAGE =
   "tenbox check <id> [--group N] [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
 const WORKTREE_USAGE = "tenbox worktree <id> --group N";
@@ -126,6 +128,11 @@ const COMMANDS: Record<CommandName, Command> = {
         setup: flagValue(values, "setup"),
         claude: flagValue(values, "claude"),
       }),
+  },
+  [COMMAND.queue]: {
+    usage: QUEUE_USAGE,
+    options: {},
+    run: (positionals) => queueTask(idArg(positionals, QUEUE_USAGE)),
   },
   [COMMAND.check]: {
     usage: CHECK_USAGE,
