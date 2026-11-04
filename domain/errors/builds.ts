@@ -11,6 +11,13 @@ export function answeredError(id: string, option: number): TenboxError {
   return new TenboxError(`the decision card of ${id} is answered: option ${option}`, "answered");
 }
 
+export function nothingToBuildError(id: string): TenboxError {
+  return new TenboxError(
+    `every part of ${id} says status: done, so no build would run; set status: todo in the part file that must change, then run tenbox build ${id}`,
+    "nothing-to-build",
+  );
+}
+
 export function unknownGroupError(id: string, group: number): TenboxError {
   return new TenboxError(`the plan of ${id} has no group ${group}`, "unknown-group");
 }
