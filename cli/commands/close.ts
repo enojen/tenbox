@@ -29,7 +29,7 @@ import {
 } from "../application/worktrees/index.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
-import { GH_STATE, gh } from "../infra/gh.ts";
+import { GH_STATE, gh, type PrState } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type {
@@ -254,8 +254,6 @@ async function headNotInBase(
   return inBase ? null : `its branch head is not in ${remote}`;
 }
 
-type GhPr = NonNullable<Awaited<ReturnType<typeof gh.findPr>>>;
-
 interface Merge {
   source: (typeof MERGE_SOURCE)[keyof typeof MERGE_SOURCE];
   /** The merge commit GitHub reports; null when there is none. */
@@ -276,20 +274,18 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
   if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
-  let first = pr === null ? null : pullRequestMerge(pr, head);
-  first ??= await findTestMerge(target);
-  if (first.source !== MERGE_SOURCE.unmerged) return first;
+  if (pr !== null && gh.isMergedAt(pr, head)) return githubMerge(pr);
+  if (pr === null) {
+    const tested = await findTestMerge(target);
+    if (tested.source !== MERGE_SOURCE.unmerged) return tested;
+  }
   const notInBase = await headNotInBase(mainDir, head, `origin/${base}`);
   if (notInBase !== null) return UNMERGED;
   if (pr?.state === GH_STATE.merged) return githubMerge(pr);
   return MERGED_IN_GIT;
 }
 
-function pullRequestMerge(pr: GhPr, head: string): Merge {
-  return gh.isMergedAt(pr, head) ? githubMerge(pr) : UNMERGED;
-}
-
-function githubMerge(pr: GhPr): Merge {
+function githubMerge(pr: PrState): Merge {
   return {
     source: MERGE_SOURCE.github,
     commit: pr.mergeCommit?.oid ?? null,

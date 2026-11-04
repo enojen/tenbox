@@ -149,7 +149,7 @@ const PrViewSchema = z.object({
   createdAt: z.iso.datetime(),
   mergedAt: z.iso.datetime().nullish(),
 });
-type PrState = z.infer<typeof PrViewSchema>;
+export type PrState = z.infer<typeof PrViewSchema>;
 
 /** Merged at exactly this head: a commit after the PR head is not on GitHub. */
 function isMergedAt(pr: PrState, head: string): boolean {
