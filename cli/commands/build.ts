@@ -10,7 +10,7 @@ import {
   parseBuild,
 } from "../../domain/builds.ts";
 import { type DiffFile, mergeDiffs } from "../../domain/diffs.ts";
-import { checkFailedError } from "../../domain/errors/builds.ts";
+import { checkFailedError, nothingToBuildError } from "../../domain/errors/builds.ts";
 import { errorMessage } from "../../domain/errors/index.ts";
 import { groupBranch, groupWorktreeDir } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
@@ -50,7 +50,8 @@ import type { PrError, PrResult, SendBuildResult, TaskFileResult, TrackerInfo } 
 
 /**
  * Checks the approval, then starts `claude --bg` in the task worktree with `/tenbox-build` and
- * the build args of `plan.json`: its kind applied to the lenses and group recipes.
+ * the build args of `plan.json`: its kind applied to the lenses and group recipes. Refuses
+ * with `nothing-to-build` when every part is done.
  */
 export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const taskWorktree = await worktrees.get(id);
@@ -59,7 +60,9 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const taskDir = await files.realPath(tenboxDir(taskWorktree));
   const plan = await plans.get(taskDir);
   const done = await parts.readDone(taskDir);
-  const sent = `/tenbox-build ${JSON.stringify(buildArgs({ task: id, plan, done }))}`;
+  const args = buildArgs({ task: id, plan, done });
+  if (args.parts.length === 0) throw nothingToBuildError(id);
+  const sent = `/tenbox-build ${JSON.stringify(args)}`;
   const start = {
     id,
     model: manifest.model,

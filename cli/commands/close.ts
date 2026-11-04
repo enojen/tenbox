@@ -29,7 +29,7 @@ import {
 } from "../application/worktrees/index.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
-import { gh } from "../infra/gh.ts";
+import { GH_STATE, gh, type PrState } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type {
@@ -270,15 +270,28 @@ interface Merge {
 const UNMERGED: Merge = { source: MERGE_SOURCE.unmerged, commit: null, pr: null };
 const MERGED_IN_GIT: Merge = { source: MERGE_SOURCE.git, commit: null, pr: null };
 
-/** A found PR decides alone; without one, a test merge into the base decides. */
+/**
+ * A MERGED PR at the branch head decides, else a test merge into the base; when either says
+ * unmerged, a head in `origin/<base>` still counts as merged.
+ */
 async function findMerge(target: CloseTarget): Promise<Merge> {
-  const { mainDir, branch } = target;
+  const { mainDir, branch, base } = target;
   await fastForwardBranch(target);
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
   if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
-  if (pr === null) return findTestMerge(target);
-  if (!gh.isMergedAt(pr, head)) return UNMERGED;
+  if (pr !== null && gh.isMergedAt(pr, head)) return githubMerge(pr);
+  if (pr === null) {
+    const tested = await findTestMerge(target);
+    if (tested.source !== MERGE_SOURCE.unmerged) return tested;
+  }
+  const notInBase = await headNotInBase(mainDir, head, `origin/${base}`);
+  if (notInBase !== null) return UNMERGED;
+  if (pr?.state === GH_STATE.merged) return githubMerge(pr);
+  return MERGED_IN_GIT;
+}
+
+function githubMerge(pr: PrState): Merge {
   return {
     source: MERGE_SOURCE.github,
     commit: pr.mergeCommit?.oid ?? null,

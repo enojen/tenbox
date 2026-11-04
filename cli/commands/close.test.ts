@@ -481,6 +481,58 @@ describe("tenbox close", () => {
       expect(String(run.json.error)).toContain("not in origin/main");
     });
 
+    test("a merge commit PR whose gh head differs from the branch head closes when the head is in origin/main", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const origin = await addOrigin();
+      const bin = await ghPath(mergedGh("0".repeat(40), 2));
+      await git.run(["merge", "--no-ff", "-q", "-m", "merge", "feat/T-1"], project.mainDir);
+      await git.run(["push", "-q", "origin", "main"], project.mainDir);
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const heads = await remoteHeads(origin);
+      const worktreeIsDir = await files.isDir(taskWorktree);
+      expect(run.json).toMatchObject({
+        ok: true,
+        pull: { state: "pulled" },
+        remote_branch: { state: "deleted" },
+      });
+      expect(worktreeIsDir).toBe(false);
+      expect(heads).not.toContain("feat/T-1");
+    });
+
+    test("without a PR a head in origin/main closes although the test merge into local main fails", async () => {
+      await setup();
+      await files.write(path.join(taskWorktree, "a.txt"), "branch\n");
+      await git.run(["commit", "-q", "-am", "branch"], taskWorktree);
+      const origin = await addOrigin();
+      await git.run(["merge", "--no-ff", "-q", "-m", "merge", "feat/T-1"], project.mainDir);
+      await git.run(["push", "-q", "origin", "main"], project.mainDir);
+      await git.run(["reset", "-q", "--hard", "HEAD~1"], project.mainDir);
+      await files.write(path.join(project.mainDir, "a.txt"), "local\n");
+      await git.run(["commit", "-q", "-am", "local"], project.mainDir);
+      const bin = await ghPath("exit 1");
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      const heads = await remoteHeads(origin);
+      expect(run.json).toMatchObject({
+        ok: true,
+        pull: { state: "skipped" },
+        remote_branch: { state: "skipped" },
+      });
+      expect(heads).toContain("feat/T-1");
+    });
+
+    test("a head not in origin/main is still refused as unmerged", async () => {
+      await setup();
+      await commitOn(taskWorktree, "b.txt");
+      const origin = await addOrigin();
+      const bin = await ghPath(mergedGh("0".repeat(40), 1));
+      const run = await tenbox(["close", "T-1"], project.mainDir, { PATH: bin });
+      await expectUntouched(run);
+      const heads = await remoteHeads(origin);
+      expect(run.json).toMatchObject({ code: "unmerged" });
+      expect(heads).toContain("feat/T-1");
+    });
+
     test("a parent count that is not a number is the error gh and nothing changes", async () => {
       await setup();
       await commitOn(taskWorktree, "b.txt");
