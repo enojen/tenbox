@@ -3,8 +3,10 @@ import { trackerAuthError, trackerError } from "../../../domain/errors/tools.ts"
 import { TRACKER_KIND, type TrackerConfig } from "../../../domain/manifests.ts";
 import {
   type CommentRequest,
+  isOptionalStatus,
   type NewTask,
   oldestFirst,
+  STATUS_SKIPPED,
   type StatusChange,
   TASK_STATUS,
   type TaskRef,
@@ -198,7 +200,9 @@ function toTrackerTask(issue: Issue): TrackerTask {
   };
 }
 
+/** Linear keeps its own flow for the optional statuses, so they are skipped. */
 async function updateIssueStatus(endpoint: Endpoint, change: StatusChange): Promise<string> {
+  if (isOptionalStatus(change.status)) return STATUS_SKIPPED;
   const issue = await fetchIssue(endpoint, change.id);
   const state = pickState(issue.team.states.nodes, change.status);
   if (!state) {

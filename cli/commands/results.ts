@@ -26,7 +26,7 @@ import type { WaitEvent } from "./wait.ts";
 
 /* Command outputs: the shape of the one JSON document each command prints. */
 
-interface TrackerInfo {
+export interface TrackerInfo {
   kind: TrackerKind;
   status: StatusUpdate;
 }
@@ -44,6 +44,13 @@ export interface StartResult {
   setup: SetupResult;
   tracker: TrackerInfo;
   claude: SessionStartInfo;
+}
+
+/** `tenbox queue`: the status name the tracker set, or `skipped` when its list has no such status. */
+export interface QueueResult {
+  ok: true;
+  task: string;
+  tracker: TrackerInfo;
 }
 
 /** `tenbox task new`: the task written, or the open task with the same title (`created: false`). */
@@ -139,6 +146,8 @@ export interface SendBuildResult {
   task: string;
   /** The prompt the new background session started with. */
   sent: string;
+  /** In progress again, so a new round after a review shows as work. */
+  tracker: TrackerInfo;
 }
 
 export interface AttachResult {

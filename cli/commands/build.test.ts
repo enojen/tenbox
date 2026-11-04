@@ -32,6 +32,10 @@ const taskWorktree = (): string => path.join(project.wtRoot, "demo", "T-1");
 const planFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.md");
 const planJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "plan.json");
 const taskJsonFile = (): string => path.join(taskWorktree(), ".tenbox", "task.json");
+const readJson = async (file: string) => {
+  const text = await files.read(file);
+  return JSON.parse(text ?? "null");
+};
 
 const PARTS = [{ id: "01", difficulty: "hard" }];
 const RECIPE = { model: "opus", effort: "high", lenses: [], tier: "fast" };
@@ -136,7 +140,10 @@ describe("tenbox build", () => {
     const built = await run("build", "T-1");
     const real = await files.realPath(taskWorktree());
     const calls = await fake.calls();
-    expect([built.code, built.json]).toEqual([0, { ok: true, task: "T-1", sent: SENT }]);
+    expect([built.code, built.json]).toEqual([
+      0,
+      { ok: true, task: "T-1", sent: SENT, tracker: { kind: "none", status: "skipped" } },
+    ]);
     expect(calls.at(-1)?.cwd).toBe(real);
     expect(calls.at(-1)?.args.slice(0, 1)).toEqual(["--bg"]);
     expect(calls.at(-1)?.args.slice(-6)).toEqual([
@@ -214,6 +221,24 @@ describe("tenbox build", () => {
     await run("build", "T-1");
     const status = await readStatus(taskJsonFile());
     expect(status).toBe("building");
+  });
+
+  test("a tracker that fails is reported in tracker.status and the build is sent", async () => {
+    await setup();
+    await approve();
+    const task = await readJson(taskJsonFile());
+    await files.writeJson(taskJsonFile(), { ...task, tracker: "clickup" });
+    const manifest = path.join(taskWorktree(), "tenbox.yaml");
+    await files.write(manifest, "project: demo\ntracker: { kind: clickup }\n");
+    const built = await tenbox(["build", "T-1"], project.mainDir, {
+      ...fake.env,
+      CLICKUP_API_KEY: "",
+    });
+    expect([built.code, built.json.sent]).toEqual([0, SENT]);
+    expect(built.json.tracker).toEqual({
+      kind: "clickup",
+      status: expect.stringMatching(/^failed: ClickUp: set tracker.api_key/),
+    });
   });
 });
 
@@ -451,6 +476,7 @@ describe("tenbox build done", () => {
         ],
       });
       expect(calls).toContain('"--draft"');
+      expect(run.json.tracker).toEqual({ kind: "none", status: "skipped" });
     });
 
     test("a failing gh keeps build.json and gives pr.ok false", async () => {
@@ -481,11 +507,6 @@ describe("tenbox build done", () => {
     "--json",
     JSON.stringify({ ...valid, ...change }),
   ];
-  const readJson = async (file: string) => {
-    const text = await files.read(file);
-    return JSON.parse(text ?? "null");
-  };
-
   test("the status of task.json becomes the saved build status, a bad result leaves it", async () => {
     const taskJson = path.join(path.dirname(buildJson), "task.json");
     const status = () => readStatus(taskJson);
