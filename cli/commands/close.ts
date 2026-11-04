@@ -276,12 +276,24 @@ async function findMerge(target: CloseTarget): Promise<Merge> {
   const head = await git.findCommit(mainDir, `refs/heads/${branch}`);
   if (head === null) return MERGED_IN_GIT; // no local branch: nothing left to merge
   const pr = await gh.findPr(mainDir, branch);
-  const first = pr === null ? await findTestMerge(target) : pullRequestMerge(pr, head);
-  if (first.source !== MERGE_SOURCE.unmerged) return first;
+  const decided = await decideMerge({ target, pr, head });
+  if (decided.source !== MERGE_SOURCE.unmerged) return decided;
   const notInBase = await headNotInBase(mainDir, head, `origin/${base}`);
   if (notInBase !== null) return UNMERGED;
   if (pr?.state === GH_STATE.merged) return githubMerge(pr);
   return MERGED_IN_GIT;
+}
+
+interface DecideInput {
+  target: CloseTarget;
+  pr: GhPr | null;
+  head: string;
+}
+
+async function decideMerge(input: DecideInput): Promise<Merge> {
+  const { target, pr, head } = input;
+  if (pr === null) return findTestMerge(target);
+  return pullRequestMerge(pr, head);
 }
 
 function pullRequestMerge(pr: GhPr, head: string): Merge {
