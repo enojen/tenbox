@@ -107,6 +107,22 @@ describe("tenbox build", () => {
     expect(built.json.sent).toBe(`/tenbox-build ${JSON.stringify(args)}`);
   });
 
+  test("build with every part done is nothing-to-build and starts nothing", async () => {
+    await setup();
+    await approve();
+    const partsDir = path.join(taskWorktree(), ".tenbox", "parts");
+    await files.write(path.join(partsDir, "01-a.md"), "# 01\nstatus: done\n");
+    const before = await readStatus(taskJsonFile());
+    const built = await run("build", "T-1");
+    const prompts = await bgPrompts();
+    const after = await readStatus(taskJsonFile());
+    expect([built.code, built.json.ok, built.json.code]).toEqual([1, false, "nothing-to-build"]);
+    expect(built.json.error).toContain("status: todo");
+    expect(built.json.error).toContain("tenbox build T-1");
+    expect(prompts).toEqual([]);
+    expect(after).toBe(before);
+  });
+
   test("sends the kind, its review rounds and the lenses and recipes the kind gives", async () => {
     await setup();
     const recipe = { ...RECIPE, lenses: ["contract"], tier: "full" };

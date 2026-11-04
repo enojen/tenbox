@@ -139,6 +139,31 @@ describe("tenbox decide", () => {
     expect(calls.map((call) => call.args.at(-1))).toEqual([SENT]);
   });
 
+  test("decide after a finished build writes the answer then is nothing-to-build", async () => {
+    await approve();
+    const part = path.join(path.dirname(decisionsFile), "parts", "01-a.md");
+    await files.write(part, "# 01\nstatus: done\n");
+    const run = await decide("--json", JSON.stringify([{ answer: "use 409" }]));
+    const decisions = await files.read(decisionsFile);
+    const calls = await bgCalls();
+    expect([run.code, run.json.code]).toEqual([1, "nothing-to-build"]);
+    expect(decisions).toBe("- use 409\n");
+    expect(calls).toEqual([]);
+  });
+
+  test("decide sends the build once a done part is set back to todo", async () => {
+    await approve();
+    const part = path.join(path.dirname(decisionsFile), "parts", "01-a.md");
+    await files.write(part, "# 01\nstatus: done\n");
+    const answer = JSON.stringify([{ answer: "use 409" }]);
+    await decide("--json", answer);
+    await files.write(part, "# 01\nstatus: todo\n");
+    const run = await decide("--json", answer);
+    const decisions = await files.read(decisionsFile);
+    expect([run.code, run.json.sent]).toEqual([0, SENT]);
+    expect(decisions).toBe("- use 409\n");
+  });
+
   test("not-approved comes after the answers are written and starts nothing", async () => {
     const run = await decide("--json", JSON.stringify(ANSWER));
     const decisions = await files.read(decisionsFile);
