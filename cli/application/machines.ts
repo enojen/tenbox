@@ -91,6 +91,8 @@ export interface MachineRunRow {
   title: string;
   status: RunStatus;
   conclusion: RunConclusion | null;
+  /** Why the box container ended, e.g. `OOMKilled`, of a failed run; null when unknown. */
+  reason: string | null;
   url: string;
   created: string;
 }
@@ -109,6 +111,7 @@ interface MachineLogsResult {
   task: TaskId;
   job: string;
   status: JobStatus;
+  reason: string | null;
 }
 
 const POD_POLL_MS = 2000;
@@ -170,7 +173,7 @@ const kubeName = (id: TaskId): string => id.toLowerCase().replaceAll("_", "-");
 async function list(): Promise<MachineRunRow[]> {
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const jobs = await kubernetes.listJobs(cluster, TENYARD_SELECTOR);
-  return jobs.map(toRow);
+  return Promise.all(jobs.map((job) => toRow({ cluster, job })));
 }
 
 /** Writes the log of the newest Job of the task; its status is read after the log ends. */
@@ -180,12 +183,13 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
   const newest = jobs.sort((a, b) => b.created.localeCompare(a.created))[0];
   if (newest === undefined) throw noMachineRunError(id);
-  const pod = await waitForPod({ cluster, job: newest.name, follow });
-  const chunks = await kubernetes.streamLog({ cluster, pod, follow });
+  const podName = await waitForPod({ cluster, job: newest.name, follow });
+  const chunks = await kubernetes.streamLog({ cluster, pod: podName, follow });
   for await (const chunk of chunks) write(chunk);
   const after = await kubernetes.listJobs(cluster, `task=${id}`);
   const job = after.find((j) => j.name === newest.name) ?? newest;
-  return { task: id, job: newest.name, status: jobStatus(job) };
+  const pod = await kubernetes.findPod(cluster, newest.name);
+  return { task: id, job: newest.name, status: jobStatus(job), reason: pod?.reason ?? null };
 }
 
 function jobStatus(job: Job): JobStatus {
@@ -214,12 +218,27 @@ async function waitForPod(input: PodWait): Promise<string> {
   return found;
 }
 
-function toRow(job: Job): MachineRunRow {
+/** One Job and the cluster to ask for the reason of its failure. */
+interface RowInput {
+  cluster: Cluster;
+  job: Job;
+}
+
+/** Only a failed Job has a reason; one request for its newest pod. */
+async function failureReason(input: RowInput): Promise<string | null> {
+  if (jobStatus(input.job) !== JOB_STATUS.failure) return null;
+  const pod = await kubernetes.findPod(input.cluster, input.job.name);
+  return pod?.reason ?? null;
+}
+
+async function toRow(input: RowInput): Promise<MachineRunRow> {
+  const { cluster, job } = input;
   const row = { id: job.name, title: job.cmd, url: job.url, created: job.created };
   const status = jobStatus(job);
   if (status === JOB_STATUS.inProgress)
-    return { ...row, status: RUN_STATUS.inProgress, conclusion: null };
-  return { ...row, status: RUN_STATUS.completed, conclusion: status };
+    return { ...row, status: RUN_STATUS.inProgress, conclusion: null, reason: null };
+  const reason = await failureReason({ cluster, job });
+  return { ...row, status: RUN_STATUS.completed, conclusion: status, reason };
 }
 
 /** The command after `--`, checked: only the flags of its command. */
@@ -347,9 +366,13 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
   };
 }
 
-/** Only a command that runs the project's tests or sends the build takes `machine.class`. */
+/**
+ * A command that runs the project's tests or sends the build takes `machine.class`, `start`
+ * takes `machine.plan_class`.
+ */
 function resourceClass(command: CommandRun): ResourceClass {
   if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.class;
+  if (command.cmd === COMMAND.start) return command.manifest.machine.plan_class;
   return RESOURCE_CLASS.plan;
 }
 

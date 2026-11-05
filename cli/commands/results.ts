@@ -337,6 +337,7 @@ export interface MachineLogsResultJson {
   task: string;
   job: string;
   status: JobStatus;
+  reason: string | null;
 }
 
 export interface MachineStopResult {

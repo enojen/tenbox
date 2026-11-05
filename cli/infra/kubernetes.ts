@@ -381,7 +381,20 @@ const PodListSchema = z.object({
   items: z.array(
     z.object({
       metadata: z.object({ name: z.string(), creationTimestamp: z.string() }),
-      status: z.object({ phase: z.string().default("Pending") }).prefault({}),
+      status: z
+        .object({
+          phase: z.string().default("Pending"),
+          containerStatuses: z
+            .array(
+              z.object({
+                state: z
+                  .object({ terminated: z.object({ reason: z.string().optional() }).optional() })
+                  .prefault({}),
+              }),
+            )
+            .default([]),
+        })
+        .prefault({}),
     }),
   ),
 });
@@ -390,6 +403,8 @@ const PodListSchema = z.object({
 interface Pod {
   name: string;
   started: boolean;
+  /** Why the container ended (`OOMKilled`); null while it runs or without a reason. */
+  reason: string | null;
 }
 
 /** One pod's log: `follow` keeps the stream open until the container ends. */
@@ -494,7 +509,8 @@ async function findPod(cluster: Cluster, job: string): Promise<Pod | null> {
     b.metadata.creationTimestamp.localeCompare(a.metadata.creationTimestamp),
   )[0];
   if (newest === undefined) return null;
-  return { name: newest.metadata.name, started: newest.status.phase !== "Pending" };
+  const reason = newest.status.containerStatuses[0]?.state.terminated?.reason ?? null;
+  return { name: newest.metadata.name, started: newest.status.phase !== "Pending", reason };
 }
 
 /** The log of the pod's container as text chunks. */

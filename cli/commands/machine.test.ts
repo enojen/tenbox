@@ -315,8 +315,10 @@ interface FakeJobInput {
   created?: string;
 }
 
-function fakePod(name: string, phase = "Running") {
-  return { metadata: { name, creationTimestamp: CREATED }, status: { phase } };
+function fakePod(name: string, phase = "Running", reason?: string) {
+  const containerStatuses =
+    reason === undefined ? [] : [{ name: "box", state: { terminated: { reason } } }];
+  return { metadata: { name, creationTimestamp: CREATED }, status: { phase, containerStatuses } };
 }
 
 function fakeJob(input: FakeJobInput) {
@@ -562,6 +564,29 @@ describe("machine", () => {
     });
   });
 
+  test("start runs in the class of machine.plan_class", async () => {
+    await writeManifest(`machine: { template: ${template}, plan_class: heavy }\n`);
+    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobClass(job)).toEqual({ label: "heavy", resources: classResources("500m", "3Gi") });
+  });
+
+  test("start runs in the plan class without plan_class", async () => {
+    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
+    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobClass(job)).toEqual({ label: "plan", resources: classResources("250m", "1536Mi") });
+  });
+
+  test("an unknown plan_class is a manifest error", async () => {
+    await writeManifest(`machine: { template: ${template}, plan_class: huge }\n`);
+    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
+    expect(run.code).not.toBe(0);
+    expect(String(run.json.error)).toContain("machine.plan_class");
+  });
+
   test("__BASE__ is main without base in the manifest", async () => {
     const run = await build();
     expect(run.code).toBe(0);
@@ -805,8 +830,13 @@ describe("machine", () => {
     expect(run.json).toEqual({
       ok: true,
       runs: [
-        { ...row("task-ten-1-1021-100000"), status: "in_progress", conclusion: null },
-        { ...row("task-ten-2-1021-090000"), status: "completed", conclusion: "success" },
+        { ...row("task-ten-1-1021-100000"), status: "in_progress", conclusion: null, reason: null },
+        {
+          ...row("task-ten-2-1021-090000"),
+          status: "completed",
+          conclusion: "success",
+          reason: null,
+        },
       ],
     });
     expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
@@ -831,7 +861,13 @@ describe("machine", () => {
       const run = await machine(["logs", "TEN-1"]);
       expect(run.code).toBe(0);
       expect(run.err).toContain("boot: cloning\ntenbox start TEN-1");
-      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
+      expect(run.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        job: NEWER,
+        status: "success",
+        reason: null,
+      });
       const pods = api.calls.find((c) => c.path.endsWith("/pods"));
       expect(pods?.query).toBe(`?labelSelector=${encodeURIComponent(`job-name=${NEWER}`)}`);
       const log = api.calls.find((c) => c.path.endsWith("/log"));
@@ -846,7 +882,13 @@ describe("machine", () => {
       const run = await machine(["logs", "TEN-1", "--follow"]);
       expect(run.code).toBe(0);
       expect(run.err).toContain("tenbox start TEN-1");
-      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "failure" });
+      expect(run.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        job: NEWER,
+        status: "failure",
+        reason: null,
+      });
       const log = api.calls.find((c) => c.path.endsWith("/log"));
       expect(log?.query).toBe("?follow=true");
     });
@@ -857,8 +899,14 @@ describe("machine", () => {
       api.nextPods = [fakePod("pod-newer")];
       api.log = LOG;
       const run = await machine(["logs", "TEN-1", "--follow"]);
-      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
-      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(2);
+      expect(run.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        job: NEWER,
+        status: "success",
+        reason: null,
+      });
+      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(3);
     });
 
     test("machine logs --follow waits for a pod that does not exist yet", async () => {
@@ -867,8 +915,14 @@ describe("machine", () => {
       api.nextPods = [fakePod("pod-newer")];
       api.log = LOG;
       const run = await machine(["logs", "TEN-1", "--follow"]);
-      expect(run.json).toEqual({ ok: true, task: "TEN-1", job: NEWER, status: "success" });
-      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(2);
+      expect(run.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        job: NEWER,
+        status: "success",
+        reason: null,
+      });
+      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(3);
     });
 
     test("machine logs without --follow and without a pod is a kubernetes error", async () => {
@@ -912,6 +966,38 @@ describe("machine", () => {
       expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
       expect(api.calls).toEqual([]);
     });
+  });
+
+  test("ls shows OOMKilled for a failed run", async () => {
+    api.jobs = [
+      fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } }),
+      fakeJob({ name: "task-ten-2-1021-090000", status: { succeeded: 1 } }),
+    ];
+    api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
+    const run = await machine(["ls"]);
+    expect(run.json.runs).toMatchObject([{ reason: "OOMKilled" }, { reason: null }]);
+    const podCalls = api.calls.filter((c) => c.path.endsWith("/pods"));
+    expect(podCalls).toHaveLength(1);
+  });
+
+  test("ls gives reason null for a failed run whose pod is gone", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
+    const run = await machine(["ls"]);
+    expect(run.json.runs).toMatchObject([{ reason: null }]);
+  });
+
+  test("logs shows OOMKilled for a killed pod", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
+    api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
+    const run = await machine(["logs", "TEN-1"]);
+    expect(run.json).toMatchObject({ status: "failure", reason: "OOMKilled" });
+  });
+
+  test("logs gives reason null for a pod without a terminated reason", async () => {
+    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
+    api.pods = [fakePod("pod-1")];
+    const run = await machine(["logs", "TEN-1"]);
+    expect(run.json).toMatchObject({ status: "failure", reason: null });
   });
 
   test("a failed Job is completed with conclusion failure", async () => {
