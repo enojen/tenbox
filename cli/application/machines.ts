@@ -337,6 +337,7 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
     project: project.name,
     projectId,
     repo,
+    base: manifest.base,
     image: BOX_IMAGE,
     cmd: words.map(shellWord).join(" "),
     env: JSON.stringify(boxEnv),

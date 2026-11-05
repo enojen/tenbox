@@ -49,6 +49,7 @@ spec:
             - { name: TENBOX_TASK, value: "__TASK__" }
             - { name: TENBOX_PROJECT, value: "__PROJECT__" }
             - { name: TENBOX_REPO, value: "__REPO__" }
+            - { name: TENBOX_BASE, value: "__BASE__" }
             - name: TENBOX_CMD
               value: |-
                 __CMD__
@@ -375,6 +376,7 @@ describe("machine", () => {
       TENBOX_TASK: "TEN-1",
       TENBOX_PROJECT: "demo",
       TENBOX_REPO: "https://github.com/o/demo.git",
+      TENBOX_BASE: "main",
       TENBOX_CMD: "tenbox build TEN-1",
       TENBOX_ENV: "{}",
     });
@@ -558,6 +560,21 @@ describe("machine", () => {
       label: "plan",
       resources: classResources("250m", "1536Mi"),
     });
+  });
+
+  test("__BASE__ is main without base in the manifest", async () => {
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_BASE).toBe("main");
+  });
+
+  test("__BASE__ is base of the manifest", async () => {
+    await writeManifest(`base: develop\nmachine: { template: ${template} }\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_BASE).toBe("develop");
   });
 
   test("a build runs in the build class by default", async () => {

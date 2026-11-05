@@ -45,8 +45,11 @@ docker build machines/k8s --build-arg TENBOX_BRANCH=main --build-arg TENBOX_REF=
 ```
 
 The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TENBOX_PROJECT`,
-`TENBOX_REPO`, `TENBOX_CMD`) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
-`TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenbox`, then runs `TENBOX_CMD`
+`TENBOX_REPO`, `TENBOX_CMD`, and `TENBOX_BASE`, the `base` of the manifest) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
+`TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenbox`, clones the project with `--branch $TENBOX_BASE` (on a kept
+volume it fetches the base and checks it out; an unset `TENBOX_BASE` keeps the clone of the default
+branch), stops with exit 1 and a log line naming the base when `tenbox.yaml` is not tracked in the
+main checkout, then runs `TENBOX_CMD`
 in the foreground as `tenbox` in the project's main checkout. `sudo` drops the rest of the env,
 so the command gets only `HOME`, `PATH` and the project's variables: `TENBOX_ENV` holds
 `machine.env` of `tenbox.yaml` as one JSON object, each key one variable; a key `HOME` or `PATH`
