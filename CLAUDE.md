@@ -20,7 +20,7 @@ worktree and run the checks) and `/tenbox-close` (one runner step `tenbox close`
 pulls the base and deletes the remote branch after a MERGED PR), the ClickUp and GitHub trackers,
 `tenbox task new` (a task in the project's tracker from the command line) and `tenbox report`
 (a bug or a missing piece of Tenbox itself, as an issue of `enojen/tenbox` or `enojen/tenyard`).
-Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`),
+Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`), the server image (`machines/server/`),
 the login sync to the Secrets of the box (`machines/login/`), and `tenbox machine run` and `ls`
 (TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
 and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
@@ -190,7 +190,7 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects),
-            commands/ (`tenbox-server user add`, `project add`), infra/ (env, tokens, db/ with the drizzle
+            commands/ (`tenbox-server user add`, `project add`, `backup`), infra/ (env, tokens, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)
@@ -200,7 +200,7 @@ skills/     tenbox/SKILL.md: when and how a session in any project uses tenbox
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
 machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR
-            on every merge), login/ (the claude.ai login sync from your computer to the Secrets
+            on every merge), server/ (the server image; server.yml pushes it), login/ (the claude.ai login sync from your computer to the Secrets
             of the box)
 docs/       design.md (the target design), reference.md, the icon
 hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)

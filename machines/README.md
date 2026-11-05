@@ -2,8 +2,8 @@
 
 Each Tenbox task runs in a box: a pod of a Job on the cluster, one Job per command, one
 volume per task. The target design is in [`docs/design.md`](../docs/design.md), section
-"Machines". This directory holds what exists today: the box image (`k8s/`) and the login
-sync (`login/`).
+"Machines". This directory holds what exists today: the box image (`k8s/`), the login
+sync (`login/`) and the server image (`server/`).
 
 ## The login: `login/`
 
@@ -84,3 +84,28 @@ does not follow the log: `tenbox machine ls` lists the Jobs with their state. Th
 volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
 
 After the close Job has ended (`tenbox machine ls`), `tenbox machine rm <id>` deletes the task's volume; it refuses with `machine-busy` while a Job of the task is active.
+
+## Server image: `server/`
+
+The tenbox server (`server/main.ts`) as a container image: bun, the production dependencies,
+`domain/` and `server/`, nothing else (no `.git`, no host `node_modules`). The `server` workflow
+(`.github/workflows/server.yml`) builds it on every push to main and pushes
+`ghcr.io/enojen/tenbox-server:<sha>` and `:latest`, then logs out of GHCR. The package is private.
+
+To build by hand, from the repo root:
+
+```
+docker build -f machines/server/Dockerfile -t tenbox-server .
+docker run -p 4300:4300 -v tenbox-data:/data tenbox-server
+```
+
+Env: `TENBOX_SERVER_HOST` (image default `0.0.0.0`), `TENBOX_SERVER_PORT` (`4300`),
+`TENBOX_SERVER_DB` (`/data/server.db`). The volume is `/data`; it holds the database and the
+backups. Tokens travel over plain HTTP, so keep the port inside the cluster.
+
+Backup, inside the container: `tenbox-server backup --to /data/backups/<name>.db` writes a
+consistent copy and refuses a file that exists. `tenbox-server` is on the PATH of the image.
+
+What tenyard `install/` must hold for it: a Deployment (one replica, `/data` mounted), a volume
+with reclaim policy Retain, a ClusterIP Service on port 4300, and a CronJob that runs the backup
+daily on the same volume.

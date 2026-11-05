@@ -4,6 +4,7 @@ import path from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+import { backupExistsError, noDatabaseError } from "../../../domain/errors/backups.ts";
 
 const MIGRATIONS_DIR = path.join(import.meta.dir, "migrations");
 
@@ -25,4 +26,27 @@ function close(db: Db): void {
   db.$client.close();
 }
 
-export const database = { open, close };
+interface BackupInput {
+  from: string;
+  to: string;
+}
+
+/**
+ * A consistent copy of the live database, safe while it is written; never overwrites a file.
+ * It opens the database read-only and applies no migration, so a newer image never changes
+ * the schema of the database an older server runs on.
+ */
+function backup(input: BackupInput): void {
+  const { from, to } = input;
+  if (!fs.existsSync(from)) throw noDatabaseError(from);
+  if (fs.existsSync(to)) throw backupExistsError(to);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  const client = new Database(from, { readonly: true });
+  try {
+    client.run("vacuum into ?", [to]);
+  } finally {
+    client.close();
+  }
+}
+
+export const database = { open, close, backup };

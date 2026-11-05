@@ -1,0 +1,8 @@
+# Allow only what the server image copies.
+*
+!package.json
+!bun.lock
+!domain
+!server
+**/*.test.ts
+**/node_modules

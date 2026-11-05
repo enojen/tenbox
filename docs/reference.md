@@ -435,7 +435,7 @@ cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
   application/  use cases
   infra/        git, gh, shell, files, env, baselines on disk, kubernetes (the cluster API), claude/ (Claude Code), tracker/ adapters
   test/         temporary projects and the CLI runner for tests
-server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`), loopback only.
+server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`); binds `TENBOX_SERVER_HOST`, default `localhost` (loopback only).
               SIGINT or SIGTERM lets open requests finish, closes the database and exits 0
   routes/       `GET /health` returns 200 `{"ok":true}`; `GET /openapi.json` is the OpenAPI 3.1
                 document built from the zod route schemas; `GET /docs` is Swagger UI. Every
@@ -463,7 +463,11 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 required; the id is 6 characters, a-z and 0-9) finds or makes the organization,
                 adds the project and prints `{ ok, project, organization }`. The same `--id`
                 again exits 1 with `code: "project-exists"`
-  infra/        env (`TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
+                `tenbox-server backup --to <file>` writes a consistent copy of the database
+                (`VACUUM INTO`); it opens the database read-only and applies no migration;
+                exits 1 with `backup-exists` when the file exists and `no-database` when
+                there is no database
+  infra/        env (`TENBOX_SERVER_HOST`, default `localhost`; `TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
                 `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
                   `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
@@ -474,7 +478,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
 skills/       tenbox/SKILL.md, the skill for a session in any project
-machines/     the box image (k8s/) and the login sync (login/); see machines/README.md
+machines/     the box image (k8s/), the login sync (login/) and the server image (server/); see machines/README.md
 docs/         design.md (the target design), reference.md, the icon
 ```
 
