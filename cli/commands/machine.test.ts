@@ -472,11 +472,23 @@ describe("machine", () => {
 
   test.each([
     ["another id", ["run", "TEN-1", "--", "tenbox", "build", "TEN-2"]],
-    ["another command", ["run", "TEN-1", "--", "tenbox", "check", "TEN-1"]],
+    ["another command", ["run", "TEN-1", "--", "tenbox", "list"]],
     ["no --", ["run", "TEN-1"]],
     ["words without --", ["run", "TEN-1", "tenbox", "build", "TEN-1"]],
     ["a flag of another command", ["run", "TEN-1", "--", "tenbox", "build", "TEN-1", "--force"]],
     ["--title without a title", ["run", "TEN-1", "--", "tenbox", "start", "TEN-1", "--title"]],
+    ["pr with --group", ["run", "TEN-1", "--", "tenbox", "pr", "TEN-1", "--group", "2"]],
+    [
+      "check --group without a value",
+      ["run", "TEN-1", "--", "tenbox", "check", "TEN-1", "--group"],
+    ],
+    [
+      "decide --json without a value",
+      ["run", "TEN-1", "--", "tenbox", "decide", "TEN-1", "--json"],
+    ],
+    ["answer without a number", ["run", "TEN-1", "--", "tenbox", "answer", "TEN-1"]],
+    ["answer with two numbers", ["run", "TEN-1", "--", "tenbox", "answer", "TEN-1", "1", "2"]],
+    ["plan without show", ["run", "TEN-1", "--", "tenbox", "plan", "TEN-1"]],
   ])("%s is a usage error before any request", async (_name, args) => {
     const run = await machine(args);
     expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
@@ -631,6 +643,71 @@ describe("machine", () => {
     expect(run.code).toBe(0);
     const job = posts().find((c) => c.path === JOBS_PATH);
     expect(jobEnv(job).TENBOX_CMD).toBe("tenbox close TEN-1 --force");
+  });
+
+  /** The Job one `machine run` posted: the box command and the class label. */
+  async function runWords(words: string[]) {
+    const run = await machine(["run", "TEN-1", "--", "tenbox", ...words]);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    return { run, cmd: jobEnv(job).TENBOX_CMD, label: jobClass(job).label, job };
+  }
+
+  test("approve runs as a Job in the plan class", async () => {
+    const { run, cmd, label } = await runWords(["approve", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toMatchObject({ ok: true, task: "TEN-1", cmd: "approve" });
+    expect(run.json.url).toContain(JOBS_PATH);
+    expect([cmd, label]).toEqual(["tenbox approve TEN-1", "plan"]);
+  });
+
+  test("decide JSON reaches TENBOX_CMD as one quoted word in the build class", async () => {
+    await files.write(path.join(template, "services", "postgres.yaml"), POSTGRES_SERVICE);
+    await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
+    const json = `[{"answer":"it's $(x)"}]`;
+    const { run, cmd, label, job } = await runWords(["decide", "TEN-1", "--json", json]);
+    expect(run.code).toBe(0);
+    expect(cmd).toBe(`tenbox decide TEN-1 --json '[{"answer":"it'\\''s $(x)"}]'`);
+    expect(label).toBe("build");
+    expect(jobPod(job).sidecars).toEqual(["postgres"]);
+  });
+
+  test("answer with an option runs as a Job in the build class", async () => {
+    const { run, cmd, label } = await runWords(["answer", "TEN-1", "1"]);
+    expect(run.code).toBe(0);
+    expect(run.json).toMatchObject({ cmd: "answer" });
+    expect([cmd, label]).toEqual(["tenbox answer TEN-1 1", "build"]);
+  });
+
+  test("plan show and status run as Jobs in the plan class", async () => {
+    const plan = await runWords(["plan", "show", "TEN-1"]);
+    expect(plan.run.json).toMatchObject({ cmd: "plan" });
+    expect([plan.cmd, plan.label]).toEqual(["tenbox plan show TEN-1", "plan"]);
+    api.calls.length = 0;
+    const status = await runWords(["status", "TEN-1"]);
+    expect(status.run.code).toBe(0);
+    expect([status.cmd, status.label]).toEqual(["tenbox status TEN-1", "plan"]);
+  });
+
+  test("check with group and tier runs in the build class with services", async () => {
+    await files.write(path.join(template, "services", "postgres.yaml"), POSTGRES_SERVICE);
+    await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
+    const { run, cmd, label, job } = await runWords([
+      "check",
+      "TEN-1",
+      "--group",
+      "2",
+      "--tier",
+      "full",
+    ]);
+    expect(run.code).toBe(0);
+    expect([cmd, label]).toEqual(["tenbox check TEN-1 --group 2 --tier full", "build"]);
+    expect(jobPod(job).sidecars).toEqual(["postgres"]);
+  });
+
+  test("pr with its flags runs in the plan class", async () => {
+    const { run, cmd, label } = await runWords(["pr", "TEN-1", "--ready", "--force", "--wait"]);
+    expect(run.code).toBe(0);
+    expect([cmd, label]).toEqual(["tenbox pr TEN-1 --ready --force --wait", "plan"]);
   });
 
   test("a token in the origin url does not reach the Job", async () => {

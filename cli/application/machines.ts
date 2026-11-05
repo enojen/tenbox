@@ -1,5 +1,5 @@
 import path from "node:path";
-import { COMMAND } from "../../domain/commands.ts";
+import { COMMAND, type CommandName } from "../../domain/commands.ts";
 import {
   loginExpiredError,
   machineBusyError,
@@ -37,8 +37,30 @@ import { pollUntil } from "../infra/poll.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
-const MACHINE_COMMANDS = [COMMAND.start, COMMAND.build, COMMAND.close] as const;
-type MachineCommand = (typeof MACHINE_COMMANDS)[number];
+/** What one command takes after its id; `tests` commands run the project's tests or the build. */
+interface CommandShape {
+  valueFlags: string[];
+  boolFlags: string[];
+  /** The words between the id and the flags. */
+  positionals: number;
+  tests: boolean;
+}
+
+const NO_FLAGS: CommandShape = { valueFlags: [], boolFlags: [], positionals: 0, tests: false };
+
+const MACHINE_COMMANDS = {
+  [COMMAND.start]: { ...NO_FLAGS, valueFlags: ["--title"] },
+  [COMMAND.build]: { ...NO_FLAGS, tests: true },
+  [COMMAND.close]: { ...NO_FLAGS, boolFlags: ["--force"] },
+  [COMMAND.approve]: NO_FLAGS,
+  [COMMAND.status]: NO_FLAGS,
+  [COMMAND.plan]: NO_FLAGS,
+  [COMMAND.pr]: { ...NO_FLAGS, boolFlags: ["--ready", "--force", "--wait"] },
+  [COMMAND.check]: { ...NO_FLAGS, valueFlags: ["--group", "--tier"], tests: true },
+  [COMMAND.decide]: { ...NO_FLAGS, valueFlags: ["--json"], boolFlags: ["--no-build"], tests: true },
+  [COMMAND.answer]: { ...NO_FLAGS, positionals: 1, tests: true },
+} satisfies Partial<Record<CommandName, CommandShape>>;
+type MachineCommand = keyof typeof MACHINE_COMMANDS;
 
 /** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
 const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
@@ -46,7 +68,8 @@ const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
 const TENYARD_SELECTOR = "app=tenyard";
 
 /** The words after `--`: `tenbox <cmd> <id> [flags]`. */
-const USAGE = "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force]";
+const USAGE =
+  "tenbox machine run <id> -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags]";
 
 interface MachineRunInput {
   id: TaskId;
@@ -199,23 +222,40 @@ function toRow(job: Job): MachineRunRow {
 
 /** The command after `--`, checked: only the flags of its command. */
 function parseCommand(input: MachineRunInput): MachineCommand {
-  const [tool, cmd, id, ...flags] = input.words;
-  const command = MACHINE_COMMANDS.find((c) => c === cmd);
+  const [tool, cmd, ...rest] = input.words;
+  const command = Object.keys(MACHINE_COMMANDS).find((c): c is MachineCommand => c === cmd);
   if (tool !== "tenbox" || command === undefined) throw usageError(`usage: ${USAGE}`);
+  // `plan show <id>` is the one command with a word before the id.
+  const tail = command === COMMAND.plan ? afterShow(rest) : rest;
+  const [id, ...args] = tail;
   if (id === undefined || taskId(id) !== input.id) throw usageError(`usage: ${USAGE}`);
-  if (!flagsFit(command, flags)) throw usageError(`usage: ${USAGE}`);
+  if (!argsFit({ shape: MACHINE_COMMANDS[command], args })) throw usageError(`usage: ${USAGE}`);
   return command;
 }
 
-/** `start` takes `--title X`, `close` takes `--force`, `build` takes none. */
-function flagsFit(command: MachineCommand, flags: string[]): boolean {
-  const [flag, value, ...rest] = flags;
-  if (flag === undefined) return true;
-  if (command === COMMAND.start) {
-    return flag === "--title" && value !== undefined && rest.length === 0;
+function afterShow(words: string[]): string[] {
+  return words[0] === "show" ? words.slice(1) : [];
+}
+
+interface ArgsInput {
+  shape: CommandShape;
+  /** The words after the id. */
+  args: string[];
+}
+
+/** The positional words, then only flags of the command, a value flag with its value. */
+function argsFit(input: ArgsInput): boolean {
+  const { shape, args } = input;
+  if (args.length < shape.positionals) return false;
+  const flags = args.slice(shape.positionals);
+  let i = 0;
+  while (i < flags.length) {
+    const flag = flags[i] ?? "";
+    if (shape.boolFlags.includes(flag)) i += 1;
+    else if (shape.valueFlags.includes(flag) && flags[i + 1] !== undefined) i += 2;
+    else return false;
   }
-  if (command === COMMAND.close) return flag === "--force" && value === undefined;
-  return false;
+  return true;
 }
 
 /** The refresh token must still be valid: the machine takes its login from the same file. */
@@ -289,9 +329,9 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
   };
 }
 
-/** `start` and `close` plan and clean up; only a build runs the project's tests. */
+/** Only a command that runs the project's tests or sends the build takes `machine.class`. */
 function resourceClass(command: CommandRun): ResourceClass {
-  if (command.cmd === COMMAND.build) return command.manifest.machine.class;
+  if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.class;
   return RESOURCE_CLASS.plan;
 }
 
@@ -301,7 +341,7 @@ async function activeJobs(cluster: Cluster, id: TaskId): Promise<string[]> {
 }
 
 function serviceNames(command: CommandRun): string[] {
-  if (command.cmd === COMMAND.build) return command.manifest.machine.services;
+  if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.services;
   return [];
 }
 
