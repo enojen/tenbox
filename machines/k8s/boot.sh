@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
-# TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN,
-# TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS); PROJECT_GITHUB_TOKEN, the project's own token,
+# TENBOX_REPO, TENBOX_CMD, and TENBOX_BASE, the project's base branch to check out) and the
+# secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN, TRACKER_API_KEY, NTFY_URL,
+# CLAUDE_CREDENTIALS); PROJECT_GITHUB_TOKEN, the project's own token,
 # wins over GITHUB_TOKEN, the shared one, when it is set and not empty. It prepares the volume
 # at /home/tenbox and runs the tenbox command in the foreground, as tenbox, in the project's
 # main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
@@ -62,7 +63,14 @@ setup_github() {
 setup_project() {
   if [ ! -d "$main/.git" ]; then
     as_tenbox mkdir -p "$(dirname "$main")"
-    as_tenbox git clone --quiet "$TENBOX_REPO" "$main"
+    as_tenbox git clone --quiet ${TENBOX_BASE:+--branch "$TENBOX_BASE"} "$TENBOX_REPO" "$main"
+  elif [ -n "${TENBOX_BASE:-}" ]; then
+    as_tenbox git -C "$main" fetch --quiet origin "$TENBOX_BASE"
+    as_tenbox git -C "$main" checkout --quiet "$TENBOX_BASE"
+  fi
+  if [ -n "${TENBOX_BASE:-}" ] && ! as_tenbox git -C "$main" ls-files --error-unmatch tenbox.yaml > /dev/null 2>&1; then
+    log "tenbox.yaml is not tracked in the main checkout on base $TENBOX_BASE"
+    exit 1
   fi
   local manifest="$main/tenbox.local.yaml"
   install -m 600 -o tenbox -g tenbox /dev/null "$manifest"
