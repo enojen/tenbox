@@ -24,3 +24,13 @@ export type RunConclusion = typeof JOB_STATUS.success | typeof JOB_STATUS.failur
 export const VOLUME_STATE = { deleted: "deleted", missing: "missing" } as const;
 
 export type VolumeState = (typeof VOLUME_STATE)[keyof typeof VOLUME_STATE];
+
+/** The reason of a box container that ended by the kernel's memory limit. */
+export const OOM_KILLED = "OOMKilled";
+
+/** The last line of the boot log says a process of the box was OOM-killed: `oom_kill <n>`, n > 0. */
+export function oomKilledInLog(text: string): boolean {
+  const last = text.trimEnd().split("\n").pop() ?? "";
+  const count = /oom_kill (\d+)\s*$/.exec(last)?.[1];
+  return count !== undefined && Number(count) > 0;
+}

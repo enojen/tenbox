@@ -182,3 +182,11 @@ test("notify takes a ntfy URL; no notify means none", () => {
     mergeManifest([{ file: "tenbox.yaml", value: { notify: { desktop: true } } }]),
   ).toThrow(/notify/);
 });
+
+test("machine.plan_class is plan by default", () => {
+  expect(mergeManifest([]).machine.plan_class).toBe("plan");
+  const heavy = { file: "tenbox.yaml", value: { machine: { plan_class: "heavy" } } };
+  expect(mergeManifest([heavy]).machine.plan_class).toBe("heavy");
+  const huge = { file: "tenbox.yaml", value: { machine: { plan_class: "huge" } } };
+  expect(() => mergeManifest([huge])).toThrow(/machine\.plan_class/);
+});

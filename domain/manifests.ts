@@ -122,6 +122,8 @@ const MachineSchema = z
     template: z.string().min(1).default(DEFAULT_TEMPLATE),
     /** The resource class of a build in the box. */
     class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.build),
+    /** The resource class of `tenbox start` in the box, the planner's run. */
+    plan_class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.plan),
     /** Files of `<template>/services/` that a build gets. */
     services: z
       .array(z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }))

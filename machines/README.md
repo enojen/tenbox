@@ -57,15 +57,15 @@ loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The comm
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
 that session works and ends once no session is left or the sessions have been idle for
 `IDLE_MINUTES` (1; a plan that waits for approval). Last it logs one line with what the
-container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s`, from
-`memory.peak` and `cpu.stat` of its cgroup; the peak counts the file cache too, so the real need
+container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s, oom_kill <n>`, from
+`memory.peak`, `cpu.stat` and `memory.events` of its cgroup (`oom_kill` counts the processes the kernel killed at the memory limit: above 0, `tenbox machine ls` and `logs` show reason `OOMKilled` even when the container ended with exit 0); the peak counts the file cache too, so the real need
 is at most that. tenyard's resource classes come from these lines. It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
 
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
 reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
 `machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, with the resource
-class from `task/classes.yaml` (`plan` for `start` and `close`, `machine.class` of
+class from `task/classes.yaml` (`machine.plan_class` for `start`, default `plan`; `plan` for `close`, `machine.class` of
 `tenbox.yaml` for `build`, default `build`) and, for `build`, the services of
 `machine.services` from `task/services/` (their sidecars and volumes; their env joins
 `TENBOX_ENV`, where `machine.env` wins), and posts the

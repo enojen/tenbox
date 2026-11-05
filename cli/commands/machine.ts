@@ -35,12 +35,12 @@ export interface MachineLogsArgs {
 
 /** Writes the pod log of the task's newest Job to stderr. */
 export async function showMachineLogs(args: MachineLogsArgs): Promise<MachineLogsResultJson> {
-  const { task, job, status } = await machines.logs({
+  const { task, job, status, reason } = await machines.logs({
     id: args.id,
     follow: args.follow,
     write: (chunk) => process.stderr.write(chunk),
   });
-  return { ok: true, task, job, status };
+  return { ok: true, task, job, status, reason };
 }
 
 /** Ends the running Jobs of the task; its volume stays. */
