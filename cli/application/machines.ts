@@ -1,6 +1,7 @@
 import path from "node:path";
 import { COMMAND, type CommandName } from "../../domain/commands.ts";
 import {
+  githubTokenFileError,
   loginExpiredError,
   machineBusyError,
   noLoginError,
@@ -25,6 +26,7 @@ import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
 import { env } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import {
   type Cluster,
@@ -268,6 +270,7 @@ async function ensureLogin(): Promise<void> {
 /** Every Job gets the project and its origin: the box clones the project on a new volume. */
 async function runJob(command: CommandRun): Promise<string> {
   const { id, manifest, projectId } = command;
+  const values = await projectSecretValues(manifest);
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const dir = homePath(manifest.machine.template);
   const services = await Promise.all(
@@ -281,7 +284,6 @@ async function runJob(command: CommandRun): Promise<string> {
   const template = await kubernetes.readTemplate({ file, fields });
   const job = kubernetes.addServices({ file, job: template, services });
   await ensureIdle(cluster, id);
-  const values = projectSecretValues(manifest);
   await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
   await kubernetes.ensureVolume({ cluster, object: volume });
   return kubernetes.createJob({ cluster, object: job });
@@ -289,15 +291,30 @@ async function runJob(command: CommandRun): Promise<string> {
 
 /**
  * The project Secret the tenyard Job template reads, `project-<project id>`: the tracker key and
- * the ntfy URL this computer uses for the project. A value the project lacks is left out.
+ * the ntfy URL this computer uses for the project, and the project's GitHub token. A value the
+ * project lacks is left out.
  */
-function projectSecretValues(manifest: Manifest): Record<string, string> {
+async function projectSecretValues(manifest: Manifest): Promise<Record<string, string>> {
   const trackerKey = findApiKey(manifest.tracker);
   const ntfy = manifest.notify.ntfy;
+  const githubToken = await readGithubToken(manifest);
   return {
     ...(trackerKey === null ? {} : { tracker_api_key: trackerKey }),
     ...(ntfy === undefined ? {} : { ntfy_url: ntfy }),
+    ...(githubToken === null ? {} : { github_token: githubToken }),
   };
+}
+
+/** The trimmed text of `machine.github_token_file`; null without the key. */
+async function readGithubToken(manifest: Manifest): Promise<string | null> {
+  const key = manifest.machine.github_token_file;
+  if (key === undefined) return null;
+  const file = homePath(key);
+  const text = await files.read(file);
+  if (text === null) throw githubTokenFileError(file, "file not found");
+  const token = text.trim();
+  if (token === "") throw githubTokenFileError(file, "file is empty");
+  return token;
 }
 
 interface FieldsInput {

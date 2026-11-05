@@ -127,6 +127,8 @@ const MachineSchema = z
       .array(z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }))
       .default([]),
     env: z.record(z.string().regex(ENV_NAME), z.string()).default({}),
+    /** A `~/` path to the GitHub token of this project's machine runs; meant for the local layer. */
+    github_token_file: z.string().min(1).optional(),
   })
   .strict();
 
