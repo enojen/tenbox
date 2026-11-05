@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +15,8 @@ const HCLOUD_TOKEN = "hcloud-token";
 const HTTP_NOT_FOUND = 404;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_BAD_REQUEST = 400;
+const HTTP_FORBIDDEN = 403;
+const PODS_PATH = "/api/v1/namespaces/tenbox/pods";
 const SERVER_ID = 42;
 const CREATED = "2026-11-05T10:00:00+00:00";
 const LEFT_AT = new Date("2026-11-05T12:00:30Z");
@@ -31,6 +33,8 @@ interface Fakes {
   db: Db;
   dbFile: string;
   listed: FakeNode[];
+  /** The pod list of the Job watch answers 403, as without the RBAC of tenyard. */
+  podsForbidden: boolean;
   hetznerCalls: number;
   kubernetes: KubernetesApi;
   hetzner: HetznerApi;
@@ -88,6 +92,7 @@ function setup(): Fakes {
     db,
     dbFile,
     listed: [{ name: "worker-1", providerID: `hcloud://${SERVER_ID}` }],
+    podsForbidden: false,
     hetznerCalls: 0,
     kubernetes: { url: "", tokenFile, caFile },
     hetzner: { url: "", token: HCLOUD_TOKEN },
@@ -96,6 +101,10 @@ function setup(): Fakes {
     port: 0,
     fetch: (request) => {
       if (!bearer(request, TOKEN)) return new Response("", { status: HTTP_UNAUTHORIZED });
+      if (new URL(request.url).pathname === PODS_PATH) {
+        if (fakes.podsForbidden) return new Response("forbidden", { status: HTTP_FORBIDDEN });
+        return Response.json({ kind: "PodList", items: [] });
+      }
       if (new URL(request.url).pathname !== "/api/v1/nodes") {
         return new Response("", { status: HTTP_NOT_FOUND });
       }
@@ -220,6 +229,22 @@ test("a node removed while the server was down is recorded late at start", async
   expect(removed).toHaveLength(1);
   expect(removed[0]?.at).toBe("2026-11-06T08:00:00.000Z");
   expect(JSON.parse(removed[0]?.body ?? "")).toMatchObject({ node: "worker-1", late: true });
+});
+
+test("job poll failure does not stop node poll", async () => {
+  const fakes = setup();
+  fakes.podsForbidden = true;
+  const errors = spyOn(console, "error").mockImplementation(() => undefined);
+  const watching = nodes.watch(fakes.db, {
+    kubernetes: fakes.kubernetes,
+    hetzner: fakes.hetzner,
+    now: () => STARTED_AT,
+  });
+  await watching.stop();
+  const calls = [...errors.mock.calls];
+  errors.mockRestore();
+  expect(calls).toEqual([[expect.stringMatching(/^job watch: .*HTTP 403/)]]);
+  expect(rows(fakes.db).map((row) => row.id)).toEqual(["node.added:42"]);
 });
 
 test("a node without an hcloud providerID is not recorded", async () => {
