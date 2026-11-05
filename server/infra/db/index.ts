@@ -4,6 +4,7 @@ import path from "node:path";
 import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
+import { backupExistsError } from "../../../domain/errors/backups.ts";
 
 const MIGRATIONS_DIR = path.join(import.meta.dir, "migrations");
 
@@ -25,4 +26,17 @@ function close(db: Db): void {
   db.$client.close();
 }
 
-export const database = { open, close };
+interface BackupInput {
+  db: Db;
+  file: string;
+}
+
+/** A consistent copy of the live database, safe while it is written; never overwrites a file. */
+function backup(input: BackupInput): void {
+  const { db, file } = input;
+  if (fs.existsSync(file)) throw backupExistsError(file);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  db.$client.run("vacuum into ?", [file]);
+}
+
+export const database = { open, close, backup };

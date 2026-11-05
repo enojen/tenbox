@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,27 @@ describe("bin entry files", () => {
 });
 
 describe("the server process", () => {
+  test("TENBOX_SERVER_HOST sets the bound address in the listening line", async () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    const port = freePort();
+    const proc = Bun.spawn(["bun", join(ROOT, "server/main.ts")], {
+      env: {
+        ...process.env,
+        TENBOX_SERVER_DB: join(root, "server.db"),
+        TENBOX_SERVER_PORT: String(port),
+        TENBOX_SERVER_HOST: "127.0.0.1",
+      },
+      stderr: "pipe",
+    });
+    try {
+      const seen = await waitForListening(proc.stderr);
+      expect(seen).toContain(`listening on http://127.0.0.1:${port}`);
+    } finally {
+      proc.kill();
+      rmSync(root, { recursive: true });
+    }
+  });
+
   test("SIGTERM stops it cleanly with exit 0", async () => {
     const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
     const proc = Bun.spawn(["bun", join(ROOT, "server/main.ts")], {
@@ -49,13 +70,60 @@ describe("the server process", () => {
   });
 });
 
-/** Resolves when the server writes its `listening` line. */
-async function waitForListening(stderr: ReadableStream<Uint8Array>): Promise<void> {
+/** Resolves with the stderr text when the server writes its `listening` line. */
+async function waitForListening(stderr: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let seen = "";
   for await (const chunk of stderr) {
     seen += decoder.decode(chunk);
-    if (seen.includes("listening")) return;
+    if (seen.includes("listening")) return seen;
   }
   throw new Error(`the server never listened: ${seen}`);
 }
+
+describe("tenbox-server backup", () => {
+  function runBackup(args: string[], dbFile: string) {
+    return Bun.spawnSync(["bun", join(ROOT, "server/main.ts"), "backup", ...args], {
+      env: { ...process.env, TENBOX_SERVER_DB: dbFile },
+    });
+  }
+
+  test("backup writes a copy of the live database", () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    try {
+      const dbFile = join(root, "s.db");
+      const to = join(root, "b", "x.db");
+      const result = runBackup(["--to", to], dbFile);
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout.toString())).toEqual({ ok: true, file: to });
+      expect(existsSync(to)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+
+  test("backup refuses an existing file", () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    try {
+      const to = join(root, "x.db");
+      writeFileSync(to, "keep");
+      const result = runBackup(["--to", to], join(root, "s.db"));
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout.toString()).code).toBe("backup-exists");
+      expect(readFileSync(to, "utf8")).toBe("keep");
+    } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+
+  test("backup without --to prints the usage and exits 1", () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    try {
+      const result = runBackup([], join(root, "s.db"));
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr.toString()).toContain("backup --to <file>");
+    } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+});

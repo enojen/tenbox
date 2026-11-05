@@ -3,18 +3,22 @@ import path from "node:path";
 import { envError } from "../../domain/errors/manifest.ts";
 
 export interface ServerEnv {
+  /** `TENBOX_SERVER_HOST`, default `localhost`: loopback only, as tokens travel over plain HTTP. */
+  host: string;
   /** `TENBOX_SERVER_PORT`, default 4300. */
   port: number;
   /** `TENBOX_SERVER_DB`, default `~/.tenbox-server/server.db`. */
   dbFile: string;
 }
 
+const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 4300;
 const MAX_PORT = 65535;
 
 /** Read at each call, so tests can set `process.env` first. Bun loads `.env` by itself. */
 export function serverEnv(): ServerEnv {
   return {
+    host: process.env.TENBOX_SERVER_HOST ?? DEFAULT_HOST,
     port: port(process.env.TENBOX_SERVER_PORT),
     dbFile: process.env.TENBOX_SERVER_DB ?? path.join(os.homedir(), ".tenbox-server", "server.db"),
   };
