@@ -82,7 +82,7 @@ const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
-  "tenbox machine run <id> -- tenbox start|build|close <id> [--title X | --force] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
+  "tenbox machine run <id> -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";

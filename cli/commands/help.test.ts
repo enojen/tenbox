@@ -17,6 +17,14 @@ describe("tenbox help", () => {
     expect(run.json.help).toBe(run.err.trimEnd());
   });
 
+  test("help of report states that the issue names no client project", async () => {
+    const run = await tenbox(["help", "report"], cwd);
+    expect(run.code).toBe(0);
+    expect(run.err).toContain("a client project");
+    expect(run.err).toContain("tracker ids,");
+    expect(String(run.json.help)).toContain("a client project");
+  });
+
   test(
     "every command in the list has a help text",
     async () => {

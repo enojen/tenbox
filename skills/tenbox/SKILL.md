@@ -44,7 +44,9 @@ For the flow of a task, the files of a task and `tenbox.yaml`, read the
   opens them.
 - A bug or a missing piece of Tenbox itself: show the user the draft and run
   `tenbox report` only after they say yes, never alone (`--repo tenyard` for the cluster,
-  the box and the Jobs). A workflow never reports.
+  the box and the Jobs). The issue names nothing of the project it was seen in (repo, owner,
+  project id, tracker ids, people, customers); write "a client project" instead, and check the
+  draft for such names before the person says yes. A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
   as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
   "Machines" in the reference. After its close Job ends, `tenbox machine rm <id>` deletes the
