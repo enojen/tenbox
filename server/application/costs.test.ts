@@ -62,3 +62,53 @@ test("a stored node event that does not fit its schema is a bad file", () => {
   insert(db, { id: "node.added:101", type: "node.added", at: "2026-11-03T10:00:00Z", body: "{}" });
   expect(() => costs.get(db, WINDOW)).toThrow("event node.added:101");
 });
+
+test("the report splits busy EUR over the tasks of the stored job.finished events", () => {
+  const db = open();
+  insert(db, {
+    id: "node.added:101",
+    type: "node.added",
+    at: "2026-11-03T10:00:00.000Z",
+    body: JSON.stringify(ADDED),
+  });
+  const finished = {
+    event: "job.finished",
+    task: "TEN-7",
+    project: "tenbox",
+    job: "task-ten-7",
+    pod: "task-ten-7-abc",
+    command: "build",
+    class: "build",
+    node: "worker-1",
+    exit_code: 0,
+    oom: false,
+    created: "2026-11-03T10:00:00.000Z",
+    scheduled: "2026-11-03T10:00:00.000Z",
+    started: "2026-11-03T10:00:00.000Z",
+    finished: "2026-11-03T12:00:00.000Z",
+    duration_ms: 7_200_000,
+    requests: { cpu: "1", memory: "2Gi" },
+  };
+  insert(db, {
+    id: "job.finished:uid-1",
+    type: "job.finished",
+    at: finished.finished,
+    body: JSON.stringify(finished),
+  });
+  const report = costs.get(db, WINDOW);
+  expect(report.workers).toMatchObject([{ server_id: 101, busy_hours: 2, waste_hours: 132 }]);
+  expect(report.tasks).toEqual([
+    { task: "TEN-7", workers: [{ node: "worker-1", server_id: 101, eur: "0.02" }], eur: "0.02" },
+  ]);
+});
+
+test("a stored job.finished that does not fit its schema is a bad file", () => {
+  const db = open();
+  insert(db, {
+    id: "job.finished:uid-1",
+    type: "job.finished",
+    at: "2026-11-03T10:00:00Z",
+    body: "{}",
+  });
+  expect(() => costs.get(db, WINDOW)).toThrow("event job.finished:uid-1");
+});
