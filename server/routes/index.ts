@@ -1,8 +1,10 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { costs } from "../application/costs.ts";
 import { events } from "../application/events.ts";
 import type { Db } from "../infra/db/index.ts";
 import { type AuthEnv, requireToken } from "./auth.ts";
+import { costsRoute } from "./costs.ts";
 import { eventsRoute } from "./events.ts";
 import { healthRoute } from "./health.ts";
 import { failBadInput, notFound, onError } from "./problems.ts";
@@ -21,6 +23,7 @@ export function createApp(db: Db): OpenAPIHono<AuthEnv> {
     const saved = events.save(db, { userId: c.get("user").id, events: c.req.valid("json") });
     return c.json({ ok: true, ...saved });
   });
+  app.openapi(costsRoute, (c) => c.json({ ok: true, ...costs.get(db, c.req.valid("query")) }));
   app.doc31(OPENAPI_PATH, {
     openapi: OPENAPI_VERSION,
     info: { title: "Tenbox server", version: "1" },

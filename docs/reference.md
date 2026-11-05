@@ -452,8 +452,21 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 event whose `id` the server has, or that comes twice in the list, is skipped.
                 `user_id` is the user of the token, not the `user` of the body. A node event (`node.added`,
                 `node.removed`) is not in `EventSchema`: only the server makes it, so a post of one is a 400
+                `GET /costs?from=<iso>&to=<iso>` reports what the workers of the cluster were paid for in
+                that window (`costReport` in `domain/costs.ts`); `from` and `to` are ISO date-times with
+                `Z` or an offset, `from` before `to`, else a 400 `bad-input`. It answers 200
+                `{ ok: true, from, to, workers, total }`. A worker line is one Hetzner server, the oldest
+                first: `{ node, server_id, server_type, location, paid_hours, eur }`. Hetzner bills each
+                started hour whole, from the server's `created`: `paid_hours` counts the hours `at + k h`
+                of its `node.added` that start at or after `from` and before its `node.removed` `at`, or
+                before `to` when it is still there (no cap at the monthly price). `eur` is `paid_hours` times
+                `price_hourly.net`, computed exactly and rounded half up to cents, as decimal text
+                (`"0.02"`). A server with no paid hour in the window has no line; the control plane
+                (tenbox-ci) is a worker line like any other. `total` is `{ paid_hours, eur }`, the sum of
+                the lines. No volume line yet
   application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
                 membership and the token in one transaction).
+                costs: reads every node event and builds the `GET /costs` report.
                 nodes: the node watch. Inside the cluster (`KUBERNETES_SERVICE_HOST` set) the server lists the
                 Nodes (`GET /api/v1/nodes`, with the pod's service account token and CA under
                 `/var/run/secrets/kubernetes.io/serviceaccount`, the token read at each poll) at start and every
