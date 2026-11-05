@@ -101,7 +101,7 @@ Env: `TENBOX_SERVER_HOST` (image default `0.0.0.0`), `TENBOX_SERVER_PORT` (`4300
 backups. Tokens travel over plain HTTP, so keep the port inside the cluster.
 
 Backup, inside the container: `tenbox-server backup --to /data/backups/<name>.db` writes a
-consistent copy and refuses a file that exists. Run it as `bun run server/main.ts backup --to ...`.
+consistent copy and refuses a file that exists. `tenbox-server` is on the PATH of the image.
 
 What tenyard `install/` must hold for it: a Deployment (one replica, `/data` mounted), a volume
 with reclaim policy Retain, a ClusterIP Service on port 4300, and a CronJob that runs the backup

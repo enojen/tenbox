@@ -9,7 +9,9 @@ COPY server ./server
 ENV TENBOX_SERVER_HOST=0.0.0.0 \
     TENBOX_SERVER_PORT=4300 \
     TENBOX_SERVER_DB=/data/server.db
-RUN mkdir /data && chown bun:bun /data
+RUN printf '#!/bin/sh\nexec bun run /app/server/main.ts "$@"\n' > /usr/local/bin/tenbox-server \
+ && chmod +x /usr/local/bin/tenbox-server \
+ && mkdir /data && chown bun:bun /data
 VOLUME /data
 USER bun
 EXPOSE 4300
