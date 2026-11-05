@@ -985,7 +985,7 @@ describe("machine", () => {
 
   test("ls and logs show OOMKilled when the last log line says oom_kill 1", async () => {
     api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { succeeded: 1 } })];
-    api.pods = [fakePod("pod-1", "Succeeded")];
+    api.pods = [fakePod("pod-1", "Succeeded", "Completed")];
     api.log = `${BOOT_ENDED}\ntenbox-boot: memory peak 3000 MiB, cpu 50 s, oom_kill 1\n`;
     const ls = await machine(["ls"]);
     expect(ls.json.runs).toMatchObject([{ conclusion: "success", reason: "OOMKilled" }]);

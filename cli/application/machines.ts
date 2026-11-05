@@ -197,7 +197,8 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   const after = await kubernetes.listJobs(cluster, `task=${id}`);
   const job = after.find((j) => j.name === newest.name) ?? newest;
   const pod = await kubernetes.findPod(cluster, newest.name);
-  const reason = pod?.reason ?? (oomKilledInLog(tail) ? OOM_KILLED : null);
+  const reason =
+    pod?.reason === OOM_KILLED || oomKilledInLog(tail) ? OOM_KILLED : (pod?.reason ?? null);
   return { task: id, job: newest.name, status: jobStatus(job), reason };
 }
 
@@ -245,14 +246,14 @@ async function lastLogLine(input: { cluster: Cluster; pod: string }): Promise<st
   }
 }
 
-/** An ended Job: the terminated reason of its newest pod, else OOMKilled from its last log line. */
+/** An ended Job: the OOMKilled from the last log line of its newest pod, else the terminated reason of that pod. */
 async function endReason(input: RowInput): Promise<string | null> {
   const { cluster, job } = input;
   const pod = await kubernetes.findPod(cluster, job.name);
   if (pod === null) return null;
-  if (pod.reason !== null) return pod.reason;
+  if (pod.reason === OOM_KILLED) return pod.reason;
   const text = await lastLogLine({ cluster, pod: pod.name });
-  return oomKilledInLog(text) ? OOM_KILLED : null;
+  return oomKilledInLog(text) ? OOM_KILLED : pod.reason;
 }
 
 async function toRow(input: RowInput): Promise<MachineRunRow> {
