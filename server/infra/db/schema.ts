@@ -44,3 +44,15 @@ export const projects = sqliteTable("projects", {
   name: text().notNull(),
   repo: text().notNull(),
 });
+
+export const events = sqliteTable("events", {
+  id: text().primaryKey(),
+  type: text().notNull(),
+  subject: text().notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  tenbox: text().notNull(),
+  at: text().notNull(),
+  body: text().notNull(),
+});

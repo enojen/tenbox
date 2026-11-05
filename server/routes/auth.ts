@@ -2,17 +2,24 @@ import type { MiddlewareHandler } from "hono";
 import { unauthorizedError } from "../../domain/errors/auth.ts";
 import { users } from "../application/users.ts";
 import type { Db } from "../infra/db/index.ts";
+import type { User } from "../infra/repositories/users.ts";
+
+/** The Hono environment of a request after `requireToken`: the user of its token. */
+export interface AuthEnv {
+  Variables: { user: User };
+}
 
 const BEARER_PREFIX = "Bearer ";
 const OPEN_PATHS = new Set(["/health", "/openapi.json", "/docs"]);
 
-export function requireToken(db: Db): MiddlewareHandler {
+export function requireToken(db: Db): MiddlewareHandler<AuthEnv> {
   return (c, next) => {
     if (OPEN_PATHS.has(c.req.path)) return next();
     const token = bearerToken(c.req.header("Authorization"));
     if (token === null) throw unauthorizedError();
     const user = users.findByToken(db, token);
     if (user === null) throw unauthorizedError();
+    c.set("user", user);
     return next();
   };
 }
