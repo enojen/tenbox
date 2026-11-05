@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
-# TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, TRACKER_API_KEY,
-# NTFY_URL, CLAUDE_CREDENTIALS), prepares the volume at /home/tenbox and runs the tenbox
+# TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN,
+# TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS). PROJECT_GITHUB_TOKEN, the project's own token,
+# wins over GITHUB_TOKEN, the shared one, when it is set and not empty, prepares the volume at /home/tenbox and runs the tenbox
 # command in the foreground, as tenbox, in the project's main checkout, with the project's
 # variables from TENBOX_ENV (`machine.env` of tenbox.yaml as one JSON object). The command may
 # leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
@@ -48,7 +49,7 @@ setup_claude() {
 
 # 3. GitHub: gh and git push use the token; commits carry the token owner's name.
 setup_github() {
-  as_tenbox gh auth login --with-token <<< "$GITHUB_TOKEN"
+  as_tenbox gh auth login --with-token <<< "${PROJECT_GITHUB_TOKEN:-$GITHUB_TOKEN}"
   as_tenbox gh auth setup-git
   local login id name
   read -r login id name < <(as_tenbox gh api user --jq '[.login, .id, (.name // .login)] | @tsv')
@@ -122,7 +123,7 @@ install_tenbox
 read_project_env
 
 # The secrets now live in their files; the tenbox command does not get them in its env.
-unset GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
+unset GITHUB_TOKEN PROJECT_GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
 log "ready at $(date -u +%FT%TZ)"
 
 install -m 644 /dev/null /var/log/tenbox-run.log

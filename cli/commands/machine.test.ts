@@ -19,6 +19,7 @@ const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
 const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
 const PROJECT_SECRET = "project-k7f3qa";
 const TRACKER_KEY = "SECRET-TRACKER-KEY";
+const GITHUB_TOKEN = "github_pat_SECRET";
 const NTFY_URL = "https://ntfy.sh/secret-topic";
 const JOB_NAME = /^task-ten-1-\d{4}-\d{6}$/;
 const CREATED = "2026-10-21T10:00:00Z";
@@ -422,6 +423,47 @@ describe("machine", () => {
     const run = await build();
     expect(run.code).toBe(0);
     expect(secretBody(posts()[0]).stringData).toEqual({});
+  });
+
+  test("the project Secret holds github_token from machine.github_token_file", async () => {
+    const tokenFile = path.join(project.root, "github-token");
+    await files.write(tokenFile, `${GITHUB_TOKEN}\n`);
+    await writeLocal(`machine: { github_token_file: ${tokenFile} }\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(secretBody(posts()[0]).stringData).toEqual({ github_token: GITHUB_TOKEN });
+    expect(run.out).not.toContain(GITHUB_TOKEN);
+    expect(run.err).not.toContain(GITHUB_TOKEN);
+  });
+
+  test("without github_token_file the project Secret has no github_token", async () => {
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(secretBody(posts()[0]).stringData).not.toHaveProperty("github_token");
+  });
+
+  test("a missing github token file refuses before any request", async () => {
+    const tokenFile = path.join(project.root, "no-such-token");
+    await writeLocal(`machine: { github_token_file: ${tokenFile} }\n`);
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "github-token-file"]);
+    expect(String(run.json.error)).toContain(tokenFile);
+    expect(api.calls).toEqual([]);
+  });
+
+  test("an empty github token file refuses before any request", async () => {
+    const tokenFile = path.join(project.root, "github-token");
+    await files.write(tokenFile, " \n\t\n");
+    await writeLocal(`machine: { github_token_file: ${tokenFile} }\n`);
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "github-token-file"]);
+    expect(api.calls).toEqual([]);
+  });
+
+  test("tenbox help machine names github_token_file", async () => {
+    const run = await tenbox(["help", "machine"], project.mainDir, env);
+    expect(run.err).toContain("machine.github_token_file");
+    expect(run.err).toContain("github_token");
   });
 
   test("an existing project Secret is replaced", async () => {

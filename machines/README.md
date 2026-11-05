@@ -70,7 +70,12 @@ volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` t
 `tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
 the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer
 uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API_KEY` or
-`CLICKUP_API_KEY`), and `ntfy_url` from `notify.ntfy`. A project without an `id` in its
+`CLICKUP_API_KEY`), `ntfy_url` from `notify.ntfy`, and `github_token` from the file named by
+`machine.github_token_file` (a `~/` path, meant for `tenbox.local.yaml`; trimmed; a missing or
+empty file refuses with `github-token-file`; without the key the Secret has no `github_token`).
+The Job passes it as `PROJECT_GITHUB_TOKEN` (optional) next to the shared `GITHUB_TOKEN`; the box
+uses the project token when it is set and not empty, else the shared one, and unsets both before
+the command. A project without an `id` in its
 `tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
 does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
 volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.

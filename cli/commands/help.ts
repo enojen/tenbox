@@ -246,6 +246,10 @@ Flags:
   --follow   with logs: keep the stream open
   --title X, --force   passed to the command after --
 
+A project's own GitHub token: machine.github_token_file in tenbox.local.yaml, a ~/ path to a
+file with the token. run writes it as github_token to the project Secret project-<project id>;
+the box uses it instead of the shared github-token Secret. A missing or empty file refuses.
+
 Output: run { ok, task, cmd, url }; stop { ok, task, stopped }; rm { ok, task, volume }; ls { ok, runs }; logs { ok, task, job, status }
 
 Example:
