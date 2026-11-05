@@ -192,7 +192,8 @@ server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: ro
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
             nodes, the node watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
-            infra/ (env, tokens, kubernetes: the Node list, hetzner: one server, db/ with the drizzle
+            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list,
+            hetzner: one server, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)

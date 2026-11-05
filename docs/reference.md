@@ -489,7 +489,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 `KUBERNETES_SERVICE_PORT`, default 443, and `HCLOUD_TOKEN`, a read-only Hetzner Cloud token,
                 with `HCLOUD_ENDPOINT`, default `https://api.hetzner.cloud/v1`; without `HCLOUD_TOKEN` there
                 `tenbox-server` prints `{ ok: false, code: "env" }` and exits 1 before it serves), the token
-                maker, kubernetes (the Node list) and hetzner (one server)
+                maker, http (a JSON GET with a bearer token), kubernetes (the Node list) and hetzner (one server)
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
                   `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
                   else round, else part; a node event's Node name), `user_id` FK, null for a node event, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new

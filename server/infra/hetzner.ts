@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { serviceError } from "../../domain/errors/tools.ts";
 import type { HetznerEnv } from "./env.ts";
-import { getJson } from "./kubernetes.ts";
+import { http } from "./http.ts";
 
 /** The Hetzner Cloud API: base URL and token. */
 export type HetznerApi = HetznerEnv;
@@ -49,7 +49,7 @@ function serverId(providerId: string): number | null {
 /** `GET /servers/<id>`: one call gives the create time, the type, the location and the price. */
 async function server(request: ServerRequest): Promise<HetznerServer> {
   const { api, id } = request;
-  const answer = await getJson({
+  const answer = await http.get({
     service: SERVICE,
     url: `${api.url}/servers/${id}`,
     token: api.token,
