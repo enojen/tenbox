@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
 # TENBOX_REPO, TENBOX_CMD) and the secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN,
-# TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS). PROJECT_GITHUB_TOKEN, the project's own token,
-# wins over GITHUB_TOKEN, the shared one, when it is set and not empty, prepares the volume at /home/tenbox and runs the tenbox
-# command in the foreground, as tenbox, in the project's main checkout, with the project's
-# variables from TENBOX_ENV (`machine.env` of tenbox.yaml as one JSON object). The command may
+# TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS); PROJECT_GITHUB_TOKEN, the project's own token,
+# wins over GITHUB_TOKEN, the shared one, when it is set and not empty. It prepares the volume
+# at /home/tenbox and runs the tenbox command in the foreground, as tenbox, in the project's
+# main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
+# one JSON object). The command may
 # leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
 # lives while that session works and ends once no session is left or the sessions have been
 # idle for IDLE_MINUTES (a plan that waits for approval). Last it logs the peak RAM and the
