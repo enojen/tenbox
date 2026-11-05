@@ -42,6 +42,9 @@ Your prompt names one of two jobs. Do that job only.
 
 - Write only under `.tenbox/`. Never edit code, tests, config or docs. Never run a
   command that changes the repository (no `git commit`, `git checkout`, package installs).
+- A task that came from a Tenbox issue (`tenbox report`) names nothing of the client project
+  in `plan.md`, the part files and the group names (so the PR): no repo, owner, project id,
+  tracker ids, people or customers; write "a client project".
 - If the task does not decide something, do not guess. Record it as a question.
 - An example is black-box and testable from the outside: a command or request and its
   output, a row, a file. `before` is what happens today, `after` is what the task makes

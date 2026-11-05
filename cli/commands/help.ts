@@ -266,6 +266,9 @@ Example:
 ${TASK_DRAFT_HELP}
   --repo R   the repository: tenbox or tenyard; default tenbox
 
+The issue names nothing of the project it was seen in (repo, owner, project id, tracker ids,
+people, customers); write "a client project" instead.
+
 Output: { ok, task, url, created }
 
 Example:
