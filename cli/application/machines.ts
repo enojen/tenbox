@@ -14,6 +14,8 @@ import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import {
   JOB_STATUS,
   type JobStatus,
+  OOM_KILLED,
+  oomKilledInLog,
   RESOURCE_CLASS,
   type ResourceClass,
   RUN_STATUS,
@@ -115,6 +117,8 @@ interface MachineLogsResult {
 }
 
 const POD_POLL_MS = 2000;
+/** How much of the end of a log `logs` keeps to find the last boot line. */
+const LOG_TAIL_CHARS = 4096;
 /** The volume of a task and what `remove` did to it. */
 export interface MachineVolume {
   name: string;
@@ -185,11 +189,16 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   if (newest === undefined) throw noMachineRunError(id);
   const podName = await waitForPod({ cluster, job: newest.name, follow });
   const chunks = await kubernetes.streamLog({ cluster, pod: podName, follow });
-  for await (const chunk of chunks) write(chunk);
+  let tail = "";
+  for await (const chunk of chunks) {
+    write(chunk);
+    tail = (tail + chunk).slice(-LOG_TAIL_CHARS);
+  }
   const after = await kubernetes.listJobs(cluster, `task=${id}`);
   const job = after.find((j) => j.name === newest.name) ?? newest;
   const pod = await kubernetes.findPod(cluster, newest.name);
-  return { task: id, job: newest.name, status: jobStatus(job), reason: pod?.reason ?? null };
+  const reason = pod?.reason ?? (oomKilledInLog(tail) ? OOM_KILLED : null);
+  return { task: id, job: newest.name, status: jobStatus(job), reason };
 }
 
 function jobStatus(job: Job): JobStatus {
@@ -224,11 +233,26 @@ interface RowInput {
   job: Job;
 }
 
-/** Only a failed Job has a reason; one request for its newest pod. */
-async function failureReason(input: RowInput): Promise<string | null> {
-  if (jobStatus(input.job) !== JOB_STATUS.failure) return null;
-  const pod = await kubernetes.findPod(input.cluster, input.job.name);
-  return pod?.reason ?? null;
+/** The last log line of a pod; empty when the log is gone, so one Job never stops the listing. */
+async function lastLogLine(input: { cluster: Cluster; pod: string }): Promise<string> {
+  try {
+    const chunks = await kubernetes.streamLog({ ...input, follow: false, tailLines: 1 });
+    let text = "";
+    for await (const chunk of chunks) text += chunk;
+    return text;
+  } catch {
+    return "";
+  }
+}
+
+/** An ended Job: the terminated reason of its newest pod, else OOMKilled from its last log line. */
+async function endReason(input: RowInput): Promise<string | null> {
+  const { cluster, job } = input;
+  const pod = await kubernetes.findPod(cluster, job.name);
+  if (pod === null) return null;
+  if (pod.reason !== null) return pod.reason;
+  const text = await lastLogLine({ cluster, pod: pod.name });
+  return oomKilledInLog(text) ? OOM_KILLED : null;
 }
 
 async function toRow(input: RowInput): Promise<MachineRunRow> {
@@ -237,7 +261,7 @@ async function toRow(input: RowInput): Promise<MachineRunRow> {
   const status = jobStatus(job);
   if (status === JOB_STATUS.inProgress)
     return { ...row, status: RUN_STATUS.inProgress, conclusion: null, reason: null };
-  const reason = await failureReason({ cluster, job });
+  const reason = await endReason({ cluster, job });
   return { ...row, status: RUN_STATUS.completed, conclusion: status, reason };
 }
 

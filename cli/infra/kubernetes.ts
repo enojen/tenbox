@@ -412,6 +412,8 @@ interface LogInput {
   cluster: Cluster;
   pod: string;
   follow: boolean;
+  /** Only the last lines of the log. */
+  tailLines?: number;
 }
 
 const CreatedSchema = z.object({ metadata: z.object({ name: z.string() }) });
@@ -515,8 +517,11 @@ async function findPod(cluster: Cluster, job: string): Promise<Pod | null> {
 
 /** The log of the pod's container as text chunks. */
 function streamLog(input: LogInput): Promise<AsyncIterable<string>> {
-  const { cluster, pod, follow } = input;
-  const query = follow ? "?follow=true" : "";
+  const { cluster, pod, follow, tailLines } = input;
+  const params = new URLSearchParams();
+  if (follow) params.set("follow", "true");
+  if (tailLines !== undefined) params.set("tailLines", String(tailLines));
+  const query = params.size > 0 ? `?${params}` : "";
   const apiPath = `${PODS_PATH}/${pod}/log${query}`;
   return http.stream({ endpoint: endpoint(cluster, apiPath), unlimited: follow });
 }

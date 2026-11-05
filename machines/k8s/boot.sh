@@ -114,13 +114,14 @@ wait_for_sessions() {
   done
 }
 
-# 8. What the box used, for the resource classes of tenyard: the peak RAM and the CPU time of
+# 8. What the box used, for the resource classes of tenyard: the peak RAM, the CPU time and the OOM kills of
 #    its cgroup, from the boot to now.
 log_usage() {
-  local cgroup=/sys/fs/cgroup peak cpu
+  local cgroup=/sys/fs/cgroup peak cpu oom
   peak="$(cat "$cgroup/memory.peak" 2> /dev/null)" || { log "no memory.peak in $cgroup"; return; }
   cpu="$(awk '$1 == "usage_usec" { print int($2 / 1000000) }' "$cgroup/cpu.stat")"
-  log "memory peak $((peak / 1048576)) MiB, cpu $cpu s"
+  oom="$(awk '$1 == "oom_kill" { print $2 }' "$cgroup/memory.events" 2> /dev/null)"
+  log "memory peak $((peak / 1048576)) MiB, cpu $cpu s, oom_kill ${oom:-0}"
 }
 
 log "image: $(cat /etc/tenbox-image.json)"
