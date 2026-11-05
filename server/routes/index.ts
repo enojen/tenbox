@@ -1,20 +1,26 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { events } from "../application/events.ts";
 import type { Db } from "../infra/db/index.ts";
-import { requireToken } from "./auth.ts";
+import { type AuthEnv, requireToken } from "./auth.ts";
+import { eventsRoute } from "./events.ts";
 import { healthRoute } from "./health.ts";
-import { notFound, onError } from "./problems.ts";
+import { failBadInput, notFound, onError } from "./problems.ts";
 
 const OPENAPI_PATH = "/openapi.json";
 const OPENAPI_VERSION = "3.1.0";
 
 /** The HTTP API: each route has a zod schema, and `/openapi.json` is built from them. */
-export function createApp(db: Db): OpenAPIHono {
-  const app = new OpenAPIHono();
+export function createApp(db: Db): OpenAPIHono<AuthEnv> {
+  const app = new OpenAPIHono<AuthEnv>({ defaultHook: failBadInput });
   app.onError(onError);
   app.notFound(notFound);
   app.use("*", requireToken(db));
   app.openapi(healthRoute, (c) => c.json({ ok: true }));
+  app.openapi(eventsRoute, (c) => {
+    const saved = events.save(db, { userId: c.get("user").id, events: c.req.valid("json") });
+    return c.json({ ok: true, ...saved });
+  });
   app.doc31(OPENAPI_PATH, {
     openapi: OPENAPI_VERSION,
     info: { title: "Tenbox server", version: "1" },

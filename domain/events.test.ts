@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type EventName, EventSchema } from "./events.ts";
+import { type EventName, EventSchema, eventSubject } from "./events.ts";
 
 const COMMON = {
   id: "wf_7359/a9703d/round.reviewed",
@@ -162,5 +162,22 @@ describe("EventSchema", () => {
 
   test("rejects an unknown schema version", () => {
     expect(EventSchema.safeParse({ ...approved(), schema: 2 }).success).toBe(false);
+  });
+});
+
+describe("eventSubject", () => {
+  test("is the task of a task event", () => {
+    const event = EventSchema.parse(build("plan.approved", EXAMPLES["plan.approved"]));
+    expect(eventSubject(event)).toBe(TASK);
+  });
+
+  test("is the round of a round event", () => {
+    const event = EventSchema.parse(build("round.started", EXAMPLES["round.started"]));
+    expect(eventSubject(event)).toBe(ROUND);
+  });
+
+  test("is the part of a proof event", () => {
+    const event = EventSchema.parse(build("proof.added", EXAMPLES["proof.added"]));
+    expect(eventSubject(event)).toBe("k7f3qa/TEN-301/p01");
   });
 });

@@ -152,3 +152,12 @@ export const EventSchema = z.discriminatedUnion("event", [
     code: z.object({ added: count, removed: count, files: count, test_added: count }),
   }),
 ]);
+
+export type Event = z.infer<typeof EventSchema>;
+
+/** The id an event is about: its task, else its round, else its part. */
+export function eventSubject(event: Event): string {
+  if ("task" in event) return event.task;
+  if ("round" in event) return event.round;
+  return event.part;
+}

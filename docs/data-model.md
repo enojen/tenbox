@@ -59,7 +59,7 @@ rounds        (id PK, task_id FK, n, ok)
 checks        (id PK, round_id FK, name, exit_code, duration_ms,
                failures, new_failures, fixed)  -- counts only
 proofs        (part_id FK, file, test, failure, source)  -- source: worker | manual
-events        (id PK, type, subject_id, user_id FK, tenbox, at, body)
+events        (id PK, type, subject, user_id FK, tenbox, at, body)  -- built: see docs/reference.md
 ```
 
 - `tasks.user_id` is the user who ran `tenbox start`. Assigning work stays in the tracker.

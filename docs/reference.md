@@ -442,8 +442,14 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 other path needs `Authorization: Bearer <token>` of a known user. Every error
                 is an RFC 9457 problem, `application/problem+json`:
                 `{ type: "about:blank", title, status, detail, code }`. No token: 401
-                `unauthorized`; with a token, an unknown path is 404 `not-found`; any other
-                error is 500 and its message goes to stderr, not to the client
+                `unauthorized`; with a token, an unknown path is 404 `not-found`; a request body
+                that fails its schema is 400 `bad-input` with the issue lines (`1.at: ...`) in
+                `detail`; any other error is 500 and its message goes to stderr, not to the client.
+                `POST /events` takes a list of events (`EventSchema` in `domain/events.ts`) and
+                answers 200 `{ ok: true, stored, skipped }`. The list is all or nothing: one bad
+                event is a 400 and none is stored. The whole list goes in one transaction; an
+                event whose `id` the server has, or that comes twice in the list, is skipped.
+                `user_id` is the user of the token, not the `user` of the body
   application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
                 membership and the token in one transaction)
   commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
@@ -460,7 +466,8 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
   infra/        env (`TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
                 `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
-                  `memberships`, `projects`) and `migrations/`. Opening the database applies the new
+                  `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
+                  else round, else part), `user_id` FK, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
                   migrations. After a change to `schema.ts`, run
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`
