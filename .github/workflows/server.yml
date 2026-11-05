@@ -1,0 +1,36 @@
+name: server
+# Every push to main builds the tenbox server image (machines/server) and pushes it to GHCR.
+# The package is private. BOX_RUNNER moves the build to a machine with docker.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: server
+jobs:
+  server:
+    runs-on: ${{ vars.BOX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/enojen/tenbox-server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push
+        run: |
+          docker build -f machines/server/Dockerfile -t "$IMAGE:$GITHUB_SHA" .
+          docker push "$IMAGE:$GITHUB_SHA"
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            docker tag "$IMAGE:$GITHUB_SHA" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
+      # The runner is shared with other jobs: do not leave the token in ~/.docker/config.json.
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
