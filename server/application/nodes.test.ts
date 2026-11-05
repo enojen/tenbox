@@ -66,7 +66,7 @@ const HETZNER_SERVER = {
         },
       ],
     },
-    datacenter: { name: "fsn1-dc14", location: { name: "fsn1" } },
+    location: { name: "fsn1" },
   },
 };
 
