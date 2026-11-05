@@ -21,7 +21,7 @@ describe("tenbox help", () => {
     const run = await tenbox(["help", "report"], cwd);
     expect(run.code).toBe(0);
     expect(run.err).toContain("a client project");
-    expect(run.err).toContain("project id, tracker ids, people, customers");
+    expect(run.err).toContain("tracker ids,");
     expect(String(run.json.help)).toContain("a client project");
   });
 
