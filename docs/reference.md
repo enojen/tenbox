@@ -450,9 +450,25 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 answers 200 `{ ok: true, stored, skipped }`. The list is all or nothing: one bad
                 event is a 400 and none is stored. The whole list goes in one transaction; an
                 event whose `id` the server has, or that comes twice in the list, is skipped.
-                `user_id` is the user of the token, not the `user` of the body
+                `user_id` is the user of the token, not the `user` of the body. A node event (`node.added`,
+                `node.removed`) is not in `EventSchema`: only the server makes it, so a post of one is a 400
   application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
-                membership and the token in one transaction)
+                membership and the token in one transaction).
+                nodes: the node watch. Inside the cluster (`KUBERNETES_SERVICE_HOST` set) the server lists the
+                Nodes (`GET /api/v1/nodes`, with the pod's service account token and CA under
+                `/var/run/secrets/kubernetes.io/serviceaccount`, the token read at each poll) at start and every
+                30 seconds. A Node whose `spec.providerID` is `hcloud://<id>` and whose server has no
+                `node.added` yet gets one `GET <HCLOUD_ENDPOINT>/servers/<id>` and one `node.added` event:
+                `at` the server's Hetzner `created` time (UTC, `toISOString`), body `{ event, node, server_id,
+                server_type, location, price_hourly: { net, gross } }`, the hourly price of the server type in
+                its location as Hetzner gives it (decimal text). A server with a `node.added`, no `node.removed`
+                and no Node in the list gets `node.removed`: `at` the poll time, body `{ event, node, server_id,
+                server_type, location, late }` with type and location from its `node.added`. Until the first
+                poll that succeeds, `late` is true and `at` is the start time: the node left while the server
+                was down. Servers are matched by id. The row: `id` `<event>:<server id>`, so a poll after a
+                restart stores nothing twice; `subject` the Node name; `user_id` null; `tenbox` `server`. A
+                failed poll, or a server Hetzner cannot give, goes to stderr and the next poll tries again.
+                Without `KUBERNETES_SERVICE_HOST` the server does not poll
   commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
                 [--type admin|member]` (default `member`) finds or makes the organization,
                 makes the user and prints `{ ok, user, organization, type, token }` on stdout.
@@ -469,10 +485,14 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 exits 1 with `backup-exists` when the file exists and `no-database` when
                 there is no database
   infra/        env (`TENBOX_SERVER_HOST`, default `localhost`; `TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
-                `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
+                `~/.tenbox-server/server.db`; Bun reads `.env`; inside the cluster `KUBERNETES_SERVICE_HOST`,
+                `KUBERNETES_SERVICE_PORT`, default 443, and `HCLOUD_TOKEN`, a read-only Hetzner Cloud token,
+                with `HCLOUD_ENDPOINT`, default `https://api.hetzner.cloud/v1`; without `HCLOUD_TOKEN` there
+                `tenbox-server` prints `{ ok: false, code: "env" }` and exits 1 before it serves), the token
+                maker, kubernetes (the Node list) and hetzner (one server)
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
                   `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
-                  else round, else part), `user_id` FK, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
+                  else round, else part; a node event's Node name), `user_id` FK, null for a node event, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
                   migrations. After a change to `schema.ts`, run
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`

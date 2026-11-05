@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 import type { Server } from "bun";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
+import { nodes, type Watching } from "./application/nodes.ts";
 import { projects } from "./application/projects.ts";
 import { users } from "./application/users.ts";
 import { readBackupArgs } from "./commands/backup.ts";
 import { readProjectAddArgs } from "./commands/projectAdd.ts";
 import { readUserAddArgs } from "./commands/userAdd.ts";
 import { type Db, database } from "./infra/db/index.ts";
-import { serverEnv } from "./infra/env.ts";
+import { type NodeWatchEnv, nodeWatchEnv, type ServerEnv, serverEnv } from "./infra/env.ts";
+import { kubernetes } from "./infra/kubernetes.ts";
 import { createApp } from "./routes/index.ts";
 
 const FAILURE_EXIT_CODE = 1;
@@ -43,17 +45,45 @@ function main(args: string[]): void {
   process.exitCode = FAILURE_EXIT_CODE;
 }
 
+/** A bad env, such as no `HCLOUD_TOKEN` inside the cluster, stops the server before it serves. */
 function serve(): void {
-  const { host, port, dbFile } = serverEnv();
+  try {
+    serveWith(serverEnv(), nodeWatchEnv());
+  } catch (error) {
+    console.log(JSON.stringify(errorOutput(error)));
+    process.exitCode = FAILURE_EXIT_CODE;
+  }
+}
+
+function serveWith(env: ServerEnv, nodeEnv: NodeWatchEnv | null): void {
+  const { host, port, dbFile } = env;
   const db = database.open(dbFile);
   const server = Bun.serve({ hostname: host, port, fetch: createApp(db).fetch });
-  stopOnSignals(server, db);
+  const watching = nodeEnv === null ? null : watchNodes(db, nodeEnv);
+  stopOnSignals({ server, db, watching });
   console.error(`listening on http://${host}:${port}, docs on /docs`);
 }
 
-/** Lets open requests finish, then closes the database; the process then exits with 0. */
-function stopOnSignals(server: Server<undefined>, db: Db): void {
+function watchNodes(db: Db, env: NodeWatchEnv): Watching {
+  return nodes.watch(db, {
+    kubernetes: kubernetes.inCluster(env.kubernetesUrl),
+    hetzner: env.hetzner,
+    now: () => new Date(),
+  });
+}
+
+/** What runs until a stop signal. */
+interface Running {
+  server: Server<undefined>;
+  db: Db;
+  watching: Watching | null;
+}
+
+/** Lets open requests and a running poll finish, then closes the database; the process then exits with 0. */
+function stopOnSignals(running: Running): void {
+  const { server, db, watching } = running;
   const stop = async () => {
+    await watching?.stop();
     await server.stop();
     database.close(db);
   };

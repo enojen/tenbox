@@ -1,3 +1,4 @@
+import { inArray } from "drizzle-orm";
 import type { Queryable } from "../db/index.ts";
 import { events } from "../db/schema.ts";
 
@@ -5,7 +6,8 @@ interface EventRow {
   id: string;
   type: string;
   subject: string;
-  userId: string;
+  /** Null for an event the server makes itself. */
+  userId: string | null;
   tenbox: string;
   at: string;
   body: string;
@@ -22,4 +24,9 @@ function insert(db: Queryable, row: EventRow): boolean {
   return inserted.length > 0;
 }
 
-export const eventsRepository = { insert };
+/** Every row of these event types. */
+function findByTypes(db: Queryable, types: string[]): EventRow[] {
+  return db.select().from(events).where(inArray(events.type, types)).all();
+}
+
+export const eventsRepository = { insert, findByTypes };
