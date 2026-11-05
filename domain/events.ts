@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { BUILD_STATUS } from "./builds.ts";
+import { badFileError } from "./errors/index.ts";
 import { BaselineSourceSchema } from "./failures.ts";
 import { PlanPartSchema } from "./plans.ts";
 import { PR_STATE } from "./prs.ts";
+import { jsons } from "./utils.ts";
 
 const EVENT_SCHEMA_VERSION = 1;
 
@@ -160,4 +162,115 @@ export function eventSubject(event: Event): string {
   if ("task" in event) return event.task;
   if ("round" in event) return event.round;
   return event.part;
+}
+
+/** A worker of the cluster came or went; only the server makes these, from its node watch. */
+const NODE_EVENT_NAME = { added: "node.added", removed: "node.removed" } as const;
+
+export const NODE_EVENT_NAMES = Object.values(NODE_EVENT_NAME);
+
+/** A Hetzner price as its API gives it, e.g. `"0.0076"`: decimal text, so no float rounding. */
+const PriceSchema = z.object({ net: text, gross: text });
+
+const nodeBase = z.object({
+  /** The Node name: the event's subject. */
+  node: text,
+  /** The Hetzner Cloud server id, from the Node's `hcloud://<id>` providerID. */
+  server_id: z.number().int().positive(),
+  server_type: text,
+  location: text,
+});
+
+const NodeAddedSchema = nodeBase.extend({
+  event: z.literal(NODE_EVENT_NAME.added),
+  /** The hourly price of the server type in its location when the node came. */
+  price_hourly: PriceSchema,
+});
+
+const NodeRemovedSchema = nodeBase.extend({
+  event: z.literal(NODE_EVENT_NAME.removed),
+  /** The node left while the server was down; `at` is then the server's start time. */
+  late: z.boolean(),
+});
+
+/** Not part of `EventSchema`, so `POST /events` refuses them. */
+const NodeEventSchema = z.discriminatedUnion("event", [NodeAddedSchema, NodeRemovedSchema]);
+
+export type NodeEvent = z.infer<typeof NodeEventSchema>;
+export type NodeAdded = z.infer<typeof NodeAddedSchema>;
+type NodeRemoved = z.infer<typeof NodeRemovedSchema>;
+
+/** A Node the cluster lists, with the Hetzner server behind it. */
+export interface ListedNode {
+  name: string;
+  serverId: number;
+}
+
+/** The node events stored so far and the Nodes of one poll. */
+interface NodeState {
+  stored: NodeEvent[];
+  listed: ListedNode[];
+}
+
+/** What one poll must store: the new nodes, and the nodes that came and are no longer listed. */
+interface NodeChanges {
+  added: ListedNode[];
+  removed: NodeAdded[];
+}
+
+/** One removal of an added node. */
+interface NodeRemoval {
+  added: NodeAdded;
+  late: boolean;
+}
+
+/** One id per server and event, so a server that polls again stores nothing twice. */
+export function nodeEventId(event: NodeEvent): string {
+  return `${event.event}:${event.server_id}`;
+}
+
+const isAdded = (event: NodeEvent): event is NodeAdded => event.event === NODE_EVENT_NAME.added;
+
+/** Servers are matched by id: a server id is never reused, a Node name may be. */
+export function nodeChanges(state: NodeState): NodeChanges {
+  const added = state.stored.filter(isAdded);
+  const addedIds = new Set(added.map((event) => event.server_id));
+  const removedIds = new Set(
+    state.stored.filter((event) => !isAdded(event)).map((event) => event.server_id),
+  );
+  const listedIds = new Set(state.listed.map((node) => node.serverId));
+  return {
+    added: state.listed.filter((node) => !addedIds.has(node.serverId)),
+    removed: added.filter(
+      (event) => !removedIds.has(event.server_id) && !listedIds.has(event.server_id),
+    ),
+  };
+}
+
+/** The type and location of a removed node come from its `node.added`. */
+export function nodeRemoved(removal: NodeRemoval): NodeRemoved {
+  const { added, late } = removal;
+  return {
+    event: NODE_EVENT_NAME.removed,
+    node: added.node,
+    server_id: added.server_id,
+    server_type: added.server_type,
+    location: added.location,
+    late,
+  };
+}
+
+/** A new node, priced from its Hetzner server. */
+export function nodeAdded(node: NodeAddedFields): NodeAdded {
+  return { event: NODE_EVENT_NAME.added, ...node };
+}
+
+/** A `node.added` without its event name. */
+export type NodeAddedFields = Omit<NodeAdded, "event">;
+
+/** The body of a stored node event; `bad-file` unless it fits `NodeEventSchema`. */
+export function readNodeEvent(text: string, file: string): NodeEvent {
+  const result = jsons.check(NodeEventSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
 }

@@ -49,9 +49,8 @@ export const events = sqliteTable("events", {
   id: text().primaryKey(),
   type: text().notNull(),
   subject: text().notNull(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id),
+  /** Null for a node event: the server makes it, no user sends it. */
+  userId: text("user_id").references(() => users.id),
   tenbox: text().notNull(),
   at: text().notNull(),
   body: text().notNull(),
