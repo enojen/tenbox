@@ -19,7 +19,7 @@ const ServerSchema = z.object({
       name: z.string().min(1),
       prices: z.array(z.object({ location: z.string().min(1), price_hourly: PriceSchema })),
     }),
-    datacenter: z.object({ location: z.object({ name: z.string().min(1) }) }),
+    location: z.object({ name: z.string().min(1) }),
   }),
 });
 
@@ -55,8 +55,8 @@ async function server(request: ServerRequest): Promise<HetznerServer> {
     token: api.token,
     schema: ServerSchema,
   });
-  const { created, server_type: type, datacenter } = answer.server;
-  const location = datacenter.location.name;
+  const { created, server_type: type } = answer.server;
+  const location = answer.server.location.name;
   const price = type.prices.find((entry) => entry.location === location);
   if (price === undefined) {
     throw serviceError(SERVICE, SERVICE, `server ${id}: no price of ${type.name} in ${location}`);
