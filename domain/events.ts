@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BUILD_STATUS } from "./builds.ts";
 import { badFileError } from "./errors/index.ts";
 import { BaselineSourceSchema } from "./failures.ts";
+import { OOM_KILLED } from "./machines.ts";
 import { PlanPartSchema } from "./plans.ts";
 import { PR_STATE } from "./prs.ts";
 import { jsons } from "./utils.ts";
@@ -271,6 +272,133 @@ export type NodeAddedFields = Omit<NodeAdded, "event">;
 /** The body of a stored node event; `bad-file` unless it fits `NodeEventSchema`. */
 export function readNodeEvent(text: string, file: string): NodeEvent {
   const result = jsons.check(NodeEventSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
+}
+
+/** The box container of a Job pod ended, or its pod went before it did; only the server makes it, from its Job watch. */
+export const JOB_FINISHED = "job.finished";
+
+/** The CPU and memory the box container asked for, as Kubernetes gives them (`500m`, `2Gi`). */
+const RequestsSchema = z.object({ cpu: nullableText, memory: nullableText });
+
+/** Not part of `EventSchema`, so `POST /events` refuses it. */
+export const JobFinishedSchema = z.object({
+  event: z.literal(JOB_FINISHED),
+  task: text,
+  /** `TENBOX_PROJECT` of the box: the project name. */
+  project: nullableText,
+  job: nullableText,
+  pod: text,
+  /** `TENBOX_CMD` of the box. */
+  command: nullableText,
+  /** The resource class. */
+  class: nullableText,
+  node: nullableText,
+  /** Null when the pod went before its box container ended. */
+  exit_code: z.number().int().nullable(),
+  oom: z.boolean(),
+  created: dateTime,
+  scheduled: dateTime.nullable(),
+  started: dateTime.nullable(),
+  finished: dateTime,
+  /** From `started` to `finished`; null when the box never started. */
+  duration_ms: z.number().int().nullable(),
+  requests: RequestsSchema,
+});
+
+export type JobFinished = z.infer<typeof JobFinishedSchema>;
+type PodRequests = z.infer<typeof RequestsSchema>;
+
+/** How the box container of a pod ended, from its terminated state. */
+export interface BoxEnd {
+  exitCode: number;
+  /** `OOMKilled`, `Error`, `Completed`; null without one. */
+  reason: string | null;
+  finished: string;
+}
+
+/** A pod of a Job of the namespace `tenbox`, as far as its `job.finished` needs it. */
+export interface ListedPod {
+  uid: string;
+  name: string;
+  job: string | null;
+  task: string;
+  project: string | null;
+  command: string | null;
+  class: string | null;
+  node: string | null;
+  created: string;
+  scheduled: string | null;
+  /** When the box container started; null before it did. */
+  started: string | null;
+  /** Null while the box container runs or waits. */
+  end: BoxEnd | null;
+  requests: PodRequests;
+}
+
+/** The pods of the last poll whose event is not stored, the ids stored so far, and the pods of this poll. */
+interface JobState {
+  seen: ListedPod[];
+  stored: Set<string>;
+  listed: ListedPod[];
+}
+
+/** What one poll must store: the ended pods, and the pods that went before they ended. */
+interface JobChanges {
+  ended: ListedPod[];
+  gone: ListedPod[];
+}
+
+/** One pod's event: whether its boot log says OOM, and the poll time for a pod that went. */
+export interface JobFinishInput {
+  pod: ListedPod;
+  oomInLog: boolean;
+  at: string;
+}
+
+/** One id per pod, so a server that polls again stores nothing twice. */
+export function jobEventId(pod: ListedPod): string {
+  return `${JOB_FINISHED}:${pod.uid}`;
+}
+
+/** Pods are matched by uid: a pod name may come again. */
+export function jobChanges(state: JobState): JobChanges {
+  const isNew = (pod: ListedPod) => !state.stored.has(jobEventId(pod));
+  const listedUids = new Set(state.listed.map((pod) => pod.uid));
+  return {
+    ended: state.listed.filter((pod) => pod.end !== null && isNew(pod)),
+    gone: state.seen.filter((pod) => !listedUids.has(pod.uid) && isNew(pod)),
+  };
+}
+
+/** A pod without a box end went before it ended: no exit code, and the poll time as `finished`. */
+export function jobFinished(input: JobFinishInput): JobFinished {
+  const { pod, oomInLog, at } = input;
+  const finished = pod.end?.finished ?? at;
+  return {
+    event: JOB_FINISHED,
+    task: pod.task,
+    project: pod.project,
+    job: pod.job,
+    pod: pod.name,
+    command: pod.command,
+    class: pod.class,
+    node: pod.node,
+    exit_code: pod.end?.exitCode ?? null,
+    oom: pod.end?.reason === OOM_KILLED || oomInLog,
+    created: pod.created,
+    scheduled: pod.scheduled,
+    started: pod.started,
+    finished,
+    duration_ms: pod.started === null ? null : Date.parse(finished) - Date.parse(pod.started),
+    requests: pod.requests,
+  };
+}
+
+/** The body of a stored `job.finished`; `bad-file` unless it fits its schema. */
+export function readJobFinished(text: string, file: string): JobFinished {
+  const result = jsons.check(JobFinishedSchema, text);
   if (!result.ok) throw badFileError(file, result.issues);
   return result.value;
 }
