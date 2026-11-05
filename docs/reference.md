@@ -458,7 +458,9 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 adds the project and prints `{ ok, project, organization }`. The same `--id`
                 again exits 1 with `code: "project-exists"`
                 `tenbox-server backup --to <file>` writes a consistent copy of the database
-                (`VACUUM INTO`) and exits 1 when the file exists
+                (`VACUUM INTO`); it opens the database read-only and applies no migration;
+                exits 1 with `backup-exists` when the file exists and `no-database` when
+                there is no database
   infra/        env (`TENBOX_SERVER_HOST`, default `localhost`; `TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
                 `~/.tenbox-server/server.db`; Bun reads `.env`), the token maker
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,

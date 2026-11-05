@@ -90,12 +90,7 @@ function runBackup(argv: string[]): void {
 }
 
 function backupOnce(file: string): void {
-  const db = database.open(serverEnv().dbFile);
-  try {
-    database.backup({ db, file });
-  } finally {
-    database.close(db);
-  }
+  database.backup({ from: serverEnv().dbFile, to: file });
 }
 
 function runAdd<Input, Saved extends object>(

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -88,15 +89,63 @@ describe("tenbox-server backup", () => {
     });
   }
 
+  /** A database of an older server: one table, none of the migrations of this one. */
+  function writeOldDatabase(file: string): void {
+    const client = new Database(file, { create: true });
+    client.run("create table notes (text text)");
+    client.run("insert into notes values ('kept')");
+    client.close();
+  }
+
+  function tableNames(file: string): string[] {
+    const client = new Database(file, { readonly: true });
+    const rows = client
+      .query<{ name: string }, []>("select name from sqlite_master where type = 'table'")
+      .all();
+    client.close();
+    return rows.map((row) => row.name);
+  }
+
   test("backup writes a copy of the live database", () => {
     const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
     try {
       const dbFile = join(root, "s.db");
+      writeOldDatabase(dbFile);
       const to = join(root, "b", "x.db");
       const result = runBackup(["--to", to], dbFile);
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout.toString())).toEqual({ ok: true, file: to });
-      expect(existsSync(to)).toBe(true);
+      const copy = new Database(to, { readonly: true });
+      expect(copy.query("select text from notes").all()).toEqual([{ text: "kept" }]);
+      copy.close();
+    } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+
+  test("backup leaves the schema of the live database as it is", () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    try {
+      const dbFile = join(root, "s.db");
+      writeOldDatabase(dbFile);
+      const result = runBackup(["--to", join(root, "x.db")], dbFile);
+      expect(result.exitCode).toBe(0);
+      expect(tableNames(dbFile)).toEqual(["notes"]);
+    } finally {
+      rmSync(root, { recursive: true });
+    }
+  });
+
+  test("backup of a missing database fails and creates no database", () => {
+    const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
+    try {
+      const dbFile = join(root, "missing", "s.db");
+      const to = join(root, "x.db");
+      const result = runBackup(["--to", to], dbFile);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout.toString()).code).toBe("no-database");
+      expect(existsSync(dbFile)).toBe(false);
+      expect(existsSync(to)).toBe(false);
     } finally {
       rmSync(root, { recursive: true });
     }
@@ -105,9 +154,11 @@ describe("tenbox-server backup", () => {
   test("backup refuses an existing file", () => {
     const root = mkdtempSync(join(tmpdir(), "tenbox-main-"));
     try {
+      const dbFile = join(root, "s.db");
+      writeOldDatabase(dbFile);
       const to = join(root, "x.db");
       writeFileSync(to, "keep");
-      const result = runBackup(["--to", to], join(root, "s.db"));
+      const result = runBackup(["--to", to], dbFile);
       expect(result.exitCode).toBe(1);
       expect(JSON.parse(result.stdout.toString()).code).toBe("backup-exists");
       expect(readFileSync(to, "utf8")).toBe("keep");
