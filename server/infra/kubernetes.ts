@@ -1,7 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
 import type { TenboxError } from "../../domain/errors/index.ts";
-import { serviceError } from "../../domain/errors/tools.ts";
 import type { BoxEnd, ListedPod, ListedVolume } from "../../domain/events.ts";
 import { http } from "./http.ts";
 
@@ -20,9 +19,7 @@ const BOX = "box";
 /** The pod condition set when the scheduler placed the pod on a node. */
 const POD_SCHEDULED = { type: "PodScheduled", status: "True" } as const;
 const SERVICE = "kubernetes";
-const REQUEST_TIMEOUT_MS = 30_000;
 const HTTP_NOT_FOUND = 404;
-const ERROR_BODY_CHARS = 200;
 
 /** The cluster API and the files of the service account; the token is read at each request, as the kubelet rotates it. */
 export interface KubernetesApi {
@@ -262,7 +259,7 @@ async function send(request: ClusterRequest): Promise<ClusterAnswer> {
   const response = await fetch(`${api.url}${apiPath}`, {
     method,
     headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: http.timeout(),
     tls: { ca },
   });
   const text = await response.text();
@@ -270,11 +267,7 @@ async function send(request: ClusterRequest): Promise<ClusterAnswer> {
 }
 
 function failed(answer: ClusterAnswer): TenboxError {
-  return serviceError(
-    SERVICE,
-    SERVICE,
-    `HTTP ${answer.status}: ${answer.text.slice(0, ERROR_BODY_CHARS)}`,
-  );
+  return http.failed({ service: SERVICE, status: answer.status, text: answer.text });
 }
 
 function listedPod(pod: Pod): ListedPod[] {

@@ -1,9 +1,16 @@
 import type { z } from "zod";
-import { errorMessage } from "../../domain/errors/index.ts";
+import { errorMessage, type TenboxError } from "../../domain/errors/index.ts";
 import { serviceError } from "../../domain/errors/tools.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;
+
+/** An HTTP error answer of an outside API: the service that sent it, its status and its body as text. */
+interface HttpFailure {
+  service: string;
+  status: number;
+  text: string;
+}
 
 /** One JSON GET of an outside API with a bearer token; `service` names it in every error. */
 interface JsonGet<T> {
@@ -21,8 +28,7 @@ async function get<T>(request: JsonGet<T>): Promise<T> {
   const response = await send(request);
   if (!response.ok) {
     const text = await response.text();
-    const detail = text.slice(0, ERROR_BODY_CHARS);
-    throw serviceError(service, service, `HTTP ${response.status}: ${detail}`);
+    throw failed({ service, status: response.status, text });
   }
   const answer = await readJson(request, response);
   const parsed = schema.safeParse(answer);
@@ -47,7 +53,7 @@ async function send<T>(request: JsonGet<T>): Promise<Response> {
   try {
     return await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: timeout(),
       ...(ca === undefined ? {} : { tls: { ca } }),
     });
   } catch (error) {
@@ -55,5 +61,16 @@ async function send<T>(request: JsonGet<T>): Promise<Response> {
   }
 }
 
-/** JSON over HTTP for the server's outside APIs: every answer is validated with its schema. */
-export const http = { get };
+/** The service's error for an HTTP error answer, with its name as the code and the start of the body. */
+function failed(failure: HttpFailure): TenboxError {
+  const { service, status, text } = failure;
+  return serviceError(service, service, `HTTP ${status}: ${text.slice(0, ERROR_BODY_CHARS)}`);
+}
+
+/** The abort signal of one request to an outside API. */
+function timeout(): AbortSignal {
+  return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+}
+
+/** HTTP for the server's outside APIs: a JSON GET validated with its schema, and the timeout and error every request shares. */
+export const http = { get, failed, timeout };

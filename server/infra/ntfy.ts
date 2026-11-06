@@ -1,8 +1,6 @@
-import { serviceError } from "../../domain/errors/tools.ts";
+import { http } from "./http.ts";
 
 const SERVICE = "ntfy";
-const REQUEST_TIMEOUT_MS = 30_000;
-const ERROR_BODY_CHARS = 200;
 
 /** One notice: the ntfy topic URL and the text line to post to it. */
 interface NtfyNotice {
@@ -17,15 +15,11 @@ async function send(notice: NtfyNotice): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ topic: pathname.slice(1), message: notice.line }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: http.timeout(),
   });
   if (response.ok) return;
   const text = await response.text();
-  throw serviceError(
-    SERVICE,
-    SERVICE,
-    `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`,
-  );
+  throw http.failed({ service: SERVICE, status: response.status, text });
 }
 
 /** ntfy: the server's own notices, such as an idle task volume. */
