@@ -452,8 +452,8 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 event is a 400 and none is stored. The whole list goes in one transaction; an
                 event whose `id` the server has, or that comes twice in the list, is skipped.
                 `user_id` is the user of the token, not the `user` of the body. A node event (`node.added`,
-                `node.removed`) or a `job.finished` is not in `EventSchema`: only the server makes it, so a
-                post of one is a 400.
+                `node.removed`), a volume event (`volume.added`, `volume.removed`) or a `job.finished` is not
+                in `EventSchema`: only the server makes it, so a post of one is a 400.
                 `GET /costs?from=<iso>&to=<iso>` reports what the workers of the cluster were paid for in
                 that window and what each task used of it (`costReport` in `domain/costs.ts`). It is only for a
                 user who is an `admin` of at least one organization (the costs are cluster-wide, of every
@@ -526,6 +526,24 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 log of one pod, is one stderr line (`job watch: ...`) and the next poll tries again. The
                 server's service account needs `list` on `pods` and `get` on `pods/log` in namespace `tenbox`
                 (tenyard Role `tenbox-server-runs`); without it each poll logs the 403
+                volumes: the volume watch, in the same 30-second tick; a failure of one poll does not stop the
+                others. Each tick lists the PVCs of namespace `tenbox` with the label `app=tenyard`
+                (`GET /api/v1/namespaces/tenbox/persistentvolumeclaims?labelSelector=app%3Dtenyard`). A PVC with
+                a `task` label, phase `Bound` and a `status.capacity.storage`, and no `volume.added` yet, is a
+                new volume; the new volumes of a tick get one `GET <HCLOUD_ENDPOINT>/pricing` and one
+                `volume.added` each: `at` the PVC's `creationTimestamp` (UTC), body `{ event, volume, uid, task,
+                size_gb, price_per_gb_month: { net, gross } }`: `volume` the PVC name, `uid` its uid, `task` its
+                `task` label, `size_gb` the capacity in GiB rounded up (Hetzner's "GB" of a volume is a GiB),
+                the price `pricing.volume.price_per_gb_month` as Hetzner gives it (decimal text). A PVC with a
+                `volume.added`, no `volume.removed` and no Bound PVC of its uid in the list gets `volume.removed`:
+                `at` the poll time, body `{ event, volume, uid, task, size_gb, late }` from its `volume.added`.
+                Until the first PVC poll that succeeds, `late` is true and `at` is the start time: the volume
+                went while the server was down. Volumes are matched by PVC uid. The row: `id`
+                `<event>:<uid>`, so a poll after a restart stores nothing twice; `subject` the PVC name;
+                `user_id` null; `tenbox` `server`. A failed PVC list or price is one stderr line
+                (`volume watch: ...`) and the next poll tries again. The server's service account needs `get`
+                and `list` on `persistentvolumeclaims` in namespace `tenbox` (the tenyard Role of the server,
+                `install/server/server.yaml`); without it each poll logs the 403 and no volume is recorded
   commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
                 [--type admin|member]` (default `member`) finds or makes the organization,
                 makes the user and prints `{ ok, user, organization, type, token }` on stdout.
@@ -553,10 +571,10 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 with `HCLOUD_ENDPOINT`, default `https://api.hetzner.cloud/v1`; without `HCLOUD_TOKEN` there
                 `tenbox-server` prints `{ ok: false, code: "env" }` and exits 1 before it serves), the token
                 maker, http (a JSON GET with a bearer token), kubernetes (the Node list, the Job pods and the last log line of
-                one) and hetzner (one server)
+                one, the task PVCs) and hetzner (one server, the volume price)
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
                   `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
-                  else round, else part; a node event's Node name; a `job.finished`'s task id), `user_id` FK, null for an event the server makes, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
+                  else round, else part; a node event's Node name; a volume event's PVC name; a `job.finished`'s task id), `user_id` FK, null for an event the server makes, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
                   migrations. After a change to `schema.ts`, run
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`

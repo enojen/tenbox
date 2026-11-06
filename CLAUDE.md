@@ -106,6 +106,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
+| volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
 
@@ -192,9 +193,9 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
-            nodes, the node watch; machineRuns, the Job watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
-            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line,
-            hetzner: one server, db/ with the drizzle
+            nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
+            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line, the task PVCs,
+            hetzner: one server and the volume price, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)
