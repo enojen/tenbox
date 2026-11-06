@@ -52,6 +52,7 @@ const TaskWorkerCostSchema = z.object({
 
 /** One task: its share of each worker it ran on, and their sum. */
 const TaskCostSchema = z.object({
+  project: z.string().nullable(),
   task: z.string(),
   workers: z.array(TaskWorkerCostSchema),
   eur: z.string(),
@@ -96,9 +97,14 @@ interface Fraction {
   denominator: bigint;
 }
 
-/** One box pod's time on one server in the window, and its weight in the split of busy EUR. */
-interface PodSpan {
+/** One task of one project; the same task id in two projects is two tasks. */
+interface TaskKey {
+  project: string | null;
   task: string;
+}
+
+/** One box pod's time on one server in the window, and its weight in the split of busy EUR. */
+interface PodSpan extends TaskKey {
   startMs: number;
   endMs: number;
   /** Memory request bytes times milliseconds. */
@@ -106,8 +112,7 @@ interface PodSpan {
 }
 
 /** One task's share of one worker's busy EUR, in cents. */
-interface TaskShare {
-  task: string;
+interface TaskShare extends TaskKey {
   cents: bigint;
 }
 
@@ -145,6 +150,16 @@ interface BusyCost {
   podSpans: PodSpan[];
   busyMs: number;
   price: Fraction;
+}
+
+/** One task's memory x time weight on one worker. */
+interface TaskWeight extends TaskKey {
+  weight: bigint;
+}
+
+/** One task and its shares of the workers it ran on. */
+interface TaskShares extends TaskKey {
+  shares: WorkerShare[];
 }
 
 /** One task's share of one worker. */
@@ -232,7 +247,15 @@ function podSpan(input: PodOnServer): PodSpan[] {
   const startMs = Math.max(Date.parse(pod.started), span.startMs, fromMs);
   const endMs = Math.min(Date.parse(pod.finished), span.endMs);
   if (endMs <= startMs) return [];
-  return [{ task: pod.task, startMs, endMs, weight: memoryBytes(pod) * BigInt(endMs - startMs) }];
+  return [
+    {
+      project: pod.project,
+      task: pod.task,
+      startMs,
+      endMs,
+      weight: memoryBytes(pod) * BigInt(endMs - startMs),
+    },
+  ];
 }
 
 /** Overlapping pods count their overlap once. */
@@ -250,11 +273,16 @@ function unionMs(spans: PodSpan[]): number {
 /** The busy EUR split by memory request x time; with no memory request on the worker, nothing is split. */
 function taskShares(input: BusyCost): TaskShare[] {
   const { podSpans, busyMs, price } = input;
-  const weights = new Map<string, bigint>();
-  for (const span of podSpans) weights.set(span.task, (weights.get(span.task) ?? 0n) + span.weight);
-  const all = [...weights.values()].reduce((sum, weight) => sum + weight, 0n);
+  const weights = new Map<string, TaskWeight>();
+  for (const span of podSpans) {
+    const key = taskKey(span);
+    const known = weights.get(key)?.weight ?? 0n;
+    weights.set(key, { project: span.project, task: span.task, weight: known + span.weight });
+  }
+  const all = [...weights.values()].reduce((sum, item) => sum + item.weight, 0n);
   const busy = { numerator: price.numerator * BigInt(busyMs), denominator: price.denominator };
-  return [...weights].map(([task, weight]) => ({
+  return [...weights.values()].map(({ project, task, weight }) => ({
+    project,
     task,
     cents:
       all === 0n
@@ -266,25 +294,43 @@ function taskShares(input: BusyCost): TaskShare[] {
   }));
 }
 
-/** Tasks by id; each lists the workers it ran on in the order of the worker lines. */
+/** Tasks by project, then task id, a null project first; each lists its workers in the order of the worker lines. */
 function taskLines(paid: PaidWorker[]): TaskCost[] {
-  const byTask = new Map<string, WorkerShare[]>();
+  const byTask = new Map<string, TaskShares>();
   for (const worker of paid) {
     for (const share of worker.shares) {
-      byTask.set(share.task, [...(byTask.get(share.task) ?? []), { worker, cents: share.cents }]);
+      const key = taskKey(share);
+      const known = byTask.get(key)?.shares ?? [];
+      const shares = [...known, { worker, cents: share.cents }];
+      byTask.set(key, { project: share.project, task: share.task, shares });
     }
   }
-  return [...byTask]
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([task, shares]) => ({
-      task,
-      workers: shares.map((share) => ({
-        node: share.worker.added.node,
-        server_id: share.worker.added.server_id,
-        eur: centsText(share.cents),
-      })),
-      eur: centsText(shares.reduce((sum, share) => sum + share.cents, 0n)),
-    }));
+  return [...byTask.values()].sort(compareTasks).map(({ project, task, shares }) => ({
+    project,
+    task,
+    workers: shares.map((share) => ({
+      node: share.worker.added.node,
+      server_id: share.worker.added.server_id,
+      eur: centsText(share.cents),
+    })),
+    eur: centsText(shares.reduce((sum, share) => sum + share.cents, 0n)),
+  }));
+}
+
+/** A map key that tells `("a", "b/c")` from `("a/b", "c")` and a null project from any name. */
+function taskKey(task: TaskKey): string {
+  return JSON.stringify([task.project, task.task]);
+}
+
+function compareTasks(a: TaskKey, b: TaskKey): number {
+  if (a.project !== b.project)
+    return compareText(a.project ?? "", b.project ?? "") || (a.project === null ? -1 : 1);
+  return compareText(a.task, b.task);
+}
+
+function compareText(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
 }
 
 /** The net hourly price in EUR, exact. */

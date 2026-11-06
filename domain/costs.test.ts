@@ -132,6 +132,7 @@ test("a price that is not decimal text is a bad file", () => {
 /** One box pod of a task on a node, from its `started` to its `finished`. */
 interface Pod {
   task: string;
+  project?: string | null;
   node: string;
   started: string | null;
   finished: string;
@@ -142,7 +143,7 @@ function pod(input: Pod): JobFinished {
   return {
     event: "job.finished",
     task: input.task,
-    project: "tenbox",
+    project: input.project === undefined ? "tenbox" : input.project,
     job: `task-${input.task}`,
     pod: `task-${input.task}-pod`,
     command: "build",
@@ -196,8 +197,18 @@ test("a worker's busy cost is split over tasks by memory request and time", () =
     pods: [pod({ ...hour, task: "A", memory: "4Gi" }), pod({ ...hour, task: "B", memory: "2Gi" })],
   });
   expect(report.tasks).toEqual([
-    { task: "A", workers: [{ node: "worker-1", server_id: 1, eur: "0.02" }], eur: "0.02" },
-    { task: "B", workers: [{ node: "worker-1", server_id: 1, eur: "0.01" }], eur: "0.01" },
+    {
+      project: "tenbox",
+      task: "A",
+      workers: [{ node: "worker-1", server_id: 1, eur: "0.02" }],
+      eur: "0.02",
+    },
+    {
+      project: "tenbox",
+      task: "B",
+      workers: [{ node: "worker-1", server_id: 1, eur: "0.01" }],
+      eur: "0.01",
+    },
   ]);
 });
 
@@ -265,6 +276,7 @@ test("a task's eur is the sum of its shares on every worker", () => {
   });
   expect(report.tasks).toEqual([
     {
+      project: "tenbox",
       task: "A",
       workers: [
         { node: "worker-1", server_id: 1, eur: "0.02" },
@@ -288,4 +300,45 @@ test("a memory request that is not a quantity is a bad file", () => {
   expect(() => costReport({ window: WINDOW, events: WORKER_ONE_3H, pods })).toThrow(
     "requests.memory of task-A-pod",
   );
+});
+
+const SAME_HOUR = {
+  node: ONE.node,
+  memory: "1Gi",
+  started: "2026-11-03T10:00:00Z",
+  finished: "2026-11-03T11:00:00Z",
+};
+
+test("the same task id in two projects gives two task lines", () => {
+  const report = costReport({
+    window: WINDOW,
+    events: [added({ ...ONE, price: "0.04" }, "2026-11-03T09:00:00Z")],
+    pods: [
+      pod({ ...SAME_HOUR, task: "169", project: "tenbox" }),
+      pod({ ...SAME_HOUR, task: "169", project: "tenyard" }),
+    ],
+  });
+  expect(report.tasks.map((t) => [t.project, t.task, t.eur])).toEqual([
+    ["tenbox", "169", "0.02"],
+    ["tenyard", "169", "0.02"],
+  ]);
+});
+
+test("task lines sort by project, then task id, a null project first", () => {
+  const report = costReport({
+    window: WINDOW,
+    events: [added(ONE, "2026-11-03T09:00:00Z")],
+    pods: [
+      pod({ ...SAME_HOUR, task: "2", project: "b" }),
+      pod({ ...SAME_HOUR, task: "9", project: "a" }),
+      pod({ ...SAME_HOUR, task: "1", project: "b" }),
+      pod({ ...SAME_HOUR, task: "5", project: null }),
+    ],
+  });
+  expect(report.tasks.map((t) => [t.project, t.task])).toEqual([
+    [null, "5"],
+    ["a", "9"],
+    ["b", "1"],
+    ["b", "2"],
+  ]);
 });

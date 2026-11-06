@@ -476,8 +476,10 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 overlap once; a pod with `started` null never ran and adds nothing; a pod counts once its
                 `job.finished` is stored. `waste_hours` is `paid_hours` minus `busy_hours`; it can be below 0
                 for a server that came before `from`, whose busy time in the first part-hour of the window
-                was paid in the window before. A task line `{ task, workers: [{ node, server_id, eur }], eur }`,
-                by task id, splits the busy EUR of each worker it ran on (`busy_hours` times
+                was paid in the window before. A task line `{ project, task, workers: [{ node, server_id, eur }], eur }`,
+                one per project and task id (the same id in two projects is two lines; `project` is the
+                `project` of `job.finished`, null when it has none), by project, then task id, a null
+                project first, splits the busy EUR of each worker it ran on (`busy_hours` times
                 `price_hourly.net`) over its tasks by memory request (`requests.memory`, a Kubernetes quantity
                 such as `2Gi`) times the time of their pods on it, rounded half up to cents per worker; its
                 `eur` is the sum of its workers. A pod with no memory request weighs 0. Waste stays on the

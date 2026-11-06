@@ -98,7 +98,12 @@ test("the report splits busy EUR over the tasks of the stored job.finished event
   const report = costs.get(db, WINDOW);
   expect(report.workers).toMatchObject([{ server_id: 101, busy_hours: 2, waste_hours: 132 }]);
   expect(report.tasks).toEqual([
-    { task: "TEN-7", workers: [{ node: "worker-1", server_id: 101, eur: "0.02" }], eur: "0.02" },
+    {
+      project: "tenbox",
+      task: "TEN-7",
+      workers: [{ node: "worker-1", server_id: 101, eur: "0.02" }],
+      eur: "0.02",
+    },
   ]);
 });
 
