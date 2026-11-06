@@ -94,7 +94,8 @@ read_project_env() {
   wait $!
 }
 
-# 7. After the command: stay while a claude session works (its status is busy; an ended turn keeps state working).
+# 7. After the command: stay while a claude session works: its status is busy. A resumed session
+#    can keep state working after its turn ended, so state does not count.
 sessions_json() { as_tenbox claude agents --json 2> /dev/null || echo "[]"; }
 wait_for_sessions() {
   local idle=0 sessions working
