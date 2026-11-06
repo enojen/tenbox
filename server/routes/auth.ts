@@ -11,7 +11,7 @@ export interface AuthEnv {
 }
 
 const BEARER_PREFIX = "Bearer ";
-const OPEN_PATHS = new Set(["/health", "/openapi.json", "/docs"]);
+const OPEN_PATHS = new Set(["/health", "/metrics", "/openapi.json", "/docs"]);
 
 export function requireToken(db: Db): MiddlewareHandler<AuthEnv> {
   return (c, next) => {

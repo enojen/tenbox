@@ -447,6 +447,11 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 token, an unknown path is 404 `not-found`; a request body
                 that fails its schema is 400 `bad-input` with the issue lines (`1.at: ...`) in
                 `detail`; any other error is 500 and its message goes to stderr, not to the client.
+                `GET /metrics` is open like `/health` and is not in `/openapi.json`: the Prometheus text
+                format (`text/plain; version=0.0.4`) with one gauge series per worker that is up (a
+                `node.added` without a `node.removed`),
+                `tenbox_node_price_eur_hourly{node, server_type, location}`, valued at its
+                `price_hourly.net`; no series when no worker is up.
                 `POST /events` takes a list of events (`EventSchema` in `domain/events.ts`) and
                 answers 200 `{ ok: true, stored, skipped }`. The list is all or nothing: one bad
                 event is a 400 and none is stored. The whole list goes in one transaction; an

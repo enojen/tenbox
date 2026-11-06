@@ -248,6 +248,14 @@ export function nodeChanges(state: NodeState): NodeChanges {
   };
 }
 
+/** The workers that are up: a `node.added` whose server id has no `node.removed`. */
+export function nodesUp(stored: NodeEvent[]): NodeAdded[] {
+  const removedIds = new Set(
+    stored.filter((event) => !isAdded(event)).map((event) => event.server_id),
+  );
+  return stored.filter(isAdded).filter((event) => !removedIds.has(event.server_id));
+}
+
 /** The type and location of a removed node come from its `node.added`. */
 export function nodeRemoved(removal: NodeRemoval): NodeRemoved {
   const { added, late } = removal;
