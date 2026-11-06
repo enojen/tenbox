@@ -1058,6 +1058,28 @@ test("the retry of the fix part carries the must_fix items and no part file line
   expect(retry?.prompt).not.toContain("status: todo");
 });
 
+test("a planner-listed part with a goal keeps the part file retry prompt", async () => {
+  const { calls, recorder } = recording(
+    scripted({
+      worker: async (_prompt, options) => {
+        if (options.label === "round 2: 01")
+          return {
+            status: "done",
+            proofs: [],
+            partDone: { ok: false, error: "no commit" },
+            checks: green("chk", 2),
+          };
+        const checks = options.label.startsWith("round 1") ? redChecks : green("chk", 2);
+        return { status: "done", proofs: [], partDone: accepted(), checks };
+      },
+    }),
+  );
+  await runWorkflow(planArgs(["01"], [], { maxRounds: 2 }), recorder);
+  const retry = calls.find((call) => call.label === "round 2: 01 fix");
+  expect(retry?.prompt).toContain("status: todo");
+  expect(retry?.prompt).not.toContain("Round feedback:");
+});
+
 const raised = {
   ok: false,
   error: "the diff (9 files, 300 changed lines) is over the limits of kind small; it is normal now",

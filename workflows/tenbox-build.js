@@ -274,8 +274,8 @@ const buildRounds = async (scope, start) => {
   // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed and reopens the part file.
   const buildPart = async (round, part, { attempt, failure, checkRound }) => {
     const fix = attempt === 'fix'
-    // Only the fix part has a goal and no part file: its retry needs the items, not the file.
-    const fixRetry = part.goal
+    // Only the fix part has no part file: its retry needs the items, not the file.
+    const fixRetry = part.id === 'fix'
       ? `Round feedback: ${feedback}`
       : 'Set `status: todo` in your part file first, then fix it.'
     const prompt = fix
