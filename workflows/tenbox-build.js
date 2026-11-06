@@ -274,8 +274,12 @@ const buildRounds = async (scope, start) => {
   // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed and reopens the part file.
   const buildPart = async (round, part, { attempt, failure, checkRound }) => {
     const fix = attempt === 'fix'
+    // Only the fix part has a goal and no part file: its retry needs the items, not the file.
+    const fixRetry = part.goal
+      ? `Round feedback: ${feedback}`
+      : 'Set `status: todo` in your part file first, then fix it.'
     const prompt = fix
-      ? `${partLine(part)} ${failure.what}: ${failure.why}\nSet \`status: todo\` in your part file first, then fix it.`
+      ? `${partLine(part)} ${failure.what}: ${failure.why}\n${fixRetry}`
       : `${partLine(part)} Round feedback: ${feedback}${answerLine(round, part.id)}`
     const commandLine = `\nAfter your last commit, run \`${partDoneCommand(part)}\` and return its JSON as partDone, then run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
     const built = await agent(prompt + commandLine + worktreeLine(scope),
