@@ -1,5 +1,9 @@
 import { errorMessage } from "../../domain/errors/index.ts";
 import {
+  CLOSE_OUTPUT,
+  closeOutput,
+  closeOutputId,
+  isClosed,
   JOB_FINISHED,
   type JobFinished,
   type JobFinishInput,
@@ -82,8 +86,39 @@ async function storeLogged(input: EndedPod): Promise<void> {
 
 async function storeEnded(input: EndedPod): Promise<void> {
   const { db, pod, api, at } = input;
+  if (isClosed(pod)) {
+    const log = await kubernetes.boxLog({ api, pod: pod.name });
+    storeCloseOutput(db, { pod, log, at });
+    store(db, { pod, oomInLog: oomKilledInLog(log), at });
+    return;
+  }
   const line = await kubernetes.lastLogLine({ api, pod: pod.name });
   store(db, { pod, oomInLog: oomKilledInLog(line), at });
+}
+
+/** The log of a close pod that ended with exit code 0. */
+interface CloseLog {
+  pod: ListedPod;
+  log: string;
+  /** The poll time, for a pod with no box end. */
+  at: string;
+}
+
+/** A log with no close output is one stderr line; the pod's `job.finished` is stored anyway. */
+function storeCloseOutput(db: Db, input: CloseLog): void {
+  const { pod, log, at } = input;
+  const body = closeOutput(log);
+  if (body === null) {
+    logFailure(new Error("no close output in the log"), `job watch: pod ${pod.name}`);
+    return;
+  }
+  events.saveFromServer(db, {
+    id: closeOutputId(pod),
+    type: CLOSE_OUTPUT,
+    subject: pod.task,
+    at: pod.end?.finished ?? at,
+    body,
+  });
 }
 
 function store(db: Db, input: JobFinishInput): void {

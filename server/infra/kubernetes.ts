@@ -205,10 +205,19 @@ function listedVolume(pvc: Pvc): ListedVolume[] {
 }
 
 /** The last line of the box container's log: the boot line with `oom_kill <n>`. */
-async function lastLogLine(input: PodLog): Promise<string> {
+function lastLogLine(input: PodLog): Promise<string> {
+  return readLog(input, "&tailLines=1");
+}
+
+/** The whole log of the box container. */
+function boxLog(input: PodLog): Promise<string> {
+  return readLog(input, "");
+}
+
+async function readLog(input: PodLog, query: string): Promise<string> {
   const { api, pod } = input;
   const { token, ca } = await credentials(api);
-  const url = `${api.url}${PODS_PATH}/${encodeURIComponent(pod)}/log?container=${BOX}&tailLines=1`;
+  const url = `${api.url}${PODS_PATH}/${encodeURIComponent(pod)}/log?container=${BOX}${query}`;
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(LOG_TIMEOUT_MS),
@@ -278,4 +287,4 @@ function optionalIsoTime(text: string | null | undefined): string | null {
   return text === null || text === undefined ? null : isoTime(text);
 }
 
-export const kubernetes = { inCluster, nodes, jobPods, taskVolumes, lastLogLine };
+export const kubernetes = { inCluster, nodes, jobPods, taskVolumes, lastLogLine, boxLog };

@@ -34,6 +34,7 @@ interface FakePod {
   reason?: string;
   finished?: string;
   log?: string;
+  command?: string;
 }
 
 /** The fake cluster: the pods it lists and the log requests it got. */
@@ -83,7 +84,7 @@ function apiPod(pod: FakePod) {
           env: [
             { name: "TENBOX_TASK", value: task },
             { name: "TENBOX_PROJECT", value: "demo" },
-            { name: "TENBOX_CMD", value: `tenbox build ${task}` },
+            { name: "TENBOX_CMD", value: pod.command ?? `tenbox build ${task}` },
             { name: "TRACKER_API_KEY", valueFrom: { secretKeyRef: { name: "p", key: "k" } } },
           ],
           resources: { requests: { cpu: "500m", memory: "2Gi" }, limits: { memory: "2Gi" } },
@@ -111,10 +112,10 @@ function answer(fakes: Fakes, request: Request): Response {
   }
   const log = /^\/api\/v1\/namespaces\/tenbox\/pods\/([^/]+)\/log$/.exec(url.pathname)?.[1];
   const pod = fakes.pods.find((item) => item.name === log);
-  if (pod === undefined || url.search !== "?container=box&tailLines=1") {
-    return new Response("", { status: HTTP_NOT_FOUND });
-  }
-  fakes.logCalls.push(pod.name);
+  const tail = url.search === "?container=box&tailLines=1";
+  const whole = url.search === "?container=box";
+  if (pod === undefined || !(tail || whole)) return new Response("", { status: HTTP_NOT_FOUND });
+  fakes.logCalls.push(tail ? pod.name : `${pod.name} (whole)`);
   if (fakes.logFails) return new Response("", { status: HTTP_FORBIDDEN });
   return new Response(pod.log ?? "tenbox-boot: memory peak 300 MiB, cpu 5 s, oom_kill 0\n");
 }
@@ -341,4 +342,74 @@ test("GET task runs lists the stored runs", async () => {
   const docJson = await docResponse.json();
   const doc = DocSchema.parse(docJson);
   expect(Object.keys(doc.paths)).toContain("/tasks/{task}/runs");
+});
+
+const CLOSE_JSON = `{
+  "ok": true,
+  "task": "TEN-7",
+  "stats": {
+    "path": "/x/stats.json",
+    "state": "written"
+  }
+}
+`;
+const BOOT_LINE = "tenbox-boot: memory peak 300 MiB, cpu 5 s, oom_kill 0\n";
+const CLOSED: FakePod = {
+  uid: "uid-c",
+  name: `${JOB}-close`,
+  exitCode: 0,
+  command: "tenbox close TEN-7",
+  log: `warning: x\n${CLOSE_JSON}${BOOT_LINE}`,
+};
+
+test("a close pod with exit 0 stores its close output", async () => {
+  const fakes = setup();
+  fakes.pods = [CLOSED];
+  await pollOnce(fakes);
+  const stored = rows(fakes.db);
+  expect(stored.map((row) => row.id).sort()).toEqual(["close.output:uid-c", "job.finished:uid-c"]);
+  const row = stored.find((item) => item.id === "close.output:uid-c");
+  expect(row).toMatchObject({ type: "close.output", subject: "TEN-7", user_id: null });
+  expect(JSON.parse(row?.body ?? "")).toEqual({
+    ok: true,
+    task: "TEN-7",
+    stats: { path: "/x/stats.json", state: "written" },
+  });
+  expect(fakes.logCalls).toEqual([`${JOB}-close (whole)`]);
+});
+
+test("a failed close stores no close output", async () => {
+  const fakes = setup();
+  fakes.pods = [{ ...CLOSED, exitCode: 1 }];
+  await pollOnce(fakes);
+  expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);
+  expect(fakes.logCalls).toEqual([`${JOB}-close`]);
+});
+
+test("a pod of another command stores no close output", async () => {
+  const fakes = setup();
+  fakes.pods = [{ ...CLOSED, command: "tenbox build TEN-7" }];
+  await pollOnce(fakes);
+  expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);
+});
+
+test("a second poll stores the close output once", async () => {
+  const fakes = setup();
+  fakes.pods = [CLOSED];
+  const seen = await pollOnce(fakes);
+  await pollOnce(fakes, seen);
+  expect(rows(fakes.db)).toHaveLength(2);
+  expect(fakes.logCalls).toEqual([`${JOB}-close (whole)`]);
+});
+
+test("a close log with no JSON object is one stderr line and no close output", async () => {
+  const fakes = setup();
+  fakes.pods = [{ ...CLOSED, log: `no json here\n${BOOT_LINE}` }];
+  const errors = spyOn(console, "error").mockImplementation(() => undefined);
+  await pollOnce(fakes);
+  const calls = [...errors.mock.calls];
+  errors.mockRestore();
+  expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);
+  expect(calls).toHaveLength(1);
+  expect(String(calls[0]?.[0])).toContain("job watch: pod");
 });

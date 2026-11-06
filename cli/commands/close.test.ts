@@ -89,6 +89,25 @@ describe("tenbox close", () => {
     expect(branches).toBe("");
   });
 
+  test("close prints the stats record", async () => {
+    await setup();
+    const run = await closeT1();
+    const text = await readStatsText();
+    const written = JSON.parse(text);
+    expect(run.json.stats).toEqual({
+      path: path.join(kept, "stats.json"),
+      state: "written",
+      record: written,
+    });
+  });
+
+  test("close prints a null stats record when the stats are skipped", async () => {
+    await setup();
+    await rm(kept, { recursive: true });
+    const run = await closeT1();
+    expect(run.json.stats).toEqual({ path: null, state: "skipped", record: null });
+  });
+
   test("close sets the status closed and keeps task.json; a refused close leaves it", async () => {
     await setup();
     const taskJson = path.join(kept, "task.json");
