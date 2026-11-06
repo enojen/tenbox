@@ -10,6 +10,7 @@ import type { StatsProof } from "../../domain/proofs.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/prs.ts";
 import type { RoundStatus } from "../../domain/rounds.ts";
 import type { RunMark, UsageReport } from "../../domain/runs.ts";
+import type { TaskStats } from "../../domain/stats.ts";
 import type { ListedReport, StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
@@ -92,6 +93,8 @@ export interface StatsInfo {
   /** Null when the stats were skipped. */
   path: string | null;
   state: StatsState;
+  /** The `stats.json` content that was written; null when skipped or failed. */
+  record: TaskStats | null;
 }
 
 export type PullState = (typeof PULL_STATE)[keyof typeof PULL_STATE] | FailedState;

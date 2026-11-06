@@ -579,3 +579,39 @@ export function readJobFinished(text: string, file: string): JobFinished {
   if (!result.ok) throw badFileError(file, result.issues);
   return result.value;
 }
+
+/** What `tenbox close` printed once it ended with exit code 0; only the server makes it, from its Job watch. */
+export const CLOSE_OUTPUT = "close.output";
+
+const CLOSE_COMMAND = "close";
+const OBJECT_START = "{";
+const OBJECT_END = "}";
+
+/** Not part of `EventSchema`, so `POST /events` refuses it; the rest of the close output is kept as it came. */
+const CloseOutputSchema = z.looseObject({ ok: z.literal(true), task: text });
+
+export type CloseOutput = z.infer<typeof CloseOutputSchema>;
+
+/** One id per pod, so a server that polls again stores nothing twice. */
+export function closeOutputId(pod: ListedPod): string {
+  return `${CLOSE_OUTPUT}:${pod.uid}`;
+}
+
+/** A `tenbox close` pod (the second word of `TENBOX_CMD`) whose box ended with exit code 0. */
+export function isClosed(pod: ListedPod): boolean {
+  const word = pod.command?.trim().split(/\s+/)[1];
+  return word === CLOSE_COMMAND && pod.end?.exitCode === 0;
+}
+
+/**
+ * The last top-level JSON object of a box log, from a `{` line up to the next `}` line at
+ * column 0 (as `tenbox close` prints it); null when there is none or it is not `{ ok: true, task }`.
+ */
+export function closeOutput(log: string): CloseOutput | null {
+  const lines = log.split("\n");
+  const end = lines.lastIndexOf(OBJECT_END);
+  const start = lines.slice(0, end).lastIndexOf(OBJECT_START);
+  if (start < 0 || end < 0) return null;
+  const result = jsons.check(CloseOutputSchema, lines.slice(start, end + 1).join("\n"));
+  return result.ok ? result.value : null;
+}

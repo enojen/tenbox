@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  closeOutput,
   type EventName,
   EventSchema,
   eventSubject,
@@ -262,5 +263,21 @@ describe("volume events", () => {
       added: [again],
       removed: [],
     });
+  });
+});
+
+describe("closeOutput", () => {
+  const BLOCK =
+    '{\n  "ok": true,\n  "task": "TEN-7",\n  "stats": {\n    "state": "written"\n  }\n}\n';
+
+  test("is the last top-level JSON object of the log", () => {
+    const log = `{\n  "ok": false\n}\nnoise\n${BLOCK}tenbox-boot: oom_kill 0\n`;
+    expect(closeOutput(log)).toEqual({ ok: true, task: "TEN-7", stats: { state: "written" } });
+  });
+
+  test("is null for a log with no object or an object that is not a close output", () => {
+    expect(closeOutput("plain\n")).toBeNull();
+    expect(closeOutput('{\n  "ok": false,\n  "task": "TEN-7"\n}\n')).toBeNull();
+    expect(closeOutput('{\n  "ok": true\n}\n')).toBeNull();
   });
 });

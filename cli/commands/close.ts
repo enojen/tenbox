@@ -63,7 +63,7 @@ export const COMMENT_STATE = { posted: "posted", skipped: "skipped" } as const;
 /** Who says the branch is merged: GitHub, a test merge in git, or nobody. */
 const MERGE_SOURCE = { github: "github", git: "git", unmerged: "unmerged" } as const;
 
-const SKIPPED_STATS: StatsInfo = { path: null, state: STATS_STATE.skipped };
+const SKIPPED_STATS: StatsInfo = { path: null, state: STATS_STATE.skipped, record: null };
 
 interface CloseTarget {
   mainDir: string;
@@ -356,9 +356,9 @@ async function writeStats(input: StatsInput): Promise<WrittenStats> {
   try {
     const computed = await stats.compute(input);
     await stats.save(computed, input.taskDir);
-    return { info: { path: file, state: STATS_STATE.written }, stats: computed };
+    return { info: { path: file, state: STATS_STATE.written, record: computed }, stats: computed };
   } catch (e) {
-    return { info: { path: file, state: failedState(e) }, stats: null };
+    return { info: { path: file, state: failedState(e), record: null }, stats: null };
   }
 }
 
