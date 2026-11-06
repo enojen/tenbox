@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type EventName, EventSchema, eventSubject } from "./events.ts";
+import {
+  type EventName,
+  EventSchema,
+  eventSubject,
+  jobChanges,
+  jobFinished,
+  type ListedPod,
+} from "./events.ts";
 
 const COMMON = {
   id: "wf_7359/a9703d/round.reviewed",
@@ -179,5 +186,39 @@ describe("eventSubject", () => {
   test("is the part of a proof event", () => {
     const event = EventSchema.parse(build("proof.added", EXAMPLES["proof.added"]));
     expect(eventSubject(event)).toBe("k7f3qa/TEN-301/p01");
+  });
+});
+
+const POD: ListedPod = {
+  uid: "uid-1",
+  name: "task-ten-7-1105-100000-abcde",
+  job: "task-ten-7-1105-100000",
+  task: "TEN-7",
+  project: "demo",
+  command: "tenbox build TEN-7",
+  class: "build",
+  node: null,
+  created: "2026-11-05T10:00:00.000Z",
+  scheduled: null,
+  started: null,
+  end: null,
+  requests: { cpu: "500m", memory: "2Gi" },
+};
+
+describe("job.finished", () => {
+  test("a pod that went before it was scheduled has no duration", () => {
+    const event = jobFinished({ pod: POD, oomInLog: false, at: "2026-11-05T10:01:00.000Z" });
+    expect(event).toMatchObject({ exit_code: null, finished: "2026-11-05T10:01:00.000Z" });
+    expect(event.duration_ms).toBeNull();
+  });
+
+  test("a stored pod is neither ended nor gone", () => {
+    const ended = { ...POD, end: { exitCode: 0, reason: null, finished: POD.created } };
+    const changes = jobChanges({
+      seen: [POD],
+      stored: new Set(["job.finished:uid-1"]),
+      listed: [ended],
+    });
+    expect(changes).toEqual({ ended: [], gone: [] });
   });
 });

@@ -13,6 +13,7 @@ import type { Db } from "../infra/db/index.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type ClusterNode, type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
+import { machineRuns } from "./machineRuns.ts";
 
 const POLL_INTERVAL_MS = 30_000;
 /** The `tenbox` column of a node event: the server has no git sha. */
@@ -64,24 +65,24 @@ async function poll(db: Db, input: NodePoll): Promise<void> {
 }
 
 /**
- * Polls now and every 30 seconds; a poll that fails is logged and the next one tries again.
- * Until a poll succeeds, a removal is late and dated at the start: the node left while the
- * server was down.
+ * Polls the Nodes and the Job pods now and every 30 seconds; a poll that fails is logged and the
+ * next one tries again, and one poll does not stop the other. Until a node poll succeeds, a
+ * removal is late and dated at the start: the node left while the server was down.
  */
 function watch(db: Db, input: NodeWatch): Watching {
   const startedAt = input.now();
   let late = true;
-  let running: Promise<void> | null = null;
+  let running: Promise<unknown> | null = null;
+  const pollJobs = machineRuns.poller(db, input);
   const tick = () => {
     if (running !== null) return;
     const removedAt = late ? startedAt : input.now();
-    running = poll(db, { ...input, removedAt, late })
-      .then(() => {
-        late = false;
-      }, logFailure)
-      .finally(() => {
-        running = null;
-      });
+    const pollNodes = poll(db, { ...input, removedAt, late }).then(() => {
+      late = false;
+    }, logFailure);
+    running = Promise.all([pollNodes, pollJobs()]).finally(() => {
+      running = null;
+    });
   };
   tick();
   const timer = setInterval(tick, POLL_INTERVAL_MS);

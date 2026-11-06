@@ -452,7 +452,8 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 event is a 400 and none is stored. The whole list goes in one transaction; an
                 event whose `id` the server has, or that comes twice in the list, is skipped.
                 `user_id` is the user of the token, not the `user` of the body. A node event (`node.added`,
-                `node.removed`) is not in `EventSchema`: only the server makes it, so a post of one is a 400
+                `node.removed`) or a `job.finished` is not in `EventSchema`: only the server makes it, so a
+                post of one is a 400.
                 `GET /costs?from=<iso>&to=<iso>` reports what the workers of the cluster were paid for in
                 that window (`costReport` in `domain/costs.ts`). It is only for a user who is an `admin` of
                 at least one organization (the costs are cluster-wide, of every project); a `member` only gets
@@ -466,7 +467,9 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 `price_hourly.net`, computed exactly and rounded half up to cents, as decimal text
                 (`"0.02"`). A server with no paid hour in the window has no line; the control plane
                 (tenbox-ci) is a worker line like any other. `total` is `{ paid_hours, eur }`, the sum of
-                the lines. No volume line yet
+                the lines. No volume line yet.
+                `GET /tasks/{task}/runs` answers 200 `{ ok: true, runs }`: the bodies of the `job.finished`
+                events whose subject is the task id, oldest `finished` first; `runs: []` for a task with none
   application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
                 membership and the token in one transaction).
                 memberships: finds an organization where a user is an `admin`.
@@ -485,7 +488,28 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 was down. Servers are matched by id. The row: `id` `<event>:<server id>`, so a poll after a
                 restart stores nothing twice; `subject` the Node name; `user_id` null; `tenbox` `server`. A
                 failed poll, or a server Hetzner cannot give, goes to stderr and the next poll tries again.
-                Without `KUBERNETES_SERVICE_HOST` the server does not poll
+                Without `KUBERNETES_SERVICE_HOST` the server does not poll.
+                machineRuns: the Job watch, in the same 30-second tick as the node poll; a failure of one
+                does not stop the other. Each tick lists the pods of namespace `tenbox` with the label
+                `app=tenyard` (`GET /api/v1/namespaces/tenbox/pods?labelSelector=app%3Dtenyard`). A pod whose
+                `box` container is terminated and that has no event yet gets one log request
+                (`.../pods/<pod>/log?container=box&tailLines=1`) and one `job.finished` event, body `{ event,
+                task, project, job, pod, command, class, node, exit_code, oom, created, scheduled, started,
+                finished, duration_ms, requests: { cpu, memory } }`: `task` and `class` the pod labels,
+                `job` its `job-name` label, `project` and `command` the box env `TENBOX_PROJECT` and
+                `TENBOX_CMD`, `node` `spec.nodeName`, `created` the pod's `creationTimestamp`, `scheduled` the
+                `PodScheduled` condition's time, `started` and `finished` the box container's, `duration_ms`
+                from `started` to `finished` (null when it never started), `requests` the box container's,
+                `oom` true when the terminated reason is `OOMKilled` or the last log line has `oom_kill` above
+                0; times in UTC (`toISOString`). A pod the last poll listed that is gone before its box ended
+                (e.g. `tenbox machine stop`) gets the event with `exit_code` null, `oom` false and the poll
+                time as `finished`; this memory is only in the process, so a pod that goes while the server
+                is down is not recorded. The row: `id` `job.finished:<pod uid>`, so a second poll stores
+                nothing and asks for no second log; `subject` the task id (the pods carry no project id);
+                `user_id` null; `tenbox` `server`; `at` the `finished` time. A failed pod list, or a failed
+                log of one pod, is one stderr line (`job watch: ...`) and the next poll tries again. The
+                server's service account needs `list` on `pods` and `get` on `pods/log` in namespace `tenbox`
+                (tenyard Role `tenbox-server-runs`); without it each poll logs the 403
   commands/     `tenbox-server user add --name <n> --github <g> --org <o> [--email <e>]
                 [--type admin|member]` (default `member`) finds or makes the organization,
                 makes the user and prints `{ ok, user, organization, type, token }` on stdout.
@@ -506,10 +530,11 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 `KUBERNETES_SERVICE_PORT`, default 443, and `HCLOUD_TOKEN`, a read-only Hetzner Cloud token,
                 with `HCLOUD_ENDPOINT`, default `https://api.hetzner.cloud/v1`; without `HCLOUD_TOKEN` there
                 `tenbox-server` prints `{ ok: false, code: "env" }` and exits 1 before it serves), the token
-                maker, http (a JSON GET with a bearer token), kubernetes (the Node list) and hetzner (one server)
+                maker, http (a JSON GET with a bearer token), kubernetes (the Node list, the Job pods and the last log line of
+                one) and hetzner (one server)
     db/           the SQLite database with drizzle: `schema.ts` (`organizations`, `users`,
                   `memberships`, `projects`, `events`: `id` PK, `type`, `subject` (the event's task,
-                  else round, else part; a node event's Node name), `user_id` FK, null for a node event, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
+                  else round, else part; a node event's Node name; a `job.finished`'s task id), `user_id` FK, null for an event the server makes, `tenbox`, `at`, `body` the event JSON) and `migrations/`. Opening the database applies the new
                   migrations. After a change to `schema.ts`, run
                   `bunx drizzle-kit generate --name <what>` and commit the new migration
     repositories/ data access per table, no rules: `find...`, `insert`

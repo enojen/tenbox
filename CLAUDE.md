@@ -23,7 +23,8 @@ pulls the base and deletes the remote branch after a MERGED PR), the ClickUp and
 Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`), the server image (`machines/server/`),
 the login sync to the Secrets of the box (`machines/login/`), and `tenbox machine run` and `ls`
 (TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
-and `ls` lists the Jobs labeled `app=tenyard`. No sandbox yet.
+and `ls` lists the Jobs labeled `app=tenyard`. The server's Job watch stores a `job.finished` per
+Job pod and `GET /tasks/{task}/runs` lists them (#94). No sandbox yet.
 
 ## Rules
 
@@ -101,7 +102,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | command | One tenbox CLI command, the first word after `tenbox`: `start`, `check`, `merge-check` ...; the command table of `cli/main.ts`, the machine run commands and the next command of a notification take its name from `COMMAND` (`CommandName`). |
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
-| machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). Not a `run` in stats, which is one Claude Code workflow run. |
+| machine run | One tenbox command of a task on its machine: one Job in namespace `tenbox`, filled from `<template>/job.yaml`. `tenbox machine run` starts it; `tenbox machine ls` lists them, the Jobs labeled `app=tenyard` (`machines.run`). The server's Job watch stores one `job.finished` event per pod when its box container ends or its pod goes; `GET /tasks/{task}/runs` lists them (`machineRuns`, `JobFinished`). Not a `run` in stats, which is one Claude Code workflow run. |
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
@@ -191,8 +192,8 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
-            nodes, the node watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
-            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list,
+            nodes, the node watch; machineRuns, the Job watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
+            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line,
             hetzner: one server, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
