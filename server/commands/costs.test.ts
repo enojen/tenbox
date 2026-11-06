@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
@@ -94,4 +95,18 @@ test("tenbox-server costs on a missing database creates none", () => {
   expect(code).toBe(1);
   expect(FailureSchema.parse(JSON.parse(stdout)).code).toBe("no-database");
   expect(fs.existsSync(file)).toBe(false);
+});
+
+test("tenbox-server costs applies no migration to the database it reads", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tenbox-costs-cmd-"));
+  roots.push(root);
+  const file = path.join(root, "old.db");
+  const old = new Database(file, { create: true });
+  old.run("create table kept (id text)");
+  old.close();
+  run(file, WINDOW);
+  const after = new Database(file, { readonly: true });
+  const tables = after.query("select name from sqlite_master where type = 'table'").all();
+  after.close();
+  expect(tables).toEqual([{ name: "kept" }]);
 });

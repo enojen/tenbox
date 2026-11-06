@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
-import fs from "node:fs";
 import type { Server } from "bun";
 import type { CostReport, CostWindow } from "../domain/costs.ts";
-import { noDatabaseError } from "../domain/errors/backups.ts";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { costs } from "./application/costs.ts";
 import { nodes, type Watching } from "./application/nodes.ts";
@@ -138,11 +136,9 @@ function runCosts(argv: string[]): void {
   }
 }
 
-/** The same report as `GET /costs`; it never creates a database. */
+/** The same report as `GET /costs`; it never creates or changes a database. */
 function costsOnce(window: CostWindow): CostReport {
-  const file = serverEnv().dbFile;
-  if (!fs.existsSync(file)) throw noDatabaseError(file);
-  const db = database.open(file);
+  const db = database.openReadOnly(serverEnv().dbFile);
   try {
     return costs.get(db, window);
   } finally {
