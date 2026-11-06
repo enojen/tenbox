@@ -76,6 +76,7 @@ function watchNodes(db: Db, env: NodeWatchEnv): Watching {
     kubernetes: kubernetes.inCluster(env.kubernetesUrl),
     hetzner: env.hetzner,
     now: () => new Date(),
+    volumeEnv: env.volumes,
   });
 }
 

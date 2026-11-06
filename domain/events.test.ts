@@ -4,12 +4,15 @@ import {
   type EventName,
   EventSchema,
   eventSubject,
+  type JobFinished,
   jobChanges,
   jobFinished,
   type ListedPod,
   type ListedVolume,
+  volumeAction,
   volumeAdded,
   volumeChanges,
+  volumeIdleId,
   volumeRemoved,
 } from "./events.ts";
 
@@ -279,5 +282,62 @@ describe("closeOutput", () => {
     expect(closeOutput("plain\n")).toBeNull();
     expect(closeOutput('{\n  "ok": false,\n  "task": "TEN-7"\n}\n')).toBeNull();
     expect(closeOutput('{\n  "ok": true\n}\n')).toBeNull();
+  });
+});
+
+describe("volumeAction", () => {
+  const NOW = new Date("2026-11-15T10:00:00.000Z");
+  const RUN: JobFinished = jobFinished({
+    pod: { ...POD, task: "187", project: "tenbox-demo", end: null },
+    oomInLog: false,
+    at: "2026-11-06T10:00:00.000Z",
+  });
+  const check = { volume: VOLUME, closedAt: null, runs: [RUN], now: NOW, graceDays: 3 };
+
+  test("deletes a closed volume once the grace period is over", () => {
+    expect(volumeAction({ ...check, closedAt: "2026-11-11T10:00:00.000Z" })).toEqual({
+      action: "delete",
+      volume: VOLUME,
+    });
+    expect(volumeAction({ ...check, closedAt: "2026-11-13T10:00:00.000Z" })).toBeNull();
+  });
+
+  test("a run created after the close or a volume made after it means the task is open again", () => {
+    const closedAt = "2026-11-05T12:00:00.000Z";
+    const later = { ...RUN, created: "2026-11-05T13:00:00.000Z" };
+    expect(volumeAction({ ...check, closedAt, runs: [RUN, later] })).toMatchObject({
+      action: "notify",
+    });
+    const reopened = { ...VOLUME, created: "2026-11-05T13:00:00.000Z" };
+    expect(volumeAction({ ...check, closedAt, volume: reopened })).toMatchObject({
+      action: "notify",
+    });
+  });
+
+  test("an open volume with no run for 7 days gets a notice since its newest run", () => {
+    expect(volumeAction(check)).toEqual({
+      action: "notify",
+      volume: VOLUME,
+      project: "tenbox-demo",
+      since: "2026-11-06T10:00:00.000Z",
+      days: 9,
+    });
+    expect(volumeAction({ ...check, now: new Date("2026-11-13T09:59:59.000Z") })).toBeNull();
+  });
+
+  test("with no run, the idle time starts at the volume and the project is the volume name", () => {
+    const notice = volumeAction({ ...check, runs: [] });
+    expect(notice).toEqual({
+      action: "notify",
+      volume: VOLUME,
+      project: "task-187",
+      since: VOLUME.created,
+      days: 10,
+    });
+  });
+
+  test("a notice is stored once per volume and idle stretch", () => {
+    const notice = { volume: VOLUME, since: "2026-11-06T10:00:00.000Z" };
+    expect(volumeIdleId(notice)).toBe("volume.idle:pvc-uid-1:2026-11-06T10:00:00.000Z");
   });
 });

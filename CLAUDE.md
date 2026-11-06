@@ -25,7 +25,8 @@ the login sync to the Secrets of the box (`machines/login/`), and `tenbox machin
 (TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
 and `ls` lists the Jobs labeled `app=tenyard`. The server's Job watch stores a `job.finished` per
 Job pod and `GET /tasks/{task}/runs` lists them (#94); for a `close` pod that exited 0 it also stores
-`close.output`, the last JSON object of the box log. No sandbox yet.
+`close.output`, the last JSON object of the box log; its volume watch deletes a closed task's volume after
+a grace period and sends one `idle-volume` notice for an open one with no run for 7 days. No sandbox yet.
 
 ## Rules
 
@@ -94,7 +95,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
 | token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
-| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready, blocked (`Notification`). |
+| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act (the server sends `idle-volume` to `TENBOX_SERVER_NTFY`); states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready, blocked, idle-volume (`Notification`). |
 | ready-for-you | The notification state of `tenbox build done` with status ready-for-you; the detail is `round N, attention A, nice-to-have B, unproven C`, counted from `build.json`. |
 | check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
@@ -107,8 +108,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
-| volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). |
-| session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification (`sessionLinks`). |
+| idle-volume | The notification state the server's volume watch sends for an open task's volume (no `close.output`, or a run after it) whose newest run ended 7 or more days ago; once per idle stretch, kept as event `volume.idle:<uid>:<stretch start>`; the detail is `<days> days`, the next command `tenbox machine rm <id>` (`VolumeNotice`). |
+| volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). The same watch deletes the PVC of a closed task (a `close.output` newer than the volume, no run created after it, no pod listed) once `TENBOX_SERVER_VOLUME_GRACE_DAYS` (default 3) have passed (`volumeAction`). |
+| session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
 
 ## Code rules

@@ -615,3 +615,106 @@ export function closeOutput(log: string): CloseOutput | null {
   const result = jsons.check(CloseOutputSchema, lines.slice(start, end + 1).join("\n"));
   return result.ok ? result.value : null;
 }
+
+/** A notice the server sent about an idle open task volume; only the server makes it, from its volume watch. */
+export const VOLUME_IDLE = "volume.idle";
+
+const DAY_MS = 86_400_000;
+/** An open task volume with no run for this many days gets one notice. */
+const IDLE_DAYS = 7;
+
+/** One live volume, what its task did, and the rules it goes by. */
+export interface VolumeCheck {
+  volume: ListedVolume;
+  /** The `at` of the newest `close.output` of the volume's task; null when it has none. */
+  closedAt: string | null;
+  /** The `job.finished` bodies of the volume's task. */
+  runs: JobFinished[];
+  now: Date;
+  /** The days a closed task's volume stays after its close. */
+  graceDays: number;
+}
+
+/** A closed task's volume whose grace period is over. */
+interface VolumeDeletion {
+  action: "delete";
+  volume: ListedVolume;
+}
+
+/** An open task's volume with no run for `IDLE_DAYS` or more. */
+export interface VolumeNotice {
+  action: "notify";
+  volume: ListedVolume;
+  /** `TENBOX_PROJECT` of the newest run that has one, else the volume name. */
+  project: string;
+  /** The newest run end, or the volume's creation when that is newer: the start of the idle stretch. */
+  since: string;
+  days: number;
+}
+
+export type VolumeAction = VolumeDeletion | VolumeNotice;
+
+/** What identifies one notice: the volume and the start of its idle stretch. */
+type NoticeKey = Pick<VolumeNotice, "volume" | "since">;
+
+/** The body of a stored `volume.idle`; not part of `EventSchema`, so `POST /events` refuses it. */
+export interface VolumeIdle {
+  event: typeof VOLUME_IDLE;
+  volume: string;
+  uid: string;
+  task: string;
+  since: string;
+  days: number;
+}
+
+/**
+ * A volume is closed when its task has a close newer than the volume and no run created after
+ * it; else it is open. Null when nothing is due: a closed one inside its grace period, an open one
+ * with a run in the last `IDLE_DAYS` days.
+ */
+export function volumeAction(check: VolumeCheck): VolumeAction | null {
+  const { volume, closedAt, now } = check;
+  if (closedAt !== null && isClosedVolume(check, closedAt)) {
+    const over = now.getTime() - Date.parse(closedAt) >= check.graceDays * DAY_MS;
+    return over ? { action: "delete", volume } : null;
+  }
+  const since = idleSince(check);
+  const days = Math.floor((now.getTime() - Date.parse(since)) / DAY_MS);
+  if (days < IDLE_DAYS) return null;
+  return { action: "notify", volume, project: runProject(check), since, days };
+}
+
+function isClosedVolume(check: VolumeCheck, closedAt: string): boolean {
+  const closed = Date.parse(closedAt);
+  if (Date.parse(check.volume.created) > closed) return false;
+  return check.runs.every((run) => Date.parse(run.created) <= closed);
+}
+
+function idleSince(check: VolumeCheck): string {
+  const times = [check.volume.created, ...check.runs.map((run) => run.finished)];
+  return times.reduce((newest, time) => (Date.parse(time) > Date.parse(newest) ? time : newest));
+}
+
+function runProject(check: VolumeCheck): string {
+  const newestFirst = [...check.runs].sort(
+    (a, b) => Date.parse(b.finished) - Date.parse(a.finished),
+  );
+  return newestFirst.find((run) => run.project !== null)?.project ?? check.volume.name;
+}
+
+/** One id per volume and idle stretch, so a notice is sent once until a new run ends. */
+export function volumeIdleId(notice: NoticeKey): string {
+  return `${VOLUME_IDLE}:${notice.volume.uid}:${notice.since}`;
+}
+
+export function volumeIdle(notice: VolumeNotice): VolumeIdle {
+  const { volume, since, days } = notice;
+  return {
+    event: VOLUME_IDLE,
+    volume: volume.name,
+    uid: volume.uid,
+    task: volume.task,
+    since,
+    days,
+  };
+}
