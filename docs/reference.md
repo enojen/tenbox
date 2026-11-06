@@ -439,8 +439,8 @@ cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
 server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`); binds `TENBOX_SERVER_HOST`, default `localhost` (loopback only).
               SIGINT or SIGTERM lets open requests finish, closes the database and exits 0
   routes/       `GET /health` returns 200 `{"ok":true}`; `GET /openapi.json` is the OpenAPI 3.1
-                document built from the zod route schemas; `GET /docs` is Swagger UI. Every
-                other path needs `Authorization: Bearer <token>` of a known user. Every error
+                document built from the zod route schemas; `GET /docs` is Swagger UI; `GET /metrics` is open too
+                (below). Every other path needs `Authorization: Bearer <token>` of a known user. Every error
                 is an RFC 9457 problem, `application/problem+json`:
                 `{ type: "about:blank", title, status, detail, code }`. No token: 401
                 `unauthorized`; an admin-only route with a member's token: 403 `forbidden`; with a
