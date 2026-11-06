@@ -1033,6 +1033,53 @@ test("a must_fix round runs one fix worker with every must_fix item and no plann
   expect(result).toMatchObject({ status: "ready-for-you", round: 2 });
 });
 
+test("the retry of the fix part carries the must_fix items and no part file line", async () => {
+  let fixWorkers = 0;
+  const { calls, recorder } = recording(
+    scripted({
+      reviewer: async (_prompt, options) => {
+        if (options.label === MERGE_LABEL || roundOf(options.label) > 1) return cleanReply;
+        const lens = options.label.split(" ").at(-1);
+        return { ...cleanReply, must_fix: [`fix ${lens}`] };
+      },
+      worker: async (_prompt, options) => {
+        const partDone =
+          options.label === "round 2: fix" && fixWorkers++ === 0
+            ? { ok: false, error: "no commit" }
+            : accepted();
+        return { status: "done", proofs: [], partDone, checks: green("chk", 1) };
+      },
+    }),
+  );
+  await runWorkflow(planArgs(["01"], ["security"], { kind: "small", reviews: 1 }), recorder);
+  const retry = calls.find((call) => call.label === "round 2: fix fix");
+  expect(retry?.prompt).toContain("The commit of this part was refused: no commit");
+  expect(retry?.prompt).toContain("Round feedback: fix base\nfix security");
+  expect(retry?.prompt).not.toContain("status: todo");
+});
+
+test("a planner-listed part with a goal keeps the part file retry prompt", async () => {
+  const { calls, recorder } = recording(
+    scripted({
+      worker: async (_prompt, options) => {
+        if (options.label === "round 2: 01")
+          return {
+            status: "done",
+            proofs: [],
+            partDone: { ok: false, error: "no commit" },
+            checks: green("chk", 2),
+          };
+        const checks = options.label.startsWith("round 1") ? redChecks : green("chk", 2);
+        return { status: "done", proofs: [], partDone: accepted(), checks };
+      },
+    }),
+  );
+  await runWorkflow(planArgs(["01"], [], { maxRounds: 2 }), recorder);
+  const retry = calls.find((call) => call.label === "round 2: 01 fix");
+  expect(retry?.prompt).toContain("status: todo");
+  expect(retry?.prompt).not.toContain("Round feedback:");
+});
+
 const raised = {
   ok: false,
   error: "the diff (9 files, 300 changed lines) is over the limits of kind small; it is normal now",

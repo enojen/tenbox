@@ -201,8 +201,9 @@ each group (or the task without groups) may review; without it, `maxRounds`. The
    (`{ ok, commit, round, file, summary }`); a check with no `commit` or `file` did not run
    and counts as red. On a refused commit or a red check the same worker runs once more in
    the same round, with the error or the check summary in its prompt; the prompt tells it to
-   set `status: todo` in its part file first. A second refusal or red check ends the round with
-   no review, and the next round's feedback is `part NN: <error or summary>`. When every part passes, the last part check feeds the review. With no
+   set `status: todo` in its part file first. The `fix` part of a must_fix round has no part
+   file: its retry prompt carries `Round feedback:` with the must_fix items instead. A second
+   refusal or red check ends the round with no review, and the next round's feedback is `part NN: <error or summary>`. When every part passes, the last part check feeds the review. With no
    part listed, one runner runs `tenbox check <id>` before the review.
 3. **Review**: the `base` lens always runs; `security` and `contract` run when the plan
    asks for them. Any `must_fix` item becomes the next round's feedback. A reviewer

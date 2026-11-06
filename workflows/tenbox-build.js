@@ -271,11 +271,14 @@ const buildRounds = async (scope, start) => {
   // The checks commit of the scope's last green part: `tenbox part done` accepts only a newer commit.
   let lastChecksCommit = null
   const partDoneCommand = (part) => `tenbox part done ${task} --part ${part.id} --commit <hash of your last commit>${lastChecksCommit ? ` --since ${lastChecksCommit}` : ''}${scope.checkFlag}`
-  // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed and reopens the part file.
+  // A worker builds one part, then runs `tenbox part done` and its check; a fix attempt carries what failed; a plan part reopens its part file, the fix part gets the must_fix items again.
   const buildPart = async (round, part, { attempt, failure, checkRound }) => {
     const fix = attempt === 'fix'
+    const fixRetry = part.id === 'fix'
+      ? `Round feedback: ${feedback}`
+      : 'Set `status: todo` in your part file first, then fix it.'
     const prompt = fix
-      ? `${partLine(part)} ${failure.what}: ${failure.why}\nSet \`status: todo\` in your part file first, then fix it.`
+      ? `${partLine(part)} ${failure.what}: ${failure.why}\n${fixRetry}`
       : `${partLine(part)} Round feedback: ${feedback}${answerLine(round, part.id)}`
     const commandLine = `\nAfter your last commit, run \`${partDoneCommand(part)}\` and return its JSON as partDone, then run \`${checkCommand(checkRound)}\` and return its JSON as checks.`
     const built = await agent(prompt + commandLine + worktreeLine(scope),
