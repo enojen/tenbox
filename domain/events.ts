@@ -232,13 +232,14 @@ export function nodeEventId(event: NodeEvent): string {
 
 const isAdded = (event: NodeEvent): event is NodeAdded => event.event === NODE_EVENT_NAME.added;
 
+const removedServerIds = (stored: NodeEvent[]): Set<number> =>
+  new Set(stored.filter((event) => !isAdded(event)).map((event) => event.server_id));
+
 /** Servers are matched by id: a server id is never reused, a Node name may be. */
 export function nodeChanges(state: NodeState): NodeChanges {
   const added = state.stored.filter(isAdded);
   const addedIds = new Set(added.map((event) => event.server_id));
-  const removedIds = new Set(
-    state.stored.filter((event) => !isAdded(event)).map((event) => event.server_id),
-  );
+  const removedIds = removedServerIds(state.stored);
   const listedIds = new Set(state.listed.map((node) => node.serverId));
   return {
     added: state.listed.filter((node) => !addedIds.has(node.serverId)),
@@ -246,6 +247,12 @@ export function nodeChanges(state: NodeState): NodeChanges {
       (event) => !removedIds.has(event.server_id) && !listedIds.has(event.server_id),
     ),
   };
+}
+
+/** The workers that are up: a `node.added` whose server id has no `node.removed`. */
+export function nodesUp(stored: NodeEvent[]): NodeAdded[] {
+  const removedIds = removedServerIds(stored);
+  return stored.filter(isAdded).filter((event) => !removedIds.has(event.server_id));
 }
 
 /** The type and location of a removed node come from its `node.added`. */

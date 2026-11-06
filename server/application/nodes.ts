@@ -2,11 +2,13 @@ import { errorMessage } from "../../domain/errors/index.ts";
 import {
   type ListedNode,
   NODE_EVENT_NAMES,
+  type NodeAdded,
   type NodeEvent,
   nodeAdded,
   nodeChanges,
   nodeEventId,
   nodeRemoved,
+  nodesUp,
   readNodeEvent,
 } from "../../domain/events.ts";
 import type { Db } from "../infra/db/index.ts";
@@ -105,6 +107,11 @@ function storedEvents(db: Db): NodeEvent[] {
     .map((row) => readNodeEvent(row.body, `event ${row.id}`));
 }
 
+/** The workers that are up now, from the stored node events. */
+function up(db: Db): NodeAdded[] {
+  return nodesUp(storedEvents(db));
+}
+
 /** One node whose server Hetzner cannot give is logged and asked again on the next poll. */
 async function addLogged(input: NewNode): Promise<void> {
   try {
@@ -145,4 +152,4 @@ function logFailure(error: unknown, what = "node watch"): void {
 }
 
 /** Nodes: the workers of the cluster, each stored as it came and went, with its server type and price. */
-export const nodes = { poll, watch };
+export const nodes = { poll, watch, up };

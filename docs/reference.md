@@ -439,14 +439,19 @@ cli/          the tenbox CLI; entry cli/main.ts (layers: see CLAUDE.md)
 server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main.ts`); binds `TENBOX_SERVER_HOST`, default `localhost` (loopback only).
               SIGINT or SIGTERM lets open requests finish, closes the database and exits 0
   routes/       `GET /health` returns 200 `{"ok":true}`; `GET /openapi.json` is the OpenAPI 3.1
-                document built from the zod route schemas; `GET /docs` is Swagger UI. Every
-                other path needs `Authorization: Bearer <token>` of a known user. Every error
+                document built from the zod route schemas; `GET /docs` is Swagger UI; `GET /metrics` is open too
+                (below). Every other path needs `Authorization: Bearer <token>` of a known user. Every error
                 is an RFC 9457 problem, `application/problem+json`:
                 `{ type: "about:blank", title, status, detail, code }`. No token: 401
                 `unauthorized`; an admin-only route with a member's token: 403 `forbidden`; with a
                 token, an unknown path is 404 `not-found`; a request body
                 that fails its schema is 400 `bad-input` with the issue lines (`1.at: ...`) in
                 `detail`; any other error is 500 and its message goes to stderr, not to the client.
+                `GET /metrics` is open like `/health` and is not in `/openapi.json`: the Prometheus text
+                format (`text/plain; version=0.0.4`) with one gauge series per worker that is up (a
+                `node.added` without a `node.removed`),
+                `tenbox_node_price_eur_hourly{node, server_type, location}`, valued at its
+                `price_hourly.net`; no series when no worker is up.
                 `POST /events` takes a list of events (`EventSchema` in `domain/events.ts`) and
                 answers 200 `{ ok: true, stored, skipped }`. The list is all or nothing: one bad
                 event is a 400 and none is stored. The whole list goes in one transaction; an
