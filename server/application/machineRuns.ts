@@ -13,9 +13,7 @@ import { oomKilledInLog } from "../../domain/machines.ts";
 import type { Db } from "../infra/db/index.ts";
 import { type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
-
-/** The `tenbox` column of an event the server makes: it has no git sha. */
-const SERVER_TENBOX = "server";
+import { events } from "./events.ts";
 
 /** One poll: the pods of the last poll, and the poll time. */
 interface JobPoll {
@@ -90,14 +88,12 @@ async function storeEnded(input: EndedPod): Promise<void> {
 
 function store(db: Db, input: JobFinishInput): void {
   const event = jobFinished(input);
-  eventsRepository.insert(db, {
+  events.saveFromServer(db, {
     id: jobEventId(input.pod),
     type: event.event,
     subject: event.task,
-    userId: null,
-    tenbox: SERVER_TENBOX,
     at: event.finished,
-    body: JSON.stringify(event),
+    body: event,
   });
 }
 

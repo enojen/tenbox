@@ -213,10 +213,24 @@ interface NodeState {
   listed: ListedNode[];
 }
 
-/** What one poll must store: the new nodes, and the nodes that came and are no longer listed. */
-interface NodeChanges {
-  added: ListedNode[];
-  removed: NodeAdded[];
+/** What one poll must store: the new items, and the added ones that are no longer listed. */
+interface Changes<Added, Listed> {
+  added: Listed[];
+  removed: Added[];
+}
+
+type NodeChanges = Changes<NodeAdded, ListedNode>;
+
+/** The key a watch matches an item by: one that is never reused. */
+type PresenceKey = string | number;
+
+/** The stored additions and removals of a watch, the items of one poll, and how to key both. */
+interface Presence<Added, Listed> {
+  added: Added[];
+  removed: Set<PresenceKey>;
+  listed: Listed[];
+  addedKey: (event: Added) => PresenceKey;
+  listedKey: (item: Listed) => PresenceKey;
 }
 
 /** One removal of an added node. */
@@ -235,18 +249,28 @@ const isAdded = (event: NodeEvent): event is NodeAdded => event.event === NODE_E
 const removedServerIds = (stored: NodeEvent[]): Set<number> =>
   new Set(stored.filter((event) => !isAdded(event)).map((event) => event.server_id));
 
-/** Servers are matched by id: a server id is never reused, a Node name may be. */
-export function nodeChanges(state: NodeState): NodeChanges {
-  const added = state.stored.filter(isAdded);
-  const addedIds = new Set(added.map((event) => event.server_id));
-  const removedIds = removedServerIds(state.stored);
-  const listedIds = new Set(state.listed.map((node) => node.serverId));
+/** A listed item with no addition is new; an addition with no removal and no listed item is gone. */
+function presenceChanges<Added, Listed>(presence: Presence<Added, Listed>): Changes<Added, Listed> {
+  const { added, removed, listed, addedKey, listedKey } = presence;
+  const addedKeys = new Set(added.map(addedKey));
+  const listedKeys = new Set(listed.map(listedKey));
   return {
-    added: state.listed.filter((node) => !addedIds.has(node.serverId)),
+    added: listed.filter((item) => !addedKeys.has(listedKey(item))),
     removed: added.filter(
-      (event) => !removedIds.has(event.server_id) && !listedIds.has(event.server_id),
+      (event) => !removed.has(addedKey(event)) && !listedKeys.has(addedKey(event)),
     ),
   };
+}
+
+/** Servers are matched by id: a server id is never reused, a Node name may be. */
+export function nodeChanges(state: NodeState): NodeChanges {
+  return presenceChanges({
+    added: state.stored.filter(isAdded),
+    removed: removedServerIds(state.stored),
+    listed: state.listed,
+    addedKey: (event) => event.server_id,
+    listedKey: (node) => node.serverId,
+  });
 }
 
 /** The workers that are up: a `node.added` whose server id has no `node.removed`. */
@@ -281,6 +305,152 @@ export function readNodeEvent(text: string, file: string): NodeEvent {
   const result = jsons.check(NodeEventSchema, text);
   if (!result.ok) throw badFileError(file, result.issues);
   return result.value;
+}
+
+/** A task volume of the cluster came or went; only the server makes these, from its volume watch. */
+const VOLUME_EVENT_NAME = { added: "volume.added", removed: "volume.removed" } as const;
+
+export const VOLUME_EVENT_NAMES = Object.values(VOLUME_EVENT_NAME);
+
+/** A Kubernetes storage quantity: whole digits and a binary or decimal suffix (`10Gi`, `5G`). */
+const STORAGE_PATTERN = /^([0-9]+)([KMGTPE]i|[kMGTPE])?$/;
+const BINARY_SUFFIXES = ["Ki", "Mi", "Gi", "Ti", "Pi", "Ei"];
+const DECIMAL_SUFFIXES = ["k", "M", "G", "T", "P", "E"];
+const BINARY_STEP = 1024n;
+const DECIMAL_STEP = 1000n;
+/** Hetzner's "GB" of a volume is a GiB. */
+const GIB = suffixBytes("Gi");
+
+const volumeBase = z.object({
+  /** The PVC name: the event's subject. */
+  volume: text,
+  /** The PVC uid: a PVC name may come again. */
+  uid: text,
+  /** The PVC's `task` label. */
+  task: text,
+  /** `status.capacity.storage` in GiB, rounded up. */
+  size_gb: count,
+});
+
+const VolumeAddedSchema = volumeBase.extend({
+  event: z.literal(VOLUME_EVENT_NAME.added),
+  /** The Hetzner price of one GB of volume for one month when the volume came. */
+  price_per_gb_month: PriceSchema,
+});
+
+const VolumeRemovedSchema = volumeBase.extend({
+  event: z.literal(VOLUME_EVENT_NAME.removed),
+  /** The volume went while the server was down; `at` is then the server's start time. */
+  late: z.boolean(),
+});
+
+/** Not part of `EventSchema`, so `POST /events` refuses them. */
+const VolumeEventSchema = z.discriminatedUnion("event", [VolumeAddedSchema, VolumeRemovedSchema]);
+
+export type VolumeEvent = z.infer<typeof VolumeEventSchema>;
+type VolumeAdded = z.infer<typeof VolumeAddedSchema>;
+type VolumeRemoved = z.infer<typeof VolumeRemovedSchema>;
+/** A Hetzner price, net and gross, as decimal text. */
+export type Price = z.infer<typeof PriceSchema>;
+
+/** A Bound task PVC the cluster lists. */
+export interface ListedVolume {
+  name: string;
+  uid: string;
+  task: string;
+  /** The PVC's creationTimestamp, UTC. */
+  created: string;
+  /** `status.capacity.storage`, a Kubernetes quantity. */
+  capacity: string;
+}
+
+/** The volume events stored so far and the volumes of one poll. */
+interface VolumeState {
+  stored: VolumeEvent[];
+  listed: ListedVolume[];
+}
+
+/** One new volume and the price of a GB-month. */
+export interface NewVolume {
+  volume: ListedVolume;
+  price: Price;
+}
+
+/** One removal of an added volume. */
+interface VolumeRemoval {
+  added: VolumeAdded;
+  late: boolean;
+}
+
+/** One id per PVC and event, so a server that polls again stores nothing twice. */
+export function volumeEventId(event: VolumeEvent): string {
+  return `${event.event}:${event.uid}`;
+}
+
+const isVolumeAdded = (event: VolumeEvent): event is VolumeAdded =>
+  event.event === VOLUME_EVENT_NAME.added;
+
+/** Volumes are matched by PVC uid: a PVC name may come again. */
+export function volumeChanges(state: VolumeState): Changes<VolumeAdded, ListedVolume> {
+  return presenceChanges({
+    added: state.stored.filter(isVolumeAdded),
+    removed: new Set(
+      state.stored.filter((event) => !isVolumeAdded(event)).map((event) => event.uid),
+    ),
+    listed: state.listed,
+    addedKey: (event) => event.uid,
+    listedKey: (volume) => volume.uid,
+  });
+}
+
+/** A new volume, sized in GiB from its capacity; `bad-file` for a capacity that is not a quantity. */
+export function volumeAdded(input: NewVolume): VolumeAdded {
+  const { volume, price } = input;
+  return {
+    event: VOLUME_EVENT_NAME.added,
+    volume: volume.name,
+    uid: volume.uid,
+    task: volume.task,
+    size_gb: capacityGib(volume),
+    price_per_gb_month: price,
+  };
+}
+
+/** The name, task and size of a removed volume come from its `volume.added`. */
+export function volumeRemoved(removal: VolumeRemoval): VolumeRemoved {
+  const { added, late } = removal;
+  return {
+    event: VOLUME_EVENT_NAME.removed,
+    volume: added.volume,
+    uid: added.uid,
+    task: added.task,
+    size_gb: added.size_gb,
+    late,
+  };
+}
+
+/** The body of a stored volume event; `bad-file` unless it fits `VolumeEventSchema`. */
+export function readVolumeEvent(text: string, file: string): VolumeEvent {
+  const result = jsons.check(VolumeEventSchema, text);
+  if (!result.ok) throw badFileError(file, result.issues);
+  return result.value;
+}
+
+function capacityGib(volume: ListedVolume): number {
+  const match = STORAGE_PATTERN.exec(volume.capacity);
+  if (match === null) {
+    throw badFileError(`status.capacity.storage of ${volume.name}`, [
+      `not a quantity: ${volume.capacity}`,
+    ]);
+  }
+  const bytes = BigInt(match[1] ?? "") * suffixBytes(match[2] ?? "");
+  return Number((bytes + GIB - 1n) / GIB);
+}
+
+function suffixBytes(suffix: string): bigint {
+  const binary = BINARY_SUFFIXES.indexOf(suffix);
+  if (binary >= 0) return BINARY_STEP ** BigInt(binary + 1);
+  return DECIMAL_STEP ** BigInt(DECIMAL_SUFFIXES.indexOf(suffix) + 1);
 }
 
 /** The box container of a Job pod ended, or its pod went before it did; only the server makes it, from its Job watch. */

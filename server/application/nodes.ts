@@ -15,11 +15,11 @@ import type { Db } from "../infra/db/index.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type ClusterNode, type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
+import { events } from "./events.ts";
 import { machineRuns } from "./machineRuns.ts";
+import { volumes } from "./volumes.ts";
 
 const POLL_INTERVAL_MS = 30_000;
-/** The `tenbox` column of a node event: the server has no git sha. */
-const NODE_EVENT_TENBOX = "server";
 
 /** Where the node watch reads the Nodes and their servers. */
 interface NodeApis {
@@ -67,8 +67,8 @@ async function poll(db: Db, input: NodePoll): Promise<void> {
 }
 
 /**
- * Polls the Nodes and the Job pods now and every 30 seconds; a poll that fails is logged and the
- * next one tries again, and one poll does not stop the other. Until a node poll succeeds, a
+ * Polls the Nodes, the Job pods and the task volumes now and every 30 seconds; a poll that fails
+ * is logged and the next one tries again, and one poll does not stop the others. Until a node poll succeeds, a
  * removal is late and dated at the start: the node left while the server was down.
  */
 function watch(db: Db, input: NodeWatch): Watching {
@@ -76,13 +76,14 @@ function watch(db: Db, input: NodeWatch): Watching {
   let late = true;
   let running: Promise<unknown> | null = null;
   const pollJobs = machineRuns.poller(db, input);
+  const pollVolumes = volumes.poller(db, input);
   const tick = () => {
     if (running !== null) return;
     const removedAt = late ? startedAt : input.now();
     const pollNodes = poll(db, { ...input, removedAt, late }).then(() => {
       late = false;
-    }, logFailure);
-    running = Promise.all([pollNodes, pollJobs()]).finally(() => {
+    }, logWatchFailure);
+    running = Promise.all([pollNodes, pollJobs(), pollVolumes()]).finally(() => {
       running = null;
     });
   };
@@ -136,18 +137,20 @@ async function add(input: NewNode): Promise<void> {
 
 function store(db: Db, input: NodeEventAt): void {
   const { event, at } = input;
-  eventsRepository.insert(db, {
+  events.saveFromServer(db, {
     id: nodeEventId(event),
     type: event.event,
     subject: event.node,
-    userId: null,
-    tenbox: NODE_EVENT_TENBOX,
     at,
-    body: JSON.stringify(event),
+    body: event,
   });
 }
 
-function logFailure(error: unknown, what = "node watch"): void {
+function logWatchFailure(error: unknown): void {
+  logFailure(error, "node watch");
+}
+
+function logFailure(error: unknown, what: string): void {
   console.error(`${what}: ${errorMessage(error)}`);
 }
 

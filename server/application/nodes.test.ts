@@ -17,6 +17,7 @@ const HTTP_UNAUTHORIZED = 401;
 const HTTP_BAD_REQUEST = 400;
 const HTTP_FORBIDDEN = 403;
 const PODS_PATH = "/api/v1/namespaces/tenbox/pods";
+const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
 const SERVER_ID = 42;
 const CREATED = "2026-11-05T10:00:00+00:00";
 const LEFT_AT = new Date("2026-11-05T12:00:30Z");
@@ -35,6 +36,8 @@ interface Fakes {
   listed: FakeNode[];
   /** The pod list of the Job watch answers 403, as without the RBAC of tenyard. */
   podsForbidden: boolean;
+  /** The PVC list of the volume watch answers 403, as without the RBAC of tenyard. */
+  pvcsForbidden: boolean;
   hetznerCalls: number;
   kubernetes: KubernetesApi;
   hetzner: HetznerApi;
@@ -93,6 +96,7 @@ function setup(): Fakes {
     dbFile,
     listed: [{ name: "worker-1", providerID: `hcloud://${SERVER_ID}` }],
     podsForbidden: false,
+    pvcsForbidden: false,
     hetznerCalls: 0,
     kubernetes: { url: "", tokenFile, caFile },
     hetzner: { url: "", token: HCLOUD_TOKEN },
@@ -104,6 +108,10 @@ function setup(): Fakes {
       if (new URL(request.url).pathname === PODS_PATH) {
         if (fakes.podsForbidden) return new Response("forbidden", { status: HTTP_FORBIDDEN });
         return Response.json({ kind: "PodList", items: [] });
+      }
+      if (new URL(request.url).pathname === PVCS_PATH) {
+        if (fakes.pvcsForbidden) return new Response("forbidden", { status: HTTP_FORBIDDEN });
+        return Response.json({ kind: "PersistentVolumeClaimList", items: [] });
       }
       if (new URL(request.url).pathname !== "/api/v1/nodes") {
         return new Response("", { status: HTTP_NOT_FOUND });
@@ -244,6 +252,22 @@ test("job poll failure does not stop node poll", async () => {
   const calls = [...errors.mock.calls];
   errors.mockRestore();
   expect(calls).toEqual([[expect.stringMatching(/^job watch: .*HTTP 403/)]]);
+  expect(rows(fakes.db).map((row) => row.id)).toEqual(["node.added:42"]);
+});
+
+test("a forbidden PVC list is logged and the node poll goes on", async () => {
+  const fakes = setup();
+  fakes.pvcsForbidden = true;
+  const errors = spyOn(console, "error").mockImplementation(() => undefined);
+  const watching = nodes.watch(fakes.db, {
+    kubernetes: fakes.kubernetes,
+    hetzner: fakes.hetzner,
+    now: () => STARTED_AT,
+  });
+  await watching.stop();
+  const calls = [...errors.mock.calls];
+  errors.mockRestore();
+  expect(calls).toEqual([[expect.stringMatching(/^volume watch: .*HTTP 403/)]]);
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["node.added:42"]);
 });
 

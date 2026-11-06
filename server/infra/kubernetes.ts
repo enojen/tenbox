@@ -1,7 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { serviceError } from "../../domain/errors/tools.ts";
-import type { BoxEnd, ListedPod } from "../../domain/events.ts";
+import type { BoxEnd, ListedPod, ListedVolume } from "../../domain/events.ts";
 import { http } from "./http.ts";
 
 /** Where Kubernetes mounts the pod's service account token and the cluster CA. */
@@ -9,7 +9,12 @@ const SERVICE_ACCOUNT_DIR = "/var/run/secrets/kubernetes.io/serviceaccount";
 const NODES_PATH = "/api/v1/nodes";
 /** The pods of the task Jobs, the machine runs. */
 const PODS_PATH = "/api/v1/namespaces/tenbox/pods";
-const JOB_POD_SELECTOR = "app=tenyard";
+/** The task volumes, one PVC per task. */
+const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
+/** The label of the pods and the PVCs of the task Jobs. */
+const TASK_SELECTOR = "app=tenyard";
+/** The PVC phase once its volume exists. */
+const BOUND = "Bound";
 const BOX = "box";
 /** The pod condition set when the scheduler placed the pod on a node. */
 const POD_SCHEDULED = { type: "PodScheduled", status: "True" } as const;
@@ -98,7 +103,25 @@ const PodSchema = z.object({
 
 const PodListSchema = z.object({ items: z.array(PodSchema) });
 
+const PvcSchema = z.object({
+  metadata: z.object({
+    name: z.string().min(1),
+    uid: z.string().min(1),
+    creationTimestamp: z.iso.datetime(),
+    labels: z.record(z.string(), z.string()).default({}),
+  }),
+  status: z
+    .object({
+      phase: z.string().optional(),
+      capacity: z.object({ storage: z.string().optional() }).default({}),
+    })
+    .default({ capacity: {} }),
+});
+
+const PvcListSchema = z.object({ items: z.array(PvcSchema) });
+
 type Pod = z.infer<typeof PodSchema>;
+type Pvc = z.infer<typeof PvcSchema>;
 type Container = z.infer<typeof ContainerSchema>;
 type ContainerStatus = z.infer<typeof ContainerStatusSchema>;
 
@@ -139,18 +162,46 @@ async function nodes(api: KubernetesApi): Promise<ClusterNode[]> {
   }));
 }
 
-/** The pods of the task Jobs in one request; a pod without a `task` label is left out. */
-async function jobPods(api: KubernetesApi): Promise<ListedPod[]> {
+/** The items of one list of the task Jobs' objects, in one request. */
+interface TaskList<T> {
+  api: KubernetesApi;
+  path: string;
+  schema: z.ZodType<{ items: T[] }>;
+}
+
+async function taskItems<T>(list: TaskList<T>): Promise<T[]> {
+  const { api, path: listPath, schema } = list;
   const { token, ca } = await credentials(api);
-  const selector = encodeURIComponent(JOB_POD_SELECTOR);
-  const list = await http.get({
+  const selector = encodeURIComponent(TASK_SELECTOR);
+  const answer = await http.get({
     service: SERVICE,
-    url: `${api.url}${PODS_PATH}?labelSelector=${selector}`,
+    url: `${api.url}${listPath}?labelSelector=${selector}`,
     token,
-    schema: PodListSchema,
+    schema,
     ca,
   });
-  return list.items.flatMap(listedPod);
+  return answer.items;
+}
+
+/** The pods of the task Jobs in one request; a pod without a `task` label is left out. */
+async function jobPods(api: KubernetesApi): Promise<ListedPod[]> {
+  const items = await taskItems({ api, path: PODS_PATH, schema: PodListSchema });
+  return items.flatMap(listedPod);
+}
+
+/** The Bound task PVCs in one request; a PVC without a `task` label or a capacity is left out. */
+async function taskVolumes(api: KubernetesApi): Promise<ListedVolume[]> {
+  const items = await taskItems({ api, path: PVCS_PATH, schema: PvcListSchema });
+  return items.flatMap(listedVolume);
+}
+
+function listedVolume(pvc: Pvc): ListedVolume[] {
+  const { metadata, status } = pvc;
+  const task = metadata.labels.task;
+  const capacity = status.capacity.storage;
+  if (task === undefined || capacity === undefined || status.phase !== BOUND) return [];
+  const created = isoTime(metadata.creationTimestamp);
+  return [{ name: metadata.name, uid: metadata.uid, task, created, capacity }];
 }
 
 /** The last line of the box container's log: the boot line with `oom_kill <n>`. */
@@ -227,4 +278,4 @@ function optionalIsoTime(text: string | null | undefined): string | null {
   return text === null || text === undefined ? null : isoTime(text);
 }
 
-export const kubernetes = { inCluster, nodes, jobPods, lastLogLine };
+export const kubernetes = { inCluster, nodes, jobPods, taskVolumes, lastLogLine };

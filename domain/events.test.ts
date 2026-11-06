@@ -6,6 +6,10 @@ import {
   jobChanges,
   jobFinished,
   type ListedPod,
+  type ListedVolume,
+  volumeAdded,
+  volumeChanges,
+  volumeRemoved,
 } from "./events.ts";
 
 const COMMON = {
@@ -220,5 +224,43 @@ describe("job.finished", () => {
       listed: [ended],
     });
     expect(changes).toEqual({ ended: [], gone: [] });
+  });
+});
+
+const VOLUME: ListedVolume = {
+  name: "task-187",
+  uid: "pvc-uid-1",
+  task: "187",
+  created: "2026-11-05T10:00:00.000Z",
+  capacity: "10Gi",
+};
+const VOLUME_PRICE = { net: "0.0440", gross: "0.0524" };
+
+describe("volume events", () => {
+  test("size_gb is the capacity in GiB, rounded up", () => {
+    const sizes = ["10Gi", "5G", "10737418241", "1Ti"].map(
+      (capacity) => volumeAdded({ volume: { ...VOLUME, capacity }, price: VOLUME_PRICE }).size_gb,
+    );
+    expect(sizes).toEqual([10, 5, 11, 1024]);
+  });
+
+  test("a capacity that is not a quantity is a bad file", () => {
+    expect(() =>
+      volumeAdded({ volume: { ...VOLUME, capacity: "ten" }, price: VOLUME_PRICE }),
+    ).toThrow("not a quantity: ten");
+  });
+
+  test("a volume is matched by uid, so a new PVC of the same name is a new volume", () => {
+    const added = volumeAdded({ volume: VOLUME, price: VOLUME_PRICE });
+    const again = { ...VOLUME, uid: "pvc-uid-2" };
+    expect(volumeChanges({ stored: [added], listed: [again] })).toEqual({
+      added: [again],
+      removed: [added],
+    });
+    const removed = volumeRemoved({ added, late: false });
+    expect(volumeChanges({ stored: [added, removed], listed: [again] })).toEqual({
+      added: [again],
+      removed: [],
+    });
   });
 });
