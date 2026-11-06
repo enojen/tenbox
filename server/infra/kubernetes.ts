@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import type { TenboxError } from "../../domain/errors/index.ts";
 import { serviceError } from "../../domain/errors/tools.ts";
 import type { BoxEnd, ListedPod, ListedVolume } from "../../domain/events.ts";
 import { http } from "./http.ts";
@@ -19,7 +20,8 @@ const BOX = "box";
 /** The pod condition set when the scheduler placed the pod on a node. */
 const POD_SCHEDULED = { type: "PodScheduled", status: "True" } as const;
 const SERVICE = "kubernetes";
-const LOG_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const HTTP_NOT_FOUND = 404;
 const ERROR_BODY_CHARS = 200;
 
 /** The cluster API and the files of the service account; the token is read at each request, as the kubelet rotates it. */
@@ -131,6 +133,12 @@ interface PodLog {
   pod: string;
 }
 
+/** One task PVC, by name. */
+interface VolumeName {
+  api: KubernetesApi;
+  name: string;
+}
+
 /** The API of the cluster the server runs in, as its pod sees it. */
 function inCluster(url: string): KubernetesApi {
   return {
@@ -216,19 +224,56 @@ function boxLog(input: PodLog): Promise<string> {
 
 async function readLog(input: PodLog, query: string): Promise<string> {
   const { api, pod } = input;
+  const apiPath = `${PODS_PATH}/${encodeURIComponent(pod)}/log?container=${BOX}${query}`;
+  const answer = await send({ api, apiPath, method: "GET" });
+  if (answer.ok) return answer.text;
+  throw failed(answer);
+}
+
+/** Deletes one task PVC; an answer 404 means it is gone already. */
+async function removeVolume(input: VolumeName): Promise<void> {
+  const { api, name } = input;
+  const apiPath = `${PVCS_PATH}/${encodeURIComponent(name)}`;
+  const answer = await send({ api, apiPath, method: "DELETE" });
+  if (answer.ok || answer.status === HTTP_NOT_FOUND) return;
+  throw failed(answer);
+}
+
+type ClusterMethod = "GET" | "DELETE";
+
+/** One request whose answer is not a JSON list: a log or a DELETE. */
+interface ClusterRequest {
+  api: KubernetesApi;
+  /** The API path, with its query. */
+  apiPath: string;
+  method: ClusterMethod;
+}
+
+/** The status of an answer and its body as text. */
+interface ClusterAnswer {
+  ok: boolean;
+  status: number;
+  text: string;
+}
+
+async function send(request: ClusterRequest): Promise<ClusterAnswer> {
+  const { api, apiPath, method } = request;
   const { token, ca } = await credentials(api);
-  const url = `${api.url}${PODS_PATH}/${encodeURIComponent(pod)}/log?container=${BOX}${query}`;
-  const response = await fetch(url, {
+  const response = await fetch(`${api.url}${apiPath}`, {
+    method,
     headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(LOG_TIMEOUT_MS),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     tls: { ca },
   });
   const text = await response.text();
-  if (response.ok) return text;
-  throw serviceError(
+  return { ok: response.ok, status: response.status, text };
+}
+
+function failed(answer: ClusterAnswer): TenboxError {
+  return serviceError(
     SERVICE,
     SERVICE,
-    `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`,
+    `HTTP ${answer.status}: ${answer.text.slice(0, ERROR_BODY_CHARS)}`,
   );
 }
 
@@ -287,4 +332,12 @@ function optionalIsoTime(text: string | null | undefined): string | null {
   return text === null || text === undefined ? null : isoTime(text);
 }
 
-export const kubernetes = { inCluster, nodes, jobPods, taskVolumes, lastLogLine, boxLog };
+export const kubernetes = {
+  inCluster,
+  nodes,
+  jobPods,
+  taskVolumes,
+  lastLogLine,
+  boxLog,
+  removeVolume,
+};

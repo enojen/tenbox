@@ -12,6 +12,7 @@ import {
   readNodeEvent,
 } from "../../domain/events.ts";
 import type { Db } from "../infra/db/index.ts";
+import type { VolumeEnv } from "../infra/env.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type ClusterNode, type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
@@ -35,6 +36,8 @@ interface NodePoll extends NodeApis {
 
 interface NodeWatch extends NodeApis {
   now: () => Date;
+  /** The rules of the volume watch; without them it only records volumes. */
+  volumeEnv?: VolumeEnv;
 }
 
 /** A running watch; `stop` waits for the poll in progress. */
@@ -76,7 +79,7 @@ function watch(db: Db, input: NodeWatch): Watching {
   let late = true;
   let running: Promise<unknown> | null = null;
   const pollJobs = machineRuns.poller(db, input);
-  const pollVolumes = volumes.poller(db, input);
+  const pollVolumes = volumes.poller(db, { ...input, env: input.volumeEnv ?? null });
   const tick = () => {
     if (running !== null) return;
     const removedAt = late ? startedAt : input.now();

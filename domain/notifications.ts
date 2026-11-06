@@ -4,7 +4,7 @@ import { COMMAND } from "./commands.ts";
 import type { TaskId } from "./ids.ts";
 import { jsons } from "./utils.ts";
 
-/** What a person must act on: three build statuses and four events. */
+/** What a person must act on: three build statuses and five events. */
 export const NOTIFICATION_STATE = {
   needsYou: BUILD_STATUS.needsYou,
   readyForYou: BUILD_STATUS.readyForYou,
@@ -13,6 +13,7 @@ export const NOTIFICATION_STATE = {
   prOpened: "pr-opened",
   planReady: "plan-ready",
   blocked: "blocked",
+  idleVolume: "idle-volume",
 } as const;
 
 export type NotificationState = (typeof NOTIFICATION_STATE)[keyof typeof NOTIFICATION_STATE];
@@ -40,6 +41,7 @@ const NEXT_COMMAND: Record<NotificationState, (notification: Notification) => st
   [NOTIFICATION_STATE.prOpened]: (n) => `tenbox ${COMMAND.close} ${n.id}`,
   [NOTIFICATION_STATE.planReady]: (n) => `tenbox ${COMMAND.approve} ${n.id}`,
   [NOTIFICATION_STATE.blocked]: (n) => `tenbox ${COMMAND.attach} ${n.id}`,
+  [NOTIFICATION_STATE.idleVolume]: (n) => `tenbox ${COMMAND.machine} rm ${n.id}`,
 };
 
 /** The state of a build end status a person must act on; null for `not-approved`. */
