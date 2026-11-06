@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type CostWindow, costReport, type StoredNodeEvent } from "./costs.ts";
+import { type CostWindow, costReport, type StoredEvent } from "./costs.ts";
 import type { JobFinished } from "./events.ts";
 
 const WINDOW: CostWindow = { from: "2026-11-02T00:00:00Z", to: "2026-11-09T00:00:00Z" };
@@ -11,7 +11,7 @@ interface Worker {
   price?: string;
 }
 
-function added(worker: Worker, at: string): StoredNodeEvent {
+function added(worker: Worker, at: string): StoredEvent {
   const net = worker.price ?? PRICE.net;
   return {
     at,
@@ -26,7 +26,7 @@ function added(worker: Worker, at: string): StoredNodeEvent {
   };
 }
 
-function removed(worker: Worker, at: string): StoredNodeEvent {
+function removed(worker: Worker, at: string): StoredEvent {
   return {
     at,
     event: {
@@ -59,7 +59,7 @@ test("a worker that left before the window has no line", () => {
     events: [added(ONE, "2026-11-01T10:00:00Z"), removed(ONE, "2026-11-01T12:00:00Z")],
   });
   expect(report.workers).toEqual([]);
-  expect(report.total).toEqual({ paid_hours: 0, eur: "0.00" });
+  expect(report.total).toEqual({ paid_hours: 0, gb_hours: 0, eur: "0.00" });
 });
 
 test("a worker that came after the window has no line", () => {
@@ -92,7 +92,7 @@ test("eur is the paid hours times the net price, rounded half up to cents", () =
     ],
   });
   expect(report.workers.map((w) => w.eur)).toEqual(["0.01", "3.60"]);
-  expect(report.total).toEqual({ paid_hours: 4, eur: "3.61" });
+  expect(report.total).toEqual({ paid_hours: 4, gb_hours: 0, eur: "3.61" });
 });
 
 test("every server is its own worker line, the oldest first", () => {
@@ -201,12 +201,14 @@ test("a worker's busy cost is split over tasks by memory request and time", () =
       project: "tenbox",
       task: "A",
       workers: [{ node: "worker-1", server_id: 1, eur: "0.02" }],
+      volumes: [],
       eur: "0.02",
     },
     {
       project: "tenbox",
       task: "B",
       workers: [{ node: "worker-1", server_id: 1, eur: "0.01" }],
+      volumes: [],
       eur: "0.01",
     },
   ]);
@@ -282,6 +284,7 @@ test("a task's eur is the sum of its shares on every worker", () => {
         { node: "worker-1", server_id: 1, eur: "0.02" },
         { node: "worker-2", server_id: 2, eur: "0.03" },
       ],
+      volumes: [],
       eur: "0.05",
     },
   ]);
@@ -341,4 +344,133 @@ test("task lines sort by project, then task id, a null project first", () => {
     ["b", "1"],
     ["b", "2"],
   ]);
+});
+
+/** One task volume from its `volume.added`. */
+interface Volume {
+  task: string;
+  sizeGb: number;
+  net: string;
+}
+
+const VOLUME_187: Volume = { task: "187", sizeGb: 10, net: "4.4000" };
+
+function volumeAdded(volume: Volume, at: string): StoredEvent {
+  return {
+    at,
+    event: {
+      event: "volume.added",
+      volume: `task-${volume.task}`,
+      uid: `uid-${volume.task}`,
+      task: volume.task,
+      size_gb: volume.sizeGb,
+      price_per_gb_month: { net: volume.net, gross: volume.net },
+    },
+  };
+}
+
+function volumeRemoved(volume: Volume, at: string): StoredEvent {
+  return {
+    at,
+    event: {
+      event: "volume.removed",
+      volume: `task-${volume.task}`,
+      uid: `uid-${volume.task}`,
+      task: volume.task,
+      size_gb: volume.sizeGb,
+      late: false,
+    },
+  };
+}
+
+const DAY: CostWindow = { from: "2026-11-05T00:00:00Z", to: "2026-11-06T00:00:00Z" };
+
+test("a volume line counts its GB-hours and EUR in the window", () => {
+  const report = costReport({
+    window: DAY,
+    pods: [],
+    events: [
+      volumeAdded(VOLUME_187, "2026-11-05T10:00:00Z"),
+      volumeRemoved(VOLUME_187, "2026-11-05T12:00:00Z"),
+    ],
+  });
+  expect(report.volumes).toEqual([
+    { volume: "task-187", task: "187", project: null, size_gb: 10, gb_hours: 20, eur: "0.12" },
+  ]);
+});
+
+test("a volume cut by the window counts only its hours inside it", () => {
+  const report = costReport({
+    window: DAY,
+    pods: [],
+    events: [volumeAdded(VOLUME_187, "2026-11-04T23:00:00Z")],
+  });
+  expect(report.volumes.map((v) => v.gb_hours)).toEqual([240]);
+});
+
+test("a volume outside the window has no line", () => {
+  const report = costReport({
+    window: DAY,
+    pods: [],
+    events: [
+      volumeAdded(VOLUME_187, "2026-11-04T10:00:00Z"),
+      volumeRemoved(VOLUME_187, "2026-11-04T12:00:00Z"),
+    ],
+  });
+  expect(report.volumes).toEqual([]);
+  expect(report.tasks).toEqual([]);
+});
+
+test("a volume's project is the project of the newest job.finished of its task", () => {
+  const run = { node: ONE.node, memory: null, started: "2026-11-05T09:00:00Z" };
+  const report = costReport({
+    window: DAY,
+    pods: [
+      pod({ ...run, task: "187", project: "new", finished: "2026-11-05T11:00:00Z" }),
+      pod({ ...run, task: "187", project: "old", finished: "2026-11-05T10:00:00Z" }),
+      pod({ ...run, task: "9", project: "other", finished: "2026-11-05T12:00:00Z" }),
+    ],
+    events: [volumeAdded(VOLUME_187, "2026-11-05T10:00:00Z")],
+  });
+  expect(report.volumes.map((v) => v.project)).toEqual(["new"]);
+});
+
+test("a volume's EUR is added to its task line and the total", () => {
+  const hour = { node: ONE.node, memory: "1Gi", task: "187", project: "tenbox" };
+  const report = costReport({
+    window: DAY,
+    events: [
+      added({ ...ONE, price: "1.00" }, "2026-11-05T09:00:00Z"),
+      removed(ONE, "2026-11-05T10:00:00Z"),
+      volumeAdded({ task: "187", sizeGb: 73, net: "0.25" }, "2026-11-05T09:00:00Z"),
+      volumeRemoved({ task: "187", sizeGb: 73, net: "0.25" }, "2026-11-05T11:00:00Z"),
+      volumeAdded({ task: "9", sizeGb: 73, net: "0.25" }, "2026-11-05T09:00:00Z"),
+      volumeRemoved({ task: "9", sizeGb: 73, net: "0.25" }, "2026-11-05T10:00:00Z"),
+    ],
+    pods: [pod({ ...hour, started: "2026-11-05T09:00:00Z", finished: "2026-11-05T10:00:00Z" })],
+  });
+  expect(report.tasks).toEqual([
+    {
+      project: null,
+      task: "9",
+      workers: [],
+      volumes: [{ volume: "task-9", eur: "0.03" }],
+      eur: "0.03",
+    },
+    {
+      project: "tenbox",
+      task: "187",
+      workers: [{ node: "worker-1", server_id: 1, eur: "1.00" }],
+      volumes: [{ volume: "task-187", eur: "0.05" }],
+      eur: "1.05",
+    },
+  ]);
+  expect(report.total).toEqual({ paid_hours: 1, gb_hours: 219, eur: "1.08" });
+});
+
+test("a volume price that is not decimal text is a bad file", () => {
+  const events = [volumeAdded({ ...VOLUME_187, net: "cheap" }, "2026-11-05T10:00:00Z")];
+  expect(() => costReport({ window: DAY, events, pods: [] })).toThrow(
+    "price_per_gb_month.net of task-187",
+  );
 });
