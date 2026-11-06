@@ -55,7 +55,7 @@ so the command gets only `HOME`, `PATH` and the project's variables: `TENBOX_ENV
 `machine.env` of `tenbox.yaml` as one JSON object, each key one variable; a key `HOME` or `PATH`
 loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
-that session works and ends once no session is left or the sessions have been idle for
+that session works (its status is busy) and ends once no session is left or the sessions have been idle for
 `IDLE_MINUTES` (1; a plan that waits for approval). Last it logs one line with what the
 container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s, oom_kill <n>`, from
 `memory.peak`, `cpu.stat` and `memory.events` of its cgroup (`oom_kill` counts the processes the kernel killed at the memory limit: above 0, `tenbox machine ls` and `logs` show reason `OOMKilled` even when the container ended with exit 0); the peak counts the file cache too, so the real need
