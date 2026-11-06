@@ -34,6 +34,8 @@ export interface TemplateFields {
   /** `base` of the manifest: the branch the box checks out. */
   base: string;
   image: string;
+  /** The command name, e.g. `build`: no flags, no id. */
+  command: string;
   cmd: string;
   /** `machine.env` of the manifest as one JSON object. */
   env: string;
@@ -329,6 +331,7 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__REPO__", fields.repo],
     ["__BASE__", fields.base],
     ["__IMAGE__", fields.image],
+    ["__COMMAND__", fields.command],
     ["__CMD__", fields.cmd],
     ["__ENV__", fields.env],
     ["__CLASS__", fields.class],

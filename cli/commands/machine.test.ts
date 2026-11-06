@@ -37,7 +37,7 @@ metadata:
 spec:
   template:
     metadata:
-      labels: { app: tenyard, task: __TASK__, class: __CLASS__ }
+      labels: { app: tenyard, task: __TASK__, class: __CLASS__, command: __COMMAND__ }
     spec:
       containers:
         - name: box
@@ -269,6 +269,11 @@ function jobClass(call: ApiCall | undefined) {
     label: template.metadata.labels.class,
     resources: template.spec.containers[0]?.resources,
   };
+}
+
+/** The `command` label of the pod in a posted Job. */
+function jobCommand(call: ApiCall | undefined): string | undefined {
+  return jobBody(call).spec.template.metadata.labels.command;
 }
 
 /** The resources a class of `CLASSES` gives the box: the RAM request is its limit. */
@@ -737,6 +742,18 @@ describe("machine", () => {
     const job = posts().find((c) => c.path === JOBS_PATH);
     return { run, cmd: jobEnv(job).TENBOX_CMD, label: jobClass(job).label, job };
   }
+
+  test("__COMMAND__ is the command name, without flags and the id", async () => {
+    const build = await machine(["run", "TEN-1", "--", "tenbox", "build", "TEN-1"]);
+    expect(build.code).toBe(0);
+    expect(jobCommand(posts().find((c) => c.path === JOBS_PATH))).toBe("build");
+    api.calls.length = 0;
+    const plan = await runWords(["plan", "show", "TEN-1"]);
+    expect(jobCommand(plan.job)).toBe("plan");
+    api.calls.length = 0;
+    const close = await runWords(["close", "TEN-1", "--force"]);
+    expect(jobCommand(close.job)).toBe("close");
+  });
 
   test("approve runs as a Job in the plan class", async () => {
     const { run, cmd, label } = await runWords(["approve", "TEN-1"]);
