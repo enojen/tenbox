@@ -86,8 +86,9 @@ test("GET /costs counts every started hour of a worker", async () => {
     from: "2026-11-02T00:00:00Z",
     to: "2026-11-09T00:00:00Z",
     workers: [{ ...WORKER, paid_hours: 2, busy_hours: 0, waste_hours: 2, eur: "0.02" }],
+    volumes: [],
     tasks: [],
-    total: { paid_hours: 2, eur: "0.02" },
+    total: { paid_hours: 2, gb_hours: 0, eur: "0.02" },
   });
 });
 

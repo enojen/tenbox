@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { badFileError } from "./errors/index.ts";
-import type { JobFinished, NodeAdded, NodeEvent } from "./events.ts";
+import type { JobFinished, NodeAdded, NodeEvent, VolumeEvent } from "./events.ts";
 
 const MS_PER_HOUR = 3_600_000;
+/** Hetzner bills a volume's monthly price per hour as 1/730 of it. */
+const HOURS_PER_MONTH = 730n;
 const CENTS_PER_EUR = 100n;
 const DECIMAL_BASE = 10n;
 const CENT_DIGITS = 2;
@@ -50,11 +52,28 @@ const TaskWorkerCostSchema = z.object({
   eur: z.string(),
 });
 
-/** One task: its share of each worker it ran on, and their sum. */
+/** One task volume in the window: its GB-hours and their net price. */
+const VolumeCostSchema = z.object({
+  volume: z.string(),
+  task: z.string(),
+  /** The `project` of the newest `job.finished` of the task id; the PVC has no project label. */
+  project: z.string().nullable(),
+  size_gb: z.number().int(),
+  /** `size_gb` times the exact hours of the volume inside the window. */
+  gb_hours: z.number(),
+  /** GB-hours times `price_per_gb_month.net / 730`, decimal text to cents. */
+  eur: z.string(),
+});
+
+/** One volume of a task and its EUR. */
+const TaskVolumeCostSchema = VolumeCostSchema.pick({ volume: true, eur: true });
+
+/** One task: its share of each worker it ran on, its volumes, and their sum. */
 const TaskCostSchema = z.object({
   project: z.string().nullable(),
   task: z.string(),
   workers: z.array(TaskWorkerCostSchema),
+  volumes: z.array(TaskVolumeCostSchema),
   eur: z.string(),
 });
 
@@ -62,26 +81,64 @@ export const CostReportSchema = z.object({
   from: z.string(),
   to: z.string(),
   workers: z.array(WorkerCostSchema),
+  volumes: z.array(VolumeCostSchema),
   tasks: z.array(TaskCostSchema),
-  /** The sum of the worker lines. */
-  total: WorkerCostSchema.pick({ paid_hours: true, eur: true }),
+  /** The sum of the worker and volume lines. */
+  total: z.object({ paid_hours: z.number().int(), gb_hours: z.number(), eur: z.string() }),
 });
 
 type WorkerCost = z.infer<typeof WorkerCostSchema>;
+type VolumeCost = z.infer<typeof VolumeCostSchema>;
 type TaskCost = z.infer<typeof TaskCostSchema>;
 export type CostReport = z.infer<typeof CostReportSchema>;
 
-/** A node event and the `at` of its row. */
-export interface StoredNodeEvent {
-  event: NodeEvent;
+/** A node or volume event and the `at` of its row. */
+export interface StoredEvent {
+  event: NodeEvent | VolumeEvent;
   at: string;
 }
 
-/** What one report reads: its window, every stored node event and every stored `job.finished`. */
+/** What one report reads: its window, every stored node and volume event and every stored `job.finished`. */
 interface CostInput {
   window: CostWindow;
-  events: StoredNodeEvent[];
+  events: StoredEvent[];
   pods: JobFinished[];
+}
+
+type VolumeAdded = Extract<VolumeEvent, { event: "volume.added" }>;
+
+/** One volume's time inside the window and its net price in cents. */
+interface PaidVolume extends TaskKey {
+  added: VolumeAdded;
+  gbHours: number;
+  cents: bigint;
+}
+
+/** The volume events and the pods that name each volume's project. */
+interface VolumeInput {
+  events: StoredEvent[];
+  pods: JobFinished[];
+  windowMs: WindowMs;
+}
+
+/** One volume from its `volume.added` to its `volume.removed`, cut to the window. */
+interface VolumeSpan {
+  stored: StoredEvent;
+  added: VolumeAdded;
+  removedMs: Map<string, number>;
+  windowMs: WindowMs;
+  projects: Map<string, JobFinished>;
+}
+
+/** The worker and volume lines a task's lines come from. */
+interface TaskSources {
+  paid: PaidWorker[];
+  volumes: PaidVolume[];
+}
+
+/** One task's worker shares and volumes. */
+interface TaskParts extends TaskShares {
+  volumes: PaidVolume[];
 }
 
 /** One server from its `node.added` to its `node.removed`, or to the end of the window. */
@@ -169,8 +226,9 @@ interface WorkerShare {
 }
 
 /**
- * Paid, busy and wasted hours and net EUR per worker in the window, and each task's share of the
- * busy EUR; a server with no paid hour there has no line.
+ * Paid, busy and wasted hours and net EUR per worker in the window, GB-hours and net EUR per task
+ * volume, and each task's share of the busy EUR plus its volumes; a server with no paid hour and a
+ * volume with no time there have no line.
  */
 export function costReport(input: CostInput): CostReport {
   const { window, events, pods } = input;
@@ -178,14 +236,26 @@ export function costReport(input: CostInput): CostReport {
   const paid = serverSpans(events, windowMs)
     .map((span) => paidWorker({ span, windowMs, pods }))
     .filter((worker) => worker.hours > 0);
-  const cents = paid.reduce((sum, worker) => sum + worker.cents, 0n);
-  const hours = paid.reduce((sum, worker) => sum + worker.hours, 0);
-  const total = { paid_hours: hours, eur: centsText(cents) };
-  return { ...window, workers: paid.map(workerLine), tasks: taskLines(paid), total };
+  const volumes = paidVolumes({ events, pods, windowMs });
+  const cents =
+    paid.reduce((sum, worker) => sum + worker.cents, 0n) +
+    volumes.reduce((sum, volume) => sum + volume.cents, 0n);
+  const total = {
+    paid_hours: paid.reduce((sum, worker) => sum + worker.hours, 0),
+    gb_hours: volumes.reduce((sum, volume) => sum + volume.gbHours, 0),
+    eur: centsText(cents),
+  };
+  return {
+    ...window,
+    workers: paid.map(workerLine),
+    volumes: volumes.map(volumeLine),
+    tasks: taskLines({ paid, volumes }),
+    total,
+  };
 }
 
 /** Servers are matched by id, the oldest first; a removal with no `node.added` has no price. */
-function serverSpans(events: StoredNodeEvent[], windowMs: WindowMs): ServerSpan[] {
+function serverSpans(events: StoredEvent[], windowMs: WindowMs): ServerSpan[] {
   const removedMs = new Map<number, number>();
   for (const stored of events) {
     const { event, at } = stored;
@@ -200,11 +270,78 @@ function serverSpans(events: StoredNodeEvent[], windowMs: WindowMs): ServerSpan[
   return spans.sort((a, b) => a.startMs - b.startMs || a.added.server_id - b.added.server_id);
 }
 
+/** Volumes are matched by PVC uid, the oldest first; a removal with no `volume.added` has no price. */
+function paidVolumes(input: VolumeInput): PaidVolume[] {
+  const { events, pods, windowMs } = input;
+  const removedMs = new Map<string, number>();
+  for (const stored of events) {
+    const { event, at } = stored;
+    if (event.event === "volume.removed") removedMs.set(event.uid, Date.parse(at));
+  }
+  const projects = newestPods(pods);
+  const sorted = [...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return sorted.flatMap((stored) => {
+    const { event } = stored;
+    if (event.event !== "volume.added") return [];
+    return paidVolume({ stored, added: event, removedMs, windowMs, projects });
+  });
+}
+
+/** The newest `job.finished` of each task id. */
+function newestPods(pods: JobFinished[]): Map<string, JobFinished> {
+  const newest = new Map<string, JobFinished>();
+  for (const pod of pods) {
+    const known = newest.get(pod.task);
+    if (known === undefined || Date.parse(known.finished) < Date.parse(pod.finished)) {
+      newest.set(pod.task, pod);
+    }
+  }
+  return newest;
+}
+
+function paidVolume(input: VolumeSpan): PaidVolume[] {
+  const { stored, added, removedMs, windowMs, projects } = input;
+  const startMs = Math.max(Date.parse(stored.at), windowMs.fromMs);
+  const endMs = Math.min(removedMs.get(added.uid) ?? windowMs.toMs, windowMs.toMs);
+  if (endMs <= startMs) return [];
+  const price = readDecimal({
+    text: added.price_per_gb_month.net,
+    name: `price_per_gb_month.net of ${added.volume}`,
+  });
+  const gbMs = BigInt(added.size_gb) * BigInt(endMs - startMs);
+  return [
+    {
+      added,
+      project: projects.get(added.task)?.project ?? null,
+      task: added.task,
+      gbHours: Number(gbMs) / MS_PER_HOUR,
+      cents: roundedCents({
+        numerator: price.numerator * gbMs,
+        denominator: price.denominator * BigInt(MS_PER_HOUR) * HOURS_PER_MONTH,
+      }),
+    },
+  ];
+}
+
+function volumeLine(volume: PaidVolume): VolumeCost {
+  return {
+    volume: volume.added.volume,
+    task: volume.task,
+    project: volume.project,
+    size_gb: volume.added.size_gb,
+    gb_hours: volume.gbHours,
+    eur: centsText(volume.cents),
+  };
+}
+
 function paidWorker(input: ServerPods): PaidWorker {
   const { span, windowMs, pods } = input;
   const { added } = span;
   const hours = paidHours(span, windowMs);
-  const price = readPrice(added);
+  const price = readDecimal({
+    text: added.price_hourly.net,
+    name: `price_hourly.net of ${added.node}`,
+  });
   const podSpans = pods.flatMap((pod) => podSpan({ pod, span, fromMs: windowMs.fromMs }));
   const busyMs = unionMs(podSpans);
   return {
@@ -294,18 +431,35 @@ function taskShares(input: BusyCost): TaskShare[] {
   }));
 }
 
-/** Tasks by project, then task id, a null project first; each lists its workers in the order of the worker lines. */
-function taskLines(paid: PaidWorker[]): TaskCost[] {
-  const byTask = new Map<string, TaskShares>();
-  for (const worker of paid) {
-    for (const share of worker.shares) {
-      const key = taskKey(share);
-      const known = byTask.get(key)?.shares ?? [];
-      const shares = [...known, { worker, cents: share.cents }];
-      byTask.set(key, { project: share.project, task: share.task, shares });
-    }
+/**
+ * Tasks by project, then task id, a null project first; each lists its workers and volumes in the
+ * order of the worker and volume lines.
+ */
+function taskLines(sources: TaskSources): TaskCost[] {
+  const byTask = new Map<string, TaskParts>();
+  const part = (task: TaskKey): TaskParts => {
+    const key = taskKey(task);
+    const known = byTask.get(key) ?? {
+      project: task.project,
+      task: task.task,
+      shares: [],
+      volumes: [],
+    };
+    byTask.set(key, known);
+    return known;
+  };
+  for (const worker of sources.paid) {
+    for (const share of worker.shares) part(share).shares.push({ worker, cents: share.cents });
   }
-  return [...byTask.values()].sort(compareTasks).map((line) => ({
+  for (const volume of sources.volumes) part(volume).volumes.push(volume);
+  return [...byTask.values()].sort(compareTasks).map(taskLine);
+}
+
+function taskLine(line: TaskParts): TaskCost {
+  const cents =
+    line.shares.reduce((sum, share) => sum + share.cents, 0n) +
+    line.volumes.reduce((sum, volume) => sum + volume.cents, 0n);
+  return {
     project: line.project,
     task: line.task,
     workers: line.shares.map((share) => ({
@@ -313,8 +467,12 @@ function taskLines(paid: PaidWorker[]): TaskCost[] {
       server_id: share.worker.added.server_id,
       eur: centsText(share.cents),
     })),
-    eur: centsText(line.shares.reduce((sum, share) => sum + share.cents, 0n)),
-  }));
+    volumes: line.volumes.map((volume) => ({
+      volume: volume.added.volume,
+      eur: centsText(volume.cents),
+    })),
+    eur: centsText(cents),
+  };
 }
 
 /** A map key that tells `("a", "b/c")` from `("a/b", "c")` and a null project from any name. */
@@ -333,13 +491,16 @@ function compareText(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
-/** The net hourly price in EUR, exact. */
-function readPrice(added: NodeAdded): Fraction {
-  const price = added.price_hourly.net;
-  const match = DECIMAL_PATTERN.exec(price);
-  if (match === null) {
-    throw badFileError(`price_hourly.net of ${added.node}`, [`not decimal text: ${price}`]);
-  }
+/** A net price in EUR and the field it comes from. */
+interface PriceText {
+  text: string;
+  name: string;
+}
+
+/** A net price in EUR, exact. */
+function readDecimal(price: PriceText): Fraction {
+  const match = DECIMAL_PATTERN.exec(price.text);
+  if (match === null) throw badFileError(price.name, [`not decimal text: ${price.text}`]);
   return decimalFraction(match);
 }
 

@@ -102,6 +102,7 @@ test("the report splits busy EUR over the tasks of the stored job.finished event
       project: "tenbox",
       task: "TEN-7",
       workers: [{ node: "worker-1", server_id: 101, eur: "0.02" }],
+      volumes: [],
       eur: "0.02",
     },
   ]);
@@ -116,4 +117,45 @@ test("a stored job.finished that does not fit its schema is a bad file", () => {
     body: "{}",
   });
   expect(() => costs.get(db, WINDOW)).toThrow("event job.finished:uid-1");
+});
+
+/** The body of a volume event: its name and PVC uid make the row id. */
+type VolumeBody = Record<string, unknown> & { event: string; uid: string };
+
+/** One volume event of the volume watch, as a row. */
+function volumeRow(event: VolumeBody, at: string): Row {
+  return { id: `${event.event}:${event.uid}`, type: event.event, at, body: JSON.stringify(event) };
+}
+
+test("the cost report has a volume line with GB-hours and EUR", () => {
+  const db = open();
+  const volume = { volume: "task-187", uid: "uid-187", task: "187", size_gb: 10 };
+  const price = { net: "4.4000", gross: "5.2360" };
+  insert(
+    db,
+    volumeRow(
+      { event: "volume.added", ...volume, price_per_gb_month: price },
+      "2026-11-05T10:00:00.000Z",
+    ),
+  );
+  insert(
+    db,
+    volumeRow({ event: "volume.removed", ...volume, late: false }, "2026-11-05T12:00:00.000Z"),
+  );
+  const report = costs.get(db, { from: "2026-11-05T00:00:00Z", to: "2026-11-06T00:00:00Z" });
+  expect(report.volumes).toEqual([
+    { volume: "task-187", task: "187", project: null, size_gb: 10, gb_hours: 20, eur: "0.12" },
+  ]);
+  expect(report.total).toEqual({ paid_hours: 0, gb_hours: 20, eur: "0.12" });
+});
+
+test("a stored volume event that does not fit its schema is a bad file", () => {
+  const db = open();
+  insert(db, {
+    id: "volume.added:uid-1",
+    type: "volume.added",
+    at: "2026-11-03T10:00:00Z",
+    body: "{}",
+  });
+  expect(() => costs.get(db, WINDOW)).toThrow("event volume.added:uid-1");
 });
