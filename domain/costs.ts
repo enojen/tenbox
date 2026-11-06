@@ -281,14 +281,14 @@ function taskShares(input: BusyCost): TaskShare[] {
   }
   const all = [...weights.values()].reduce((sum, item) => sum + item.weight, 0n);
   const busy = { numerator: price.numerator * BigInt(busyMs), denominator: price.denominator };
-  return [...weights.values()].map(({ project, task, weight }) => ({
-    project,
-    task,
+  return [...weights.values()].map((item) => ({
+    project: item.project,
+    task: item.task,
     cents:
       all === 0n
         ? 0n
         : roundedCents({
-            numerator: busy.numerator * weight,
+            numerator: busy.numerator * item.weight,
             denominator: busy.denominator * BigInt(MS_PER_HOUR) * all,
           }),
   }));
@@ -305,15 +305,15 @@ function taskLines(paid: PaidWorker[]): TaskCost[] {
       byTask.set(key, { project: share.project, task: share.task, shares });
     }
   }
-  return [...byTask.values()].sort(compareTasks).map(({ project, task, shares }) => ({
-    project,
-    task,
-    workers: shares.map((share) => ({
+  return [...byTask.values()].sort(compareTasks).map((line) => ({
+    project: line.project,
+    task: line.task,
+    workers: line.shares.map((share) => ({
       node: share.worker.added.node,
       server_id: share.worker.added.server_id,
       eur: centsText(share.cents),
     })),
-    eur: centsText(shares.reduce((sum, share) => sum + share.cents, 0n)),
+    eur: centsText(line.shares.reduce((sum, share) => sum + share.cents, 0n)),
   }));
 }
 
