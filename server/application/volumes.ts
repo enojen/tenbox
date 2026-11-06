@@ -1,3 +1,4 @@
+import { errorMessage } from "../../domain/errors/index.ts";
 import {
   type ListedVolume,
   type NewVolume,
@@ -15,7 +16,6 @@ import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
 import { events } from "./events.ts";
-import { watches } from "./watches.ts";
 
 const WATCH = "volume watch";
 
@@ -73,7 +73,7 @@ function poller(db: Db, input: VolumeWatch): () => Promise<void> {
       await poll(db, { ...input, removedAt, late });
       late = false;
     } catch (error) {
-      watches.logFailure(error, WATCH);
+      logFailure(error, WATCH);
     }
   };
 }
@@ -97,7 +97,7 @@ async function priceLogged(api: HetznerApi): Promise<Price | null> {
   try {
     return await hetzner.volumePrice(api);
   } catch (error) {
-    watches.logFailure(error, WATCH);
+    logFailure(error, WATCH);
     return null;
   }
 }
@@ -107,7 +107,7 @@ function addLogged(db: Db, input: NewVolume): void {
   try {
     store({ db, event: volumeAdded(input), at: input.volume.created });
   } catch (error) {
-    watches.logFailure(error, `${WATCH}: volume ${input.volume.name}`);
+    logFailure(error, `${WATCH}: volume ${input.volume.name}`);
   }
 }
 
@@ -120,6 +120,10 @@ function store(input: StoredVolumeEvent): void {
     at,
     body: event,
   });
+}
+
+function logFailure(error: unknown, what: string): void {
+  console.error(`${what}: ${errorMessage(error)}`);
 }
 
 /** Volumes: the task PVCs of the cluster, each stored as it came and went, with its size and price. */

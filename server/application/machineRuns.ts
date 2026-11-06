@@ -1,3 +1,4 @@
+import { errorMessage } from "../../domain/errors/index.ts";
 import {
   JOB_FINISHED,
   type JobFinished,
@@ -13,7 +14,6 @@ import type { Db } from "../infra/db/index.ts";
 import { type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
 import { events } from "./events.ts";
-import { watches } from "./watches.ts";
 
 /** One poll: the pods of the last poll, and the poll time. */
 interface JobPoll {
@@ -59,7 +59,7 @@ function poller(db: Db, input: JobWatch): () => Promise<void> {
     try {
       seen = await poll(db, { kubernetes: input.kubernetes, seen, at: input.now() });
     } catch (error) {
-      watches.logFailure(error, "job watch");
+      logFailure(error, "job watch");
     }
   };
 }
@@ -76,7 +76,7 @@ async function storeLogged(input: EndedPod): Promise<void> {
   try {
     await storeEnded(input);
   } catch (error) {
-    watches.logFailure(error, `job watch: pod ${input.pod.name}`);
+    logFailure(error, `job watch: pod ${input.pod.name}`);
   }
 }
 
@@ -95,6 +95,10 @@ function store(db: Db, input: JobFinishInput): void {
     at: event.finished,
     body: event,
   });
+}
+
+function logFailure(error: unknown, what: string): void {
+  console.error(`${what}: ${errorMessage(error)}`);
 }
 
 /** Machine runs: each pod of a task Job, stored once when its box container ends or its pod goes. */

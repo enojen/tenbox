@@ -246,6 +246,9 @@ export function nodeEventId(event: NodeEvent): string {
 
 const isAdded = (event: NodeEvent): event is NodeAdded => event.event === NODE_EVENT_NAME.added;
 
+const removedServerIds = (stored: NodeEvent[]): Set<number> =>
+  new Set(stored.filter((event) => !isAdded(event)).map((event) => event.server_id));
+
 /** A listed item with no addition is new; an addition with no removal and no listed item is gone. */
 function presenceChanges<Added, Listed>(presence: Presence<Added, Listed>): Changes<Added, Listed> {
   const { added, removed, listed, addedKey, listedKey } = presence;
@@ -263,13 +266,17 @@ function presenceChanges<Added, Listed>(presence: Presence<Added, Listed>): Chan
 export function nodeChanges(state: NodeState): NodeChanges {
   return presenceChanges({
     added: state.stored.filter(isAdded),
-    removed: new Set(
-      state.stored.filter((event) => !isAdded(event)).map((event) => event.server_id),
-    ),
+    removed: removedServerIds(state.stored),
     listed: state.listed,
     addedKey: (event) => event.server_id,
     listedKey: (node) => node.serverId,
   });
+}
+
+/** The workers that are up: a `node.added` whose server id has no `node.removed`. */
+export function nodesUp(stored: NodeEvent[]): NodeAdded[] {
+  const removedIds = removedServerIds(stored);
+  return stored.filter(isAdded).filter((event) => !removedIds.has(event.server_id));
 }
 
 /** The type and location of a removed node come from its `node.added`. */

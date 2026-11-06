@@ -3,11 +3,13 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { costs } from "../application/costs.ts";
 import { events } from "../application/events.ts";
 import { machineRuns } from "../application/machineRuns.ts";
+import { nodes } from "../application/nodes.ts";
 import type { Db } from "../infra/db/index.ts";
 import { type AuthEnv, requireAdmin, requireToken } from "./auth.ts";
 import { costsRoute } from "./costs.ts";
 import { eventsRoute } from "./events.ts";
 import { healthRoute } from "./health.ts";
+import { METRICS_CONTENT_TYPE, metricsText } from "./metrics.ts";
 import { failBadInput, notFound, onError } from "./problems.ts";
 import { taskRunsRoute } from "./runs.ts";
 
@@ -32,6 +34,10 @@ export function createApp(db: Db): OpenAPIHono<AuthEnv> {
   app.openapi(taskRunsRoute, (c) =>
     c.json({ ok: true, runs: machineRuns.list(db, c.req.valid("param").task) }),
   );
+  app.get("/metrics", (c) => {
+    c.header("Content-Type", METRICS_CONTENT_TYPE);
+    return c.body(metricsText(nodes.up(db)));
+  });
   app.doc31(OPENAPI_PATH, {
     openapi: OPENAPI_VERSION,
     info: { title: "Tenbox server", version: "1" },
