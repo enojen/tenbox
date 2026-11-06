@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { type NodeEvent, nodeEventId } from "../../domain/events.ts";
+import type { MembershipType } from "../../domain/memberships.ts";
 import { users } from "../application/users.ts";
 import { type Db, database } from "../infra/db/index.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
@@ -12,6 +13,7 @@ import { createApp } from "./index.ts";
 const HTTP_OK = 200;
 const HTTP_BAD_REQUEST = 400;
 const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
 const WINDOW = "from=2026-11-02T00:00:00Z&to=2026-11-09T00:00:00Z";
 const PRICE = { net: "0.0076", gross: "0.0090" };
 const WORKER = { node: "worker-1", server_id: 101, server_type: "cx22", location: "fsn1" };
@@ -26,7 +28,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true });
 });
 
-function setup() {
+function setup(type: MembershipType = "admin") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tenbox-costs-route-"));
   roots.push(root);
   const db = database.open(path.join(root, "server.db"));
@@ -36,7 +38,7 @@ function setup() {
     github: "enojen",
     org: "Acme",
     email: undefined,
-    type: "member",
+    type,
   });
   return { db, app: createApp(db), token: saved.token };
 }
@@ -110,6 +112,14 @@ test("GET /costs refuses a missing window", async () => {
   expect(problem.detail).toContain("from");
   const noToken = await get(app, WINDOW);
   expect(noToken.status).toBe(HTTP_UNAUTHORIZED);
+});
+
+test("GET /costs refuses a member who is admin of no organization", async () => {
+  const { app, token } = setup("member");
+  const response = await get(app, WINDOW, token);
+  expect(response.status).toBe(HTTP_FORBIDDEN);
+  const json = await response.json();
+  expect(ProblemSchema.parse(json)).toMatchObject({ status: HTTP_FORBIDDEN, code: "forbidden" });
 });
 
 test("GET /costs refuses a from that is not before to", async () => {

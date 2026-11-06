@@ -443,7 +443,8 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 other path needs `Authorization: Bearer <token>` of a known user. Every error
                 is an RFC 9457 problem, `application/problem+json`:
                 `{ type: "about:blank", title, status, detail, code }`. No token: 401
-                `unauthorized`; with a token, an unknown path is 404 `not-found`; a request body
+                `unauthorized`; an admin-only route with a member's token: 403 `forbidden`; with a
+                token, an unknown path is 404 `not-found`; a request body
                 that fails its schema is 400 `bad-input` with the issue lines (`1.at: ...`) in
                 `detail`; any other error is 500 and its message goes to stderr, not to the client.
                 `POST /events` takes a list of events (`EventSchema` in `domain/events.ts`) and
@@ -453,7 +454,9 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 `user_id` is the user of the token, not the `user` of the body. A node event (`node.added`,
                 `node.removed`) is not in `EventSchema`: only the server makes it, so a post of one is a 400
                 `GET /costs?from=<iso>&to=<iso>` reports what the workers of the cluster were paid for in
-                that window (`costReport` in `domain/costs.ts`); `from` and `to` are ISO date-times with
+                that window (`costReport` in `domain/costs.ts`). It is only for a user who is an `admin` of
+                at least one organization (the costs are cluster-wide, of every project); a `member` only gets
+                403 `forbidden`. `from` and `to` are ISO date-times with
                 `Z` or an offset, `from` before `to`, else a 400 `bad-input`. It answers 200
                 `{ ok: true, from, to, workers, total }`. A worker line is one Hetzner server, the oldest
                 first: `{ node, server_id, server_type, location, paid_hours, eur }`. Hetzner bills each
@@ -466,6 +469,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 the lines. No volume line yet
   application/  organizations, users and projects: the rules (a GitHub name once; a project id once; the user, the
                 membership and the token in one transaction).
+                memberships: finds an organization where a user is an `admin`.
                 costs: reads every node event and builds the `GET /costs` report.
                 nodes: the node watch. Inside the cluster (`KUBERNETES_SERVICE_HOST` set) the server lists the
                 Nodes (`GET /api/v1/nodes`, with the pod's service account token and CA under

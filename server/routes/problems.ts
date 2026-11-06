@@ -12,6 +12,7 @@ const PROBLEM_CONTENT_TYPE = "application/problem+json";
 const BLANK_TYPE = "about:blank";
 const BAD_REQUEST_STATUS = 400;
 const UNAUTHORIZED_STATUS = 401;
+const FORBIDDEN_STATUS = 403;
 const NOT_FOUND_STATUS = 404;
 const INTERNAL_STATUS = 500;
 
@@ -34,6 +35,9 @@ function problem(c: Context, status: ContentfulStatusCode, code: string, detail:
 export function onError(error: Error, c: Context): Response {
   if (error instanceof TenboxError && error.code === "unauthorized") {
     return problem(c, UNAUTHORIZED_STATUS, error.code, error.message);
+  }
+  if (error instanceof TenboxError && error.code === "forbidden") {
+    return problem(c, FORBIDDEN_STATUS, error.code, error.message);
   }
   if (error instanceof TenboxError && error.code === "bad-input") {
     return problem(c, BAD_REQUEST_STATUS, error.code, error.message);
