@@ -539,6 +539,12 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 (`VACUUM INTO`); it opens the database read-only and applies no migration;
                 exits 1 with `backup-exists` when the file exists and `no-database` when
                 there is no database
+                `tenbox-server costs --from <iso> --to <iso>` prints `{ ok: true, from, to, workers, tasks,
+                total }`, the body of `GET /costs`, for the window, read from the database without a
+                token; `kubectl -n tenbox-server exec deploy/tenbox-server -- tenbox-server costs ...`
+                runs it in the cluster. A missing flag exits 1 with `usage`, a bad or reversed window
+                with `bad-input`, no database with `no-database`; like `backup` it opens the database
+                read-only and applies no migration, so it creates and changes no database
   infra/        env (`TENBOX_SERVER_HOST`, default `localhost`; `TENBOX_SERVER_PORT`, default 4300; `TENBOX_SERVER_DB`, default
                 `~/.tenbox-server/server.db`; Bun reads `.env`; inside the cluster `KUBERNETES_SERVICE_HOST`,
                 `KUBERNETES_SERVICE_PORT`, default 443, and `HCLOUD_TOKEN`, a read-only Hetzner Cloud token,

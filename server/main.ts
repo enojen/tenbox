@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 import type { Server } from "bun";
+import type { CostReport, CostWindow } from "../domain/costs.ts";
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
+import { costs } from "./application/costs.ts";
 import { nodes, type Watching } from "./application/nodes.ts";
 import { projects } from "./application/projects.ts";
 import { users } from "./application/users.ts";
 import { readBackupArgs } from "./commands/backup.ts";
+import { readCostsArgs } from "./commands/costs.ts";
 import { readProjectAddArgs } from "./commands/projectAdd.ts";
 import { readUserAddArgs } from "./commands/userAdd.ts";
 import { type Db, database } from "./infra/db/index.ts";
@@ -14,7 +17,7 @@ import { createApp } from "./routes/index.ts";
 
 const FAILURE_EXIT_CODE = 1;
 const USAGE =
-  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]\n       tenbox-server project add --id <id> --name <n> --repo <r> --org <o>\n       tenbox-server backup --to <file>";
+  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]\n       tenbox-server project add --id <id> --name <n> --repo <r> --org <o>\n       tenbox-server backup --to <file>\n       tenbox-server costs --from <iso> --to <iso>";
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 
 interface ErrorOutput {
@@ -39,6 +42,10 @@ function main(args: string[]): void {
   }
   if (command === "backup") {
     runBackup([subcommand, ...rest].filter((arg) => arg !== undefined));
+    return;
+  }
+  if (command === "costs") {
+    runCosts([subcommand, ...rest].filter((arg) => arg !== undefined));
     return;
   }
   console.error(USAGE);
@@ -116,6 +123,26 @@ function runBackup(argv: string[]): void {
   } catch (error) {
     console.log(JSON.stringify(errorOutput(error)));
     process.exitCode = FAILURE_EXIT_CODE;
+  }
+}
+
+function runCosts(argv: string[]): void {
+  try {
+    const window = readCostsArgs(argv);
+    console.log(JSON.stringify({ ok: true, ...costsOnce(window) }));
+  } catch (error) {
+    console.log(JSON.stringify(errorOutput(error)));
+    process.exitCode = FAILURE_EXIT_CODE;
+  }
+}
+
+/** The same report as `GET /costs`; it never creates or changes a database. */
+function costsOnce(window: CostWindow): CostReport {
+  const db = database.openReadOnly(serverEnv().dbFile);
+  try {
+    return costs.get(db, window);
+  } finally {
+    database.close(db);
   }
 }
 

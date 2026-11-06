@@ -22,6 +22,16 @@ function open(file: string): Db {
   return db;
 }
 
+/**
+ * Opens an existing database read-only, with no migration: a report run from a newer image
+ * never changes the schema of the database the live server runs on.
+ */
+function openReadOnly(file: string): Db {
+  if (!fs.existsSync(file)) throw noDatabaseError(file);
+  const client = new Database(file, { readonly: true });
+  return drizzle({ client });
+}
+
 function close(db: Db): void {
   db.$client.close();
 }
@@ -49,4 +59,4 @@ function backup(input: BackupInput): void {
   }
 }
 
-export const database = { open, close, backup };
+export const database = { open, openReadOnly, close, backup };
