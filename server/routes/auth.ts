@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
-import { unauthorizedError } from "../../domain/errors/auth.ts";
+import { forbiddenError, unauthorizedError } from "../../domain/errors/auth.ts";
+import { memberships } from "../application/memberships.ts";
 import { users } from "../application/users.ts";
 import type { Db } from "../infra/db/index.ts";
 import type { User } from "../infra/repositories/users.ts";
@@ -22,6 +23,11 @@ export function requireToken(db: Db): MiddlewareHandler<AuthEnv> {
     c.set("user", user);
     return next();
   };
+}
+
+/** Cluster-wide data, such as the costs of every project, is for an organization admin only. */
+export function requireAdmin(db: Db, user: User, what: string): void {
+  if (memberships.findAdmin(db, user.id) === null) throw forbiddenError(what);
 }
 
 function bearerToken(header: string | undefined): string | null {
