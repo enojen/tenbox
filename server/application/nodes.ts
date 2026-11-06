@@ -1,4 +1,3 @@
-import { errorMessage } from "../../domain/errors/index.ts";
 import {
   type ListedNode,
   NODE_EVENT_NAMES,
@@ -13,12 +12,12 @@ import type { Db } from "../infra/db/index.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type ClusterNode, type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
+import { events } from "./events.ts";
 import { machineRuns } from "./machineRuns.ts";
 import { volumes } from "./volumes.ts";
+import { watches } from "./watches.ts";
 
 const POLL_INTERVAL_MS = 30_000;
-/** The `tenbox` column of a node event: the server has no git sha. */
-const NODE_EVENT_TENBOX = "server";
 
 /** Where the node watch reads the Nodes and their servers. */
 interface NodeApis {
@@ -81,7 +80,7 @@ function watch(db: Db, input: NodeWatch): Watching {
     const removedAt = late ? startedAt : input.now();
     const pollNodes = poll(db, { ...input, removedAt, late }).then(() => {
       late = false;
-    }, logFailure);
+    }, logWatchFailure);
     running = Promise.all([pollNodes, pollJobs(), pollVolumes()]).finally(() => {
       running = null;
     });
@@ -112,7 +111,7 @@ async function addLogged(input: NewNode): Promise<void> {
   try {
     await add(input);
   } catch (error) {
-    logFailure(error, `node ${input.node.name}`);
+    watches.logFailure(error, `node ${input.node.name}`);
   }
 }
 
@@ -131,19 +130,17 @@ async function add(input: NewNode): Promise<void> {
 
 function store(db: Db, input: NodeEventAt): void {
   const { event, at } = input;
-  eventsRepository.insert(db, {
+  events.saveFromServer(db, {
     id: nodeEventId(event),
     type: event.event,
     subject: event.node,
-    userId: null,
-    tenbox: NODE_EVENT_TENBOX,
     at,
-    body: JSON.stringify(event),
+    body: event,
   });
 }
 
-function logFailure(error: unknown, what = "node watch"): void {
-  console.error(`${what}: ${errorMessage(error)}`);
+function logWatchFailure(error: unknown): void {
+  watches.logFailure(error, "node watch");
 }
 
 /** Nodes: the workers of the cluster, each stored as it came and went, with its server type and price. */

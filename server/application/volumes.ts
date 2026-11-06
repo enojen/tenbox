@@ -1,4 +1,3 @@
-import { errorMessage } from "../../domain/errors/index.ts";
 import {
   type ListedVolume,
   type NewVolume,
@@ -15,9 +14,9 @@ import type { Db } from "../infra/db/index.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
+import { events } from "./events.ts";
+import { watches } from "./watches.ts";
 
-/** The `tenbox` column of an event the server makes: it has no git sha. */
-const SERVER_TENBOX = "server";
 const WATCH = "volume watch";
 
 /** Where the volume watch reads the PVCs and the volume price. */
@@ -74,7 +73,7 @@ function poller(db: Db, input: VolumeWatch): () => Promise<void> {
       await poll(db, { ...input, removedAt, late });
       late = false;
     } catch (error) {
-      logFailure(error, WATCH);
+      watches.logFailure(error, WATCH);
     }
   };
 }
@@ -98,7 +97,7 @@ async function priceLogged(api: HetznerApi): Promise<Price | null> {
   try {
     return await hetzner.volumePrice(api);
   } catch (error) {
-    logFailure(error, WATCH);
+    watches.logFailure(error, WATCH);
     return null;
   }
 }
@@ -108,25 +107,19 @@ function addLogged(db: Db, input: NewVolume): void {
   try {
     store({ db, event: volumeAdded(input), at: input.volume.created });
   } catch (error) {
-    logFailure(error, `${WATCH}: volume ${input.volume.name}`);
+    watches.logFailure(error, `${WATCH}: volume ${input.volume.name}`);
   }
 }
 
 function store(input: StoredVolumeEvent): void {
   const { db, event, at } = input;
-  eventsRepository.insert(db, {
+  events.saveFromServer(db, {
     id: volumeEventId(event),
     type: event.event,
     subject: event.volume,
-    userId: null,
-    tenbox: SERVER_TENBOX,
     at,
-    body: JSON.stringify(event),
+    body: event,
   });
-}
-
-function logFailure(error: unknown, what: string): void {
-  console.error(`${what}: ${errorMessage(error)}`);
 }
 
 /** Volumes: the task PVCs of the cluster, each stored as it came and went, with its size and price. */

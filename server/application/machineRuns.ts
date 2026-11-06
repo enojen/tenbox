@@ -1,4 +1,3 @@
-import { errorMessage } from "../../domain/errors/index.ts";
 import {
   JOB_FINISHED,
   type JobFinished,
@@ -13,9 +12,8 @@ import { oomKilledInLog } from "../../domain/machines.ts";
 import type { Db } from "../infra/db/index.ts";
 import { type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
-
-/** The `tenbox` column of an event the server makes: it has no git sha. */
-const SERVER_TENBOX = "server";
+import { events } from "./events.ts";
+import { watches } from "./watches.ts";
 
 /** One poll: the pods of the last poll, and the poll time. */
 interface JobPoll {
@@ -61,7 +59,7 @@ function poller(db: Db, input: JobWatch): () => Promise<void> {
     try {
       seen = await poll(db, { kubernetes: input.kubernetes, seen, at: input.now() });
     } catch (error) {
-      logFailure(error, "job watch");
+      watches.logFailure(error, "job watch");
     }
   };
 }
@@ -78,7 +76,7 @@ async function storeLogged(input: EndedPod): Promise<void> {
   try {
     await storeEnded(input);
   } catch (error) {
-    logFailure(error, `job watch: pod ${input.pod.name}`);
+    watches.logFailure(error, `job watch: pod ${input.pod.name}`);
   }
 }
 
@@ -90,19 +88,13 @@ async function storeEnded(input: EndedPod): Promise<void> {
 
 function store(db: Db, input: JobFinishInput): void {
   const event = jobFinished(input);
-  eventsRepository.insert(db, {
+  events.saveFromServer(db, {
     id: jobEventId(input.pod),
     type: event.event,
     subject: event.task,
-    userId: null,
-    tenbox: SERVER_TENBOX,
     at: event.finished,
-    body: JSON.stringify(event),
+    body: event,
   });
-}
-
-function logFailure(error: unknown, what: string): void {
-  console.error(`${what}: ${errorMessage(error)}`);
 }
 
 /** Machine runs: each pod of a task Job, stored once when its box container ends or its pod goes. */
