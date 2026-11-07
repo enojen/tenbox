@@ -123,7 +123,14 @@ log_usage() {
   log "memory peak $((peak / 1048576)) MiB, cpu $cpu s, oom_kill ${oom:-0}"
 }
 
+# 9. The logins live only as long as the run: the volume outlives it.
+remove_logins() {
+  rm -f "$home/.claude/.credentials.json" "$home/.config/gh/hosts.yml" "$main/tenbox.local.yaml"
+}
+
 log "image: $(cat /etc/tenbox-image.json)"
+trap remove_logins EXIT
+trap 'exit 143' TERM INT
 prepare_home
 setup_claude
 setup_github
