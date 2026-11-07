@@ -21,7 +21,7 @@ export interface Cluster {
   tls: EndpointTls;
 }
 
-/** The values of the `__X__` fields of the tenyard templates, as tenyard `task/run.sh` fills them. */
+/** The values of the `__X__` fields of the tenyard templates. */
 export interface TemplateFields {
   /** The task id in lower case, `_` as `-`: a Kubernetes name. */
   name: string;
