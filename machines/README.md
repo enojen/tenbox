@@ -66,7 +66,7 @@ is at most that. tenyard's resource classes come from these lines. It exits with
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
 reads the kubeconfig (`$KUBECONFIG`, else
 `~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
-`machine.template`, default `~/tenyard/task`) as tenyard `task/run.sh` does, with the resource
+`machine.template`, default `~/tenyard/task`), with the resource
 class from `task/classes.yaml` (`machine.plan_class` for `start`, default `plan`; `plan` for `close`, `machine.class` of
 `tenbox.yaml` for `build`, default `build`) and, for `build`, the services of
 `machine.services` from `task/services/` (their sidecars and volumes; their env joins
