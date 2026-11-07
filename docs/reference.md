@@ -649,9 +649,9 @@ run TEN-301 -- tenbox build TEN-301` posts the task's volume `task-<id>` and one
 `machine.template`, with the services of `machine.services` from `task/services/` added to a
 build, check, decide or answer; tenbox keeps no copy. `approve`, `decide`, `answer`, `check`, `pr`,
 `status` and `plan show` run there too, so a task planned and built on the cluster is steered from
-your computer. The login sync, `machines/login/`, writes the Secrets
-of the box in namespace `tenbox`: `claude-credentials` (`credentials.json`, from
-`~/.claude/.credentials.json`), `github-token` (`token`, from `~/.config/tenbox/github-token`).
+your computer. The login sync, `machines/login/`, writes the Secret
+`claude-credentials` of the box in namespace `tenbox` (`credentials.json`, from
+`~/.claude/.credentials.json`); the shared `github-token` comes from tenyard's `secrets/`.
 The tracker key, the ntfy URL and, with `machine.github_token_file`, the GitHub token are per
 project: `tenbox machine run` writes them to `project-<project id>` before each Job. In the box
 the project token (`PROJECT_GITHUB_TOKEN`, from `github_token`) wins over the shared

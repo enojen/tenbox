@@ -25,8 +25,6 @@ YAML
 #!/usr/bin/env bash
 echo "kubectl $*" >> "$STUB_DIR/argv.log"
 [ -z "${KUBECTL_FAIL:-}" ] || exit 1
-# KUBECTL_KILL: a stop of the service, SIGTERM to the script while kubectl runs.
-[ -z "${KUBECTL_KILL:-}" ] || { kill -TERM "$PPID"; sleep 1; exit 1; }
 if [ "$3" = create ]; then
   name="$6"
   for a in "$@"; do
@@ -37,22 +35,21 @@ STUB
   chmod +x "$root/bin/kubectl"
   export STUB_DIR="$root" PATH="$root/bin:$PATH"
   : > "$root/argv.log"; : > "$root/secrets.log"
-  unset KUBECTL_FAIL KUBECTL_KILL
+  unset KUBECTL_FAIL
 }
 run() { bash "$root/repo/machines/login/tenbox-login-sync.sh" > "$root/out.log" 2>&1; }
 
 setup; run; code=$?
 check "exit 0 on success" '[ "$code" = 0 ]'
 check "claude-credentials gets the login" 'grep -q "^claude-credentials credentials.json=.*SECRET-LOGIN" "$root/secrets.log"'
-check "github-token gets the token without its trailing newline" 'grep -qx "github-token token=SECRET-GHTOKEN" "$root/secrets.log"'
-check "only the login and the token: tenbox.local.yaml does not become a Secret" '[ "$(cut -d " " -f 1 "$root/secrets.log" | tr "\n" " ")" = "claude-credentials github-token " ]'
+check "only the login: github-token is tenyard's (secrets/), tenbox.local.yaml no Secret" '[ "$(cut -d " " -f 1 "$root/secrets.log" | tr "\n" " ")" = "claude-credentials " ]'
 check "every kubectl call uses namespace tenbox" '! grep "^kubectl " "$root/argv.log" | grep -qv "^kubectl -n tenbox "'
 check "no secret value in any argv" '! grep -q "SECRET-" "$root/argv.log"'
 check "no secret value in the output" '! grep -q "SECRET-" "$root/out.log"'
 
+setup; rm "$HOME/.config/tenbox/github-token"; run; code=$?
+check "no ~/.config/tenbox/github-token: exit 0" '[ "$code" = 0 ]'
+
 setup; KUBECTL_FAIL=1 run; code=$?
 check "kubectl failure: exit 1" '[ "$code" = 1 ]'
-
-setup; mkdir "$root/tmp"; TMPDIR="$root/tmp" KUBECTL_KILL=1 run
-check "SIGTERM during kubectl: no temp file left" '[ -z "$(ls -A "$root/tmp")" ]'
 exit "$fails"

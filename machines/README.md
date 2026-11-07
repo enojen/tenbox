@@ -11,13 +11,11 @@ Remote Control needs a claude.ai login; `claude setup-token` runs the model but 
 Control refuses it, and a copy of `~/.claude/.credentials.json` works. `machines/login/install.sh`
 installs a systemd user path unit on your computer that writes the file to the Secrets of the
 box whenever it changes, and once right away; `/login` on your computer is all a new account
-needs. It writes two Secrets in namespace `tenbox` of the cluster (`KUBECONFIG` from the env,
+needs. It writes one Secret in namespace `tenbox` of the cluster (`KUBECONFIG` from the env,
 else `~/.kube/tenyard.yaml`; the API is open from the home IP only): `claude-credentials` key
-`credentials.json` from `~/.claude/.credentials.json`, and `github-token` key `token` from
-`~/.config/tenbox/github-token` without whitespace. It exits 1 when a Secret could not be
-written. A change of the token needs `systemctl --user start tenbox-login-sync.service`; the
-path unit watches only the login. The tracker key and the ntfy URL differ per project, so
-`tenbox machine run` writes them (below).
+`credentials.json` from `~/.claude/.credentials.json`. It exits 1 when the Secret could not be
+written. The shared `github-token` of the box is tenyard's, encrypted in its `secrets/`. The
+tracker key and the ntfy URL differ per project, so `tenbox machine run` writes them (below).
 Every Job reads the Secrets of the moment, so `tenbox machine run` refuses before the cluster
 when the refresh token in `~/.claude/.credentials.json` has expired ("run /login on your
 computer"). The access token lives hours and the refresh token days.
