@@ -412,13 +412,13 @@ function serviceNames(command: CommandRun): string[] {
   return [];
 }
 
-/** Two commands of one task must not share its volume, as tenyard `task/run.sh` refuses too. */
+/** Two commands of one task must not share its volume. */
 async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
   const active = await activeJobs(cluster, id);
   if (active.length > 0) throw machineBusyError(id, active);
 }
 
-/** `MMDD-HHMMSS` in UTC, as tenyard `task/run.sh` names a run. */
+/** `MMDD-HHMMSS` in UTC: the run part of a Job name. */
 function runStamp(now: Date): string {
   return now.toISOString().replace(/^\d{4}-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d).*$/, "$1$2-$3$4$5");
 }
