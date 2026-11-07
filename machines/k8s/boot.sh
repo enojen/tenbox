@@ -22,58 +22,56 @@ home=/home/tenbox
 main="$home/wt/$TENBOX_PROJECT/main"
 worktree="$home/wt/$TENBOX_PROJECT/$TENBOX_TASK"
 
-as_tenbox() { sudo -u tenbox -H env HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin "$@"; }
+box_env=(HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin USER=tenbox LOGNAME=tenbox SHELL=/bin/bash)
+clean_env() { env -i "${box_env[@]}" "$@"; }
 log() { echo "tenbox-boot: $*"; }
 
-# 1. The volume: a new volume is owned by root and empty.
+# 1. The volume: the pod's fsGroup gives a new, empty volume to the tenbox group.
 prepare_home() {
-  chown tenbox:tenbox "$home"
   for dir in wt .tenbox .claude; do
-    install -d -o tenbox -g tenbox "$home/$dir"
+    install -d "$home/$dir"
   done
   cp /etc/skel/.bashrc "$home/.bashrc" 2> /dev/null || true
 }
 
 # 2. claude: the login, Remote Control on, and no first-run questions for the three folders.
 setup_claude() {
-  install -o tenbox -g tenbox -m 600 /dev/null "$home/.claude/.credentials.json"
+  install -m 600 /dev/null "$home/.claude/.credentials.json"
   printf '%s' "$CLAUDE_CREDENTIALS" > "$home/.claude/.credentials.json"
   if [ ! -f "$home/.claude/settings.json" ]; then
     echo '{ "remoteControlAtStartup": true }' > "$home/.claude/settings.json"
-    chown tenbox:tenbox "$home/.claude/settings.json"
   fi
   jq -n --arg main "$main" --arg wt "$worktree" --arg repo /opt/tenbox \
     '{ hasCompletedOnboarding: true, theme: "dark",
        projects: ([$main, $wt, $repo] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
     > "$home/.claude.json"
-  chown tenbox:tenbox "$home/.claude.json"
 }
 
 # 3. GitHub: gh and git push use the token; commits carry the token owner's name.
 setup_github() {
-  as_tenbox gh auth login --with-token <<< "${PROJECT_GITHUB_TOKEN:-$GITHUB_TOKEN}"
-  as_tenbox gh auth setup-git
+  clean_env gh auth login --with-token <<< "${PROJECT_GITHUB_TOKEN:-$GITHUB_TOKEN}"
+  clean_env gh auth setup-git
   local login id name
-  read -r login id name < <(as_tenbox gh api user --jq '[.login, .id, (.name // .login)] | @tsv')
-  as_tenbox git config --global user.name "$name"
-  as_tenbox git config --global user.email "$id+$login@users.noreply.github.com"
+  read -r login id name < <(clean_env gh api user --jq '[.login, .id, (.name // .login)] | @tsv')
+  clean_env git config --global user.name "$name"
+  clean_env git config --global user.email "$id+$login@users.noreply.github.com"
 }
 
 # 4. The project: clone once (the volume keeps it), write tenbox.local.yaml anew every boot.
 setup_project() {
   if [ ! -d "$main/.git" ]; then
-    as_tenbox mkdir -p "$(dirname "$main")"
-    as_tenbox git clone --quiet ${TENBOX_BASE:+--branch "$TENBOX_BASE"} "$TENBOX_REPO" "$main"
+    mkdir -p "$(dirname "$main")"
+    clean_env git clone --quiet ${TENBOX_BASE:+--branch "$TENBOX_BASE"} "$TENBOX_REPO" "$main"
   elif [ -n "${TENBOX_BASE:-}" ]; then
-    as_tenbox git -C "$main" fetch --quiet origin "$TENBOX_BASE"
-    as_tenbox git -C "$main" checkout --quiet "$TENBOX_BASE"
+    clean_env git -C "$main" fetch --quiet origin "$TENBOX_BASE"
+    clean_env git -C "$main" checkout --quiet "$TENBOX_BASE"
   fi
-  if [ -n "${TENBOX_BASE:-}" ] && ! as_tenbox git -C "$main" ls-files --error-unmatch tenbox.yaml > /dev/null 2>&1; then
+  if [ -n "${TENBOX_BASE:-}" ] && ! clean_env git -C "$main" ls-files --error-unmatch tenbox.yaml > /dev/null 2>&1; then
     log "tenbox.yaml is not tracked in the main checkout on base $TENBOX_BASE"
     exit 1
   fi
   local manifest="$main/tenbox.local.yaml"
-  install -m 600 -o tenbox -g tenbox /dev/null "$manifest"
+  install -m 600 /dev/null "$manifest"
   [ -z "${TRACKER_API_KEY:-}" ] || printf 'tracker:\n  api_key: "%s"\n' "$TRACKER_API_KEY" >> "$manifest"
   [ -z "${NTFY_URL:-}" ] || printf 'notify:\n  ntfy: "%s"\n' "$NTFY_URL" >> "$manifest"
   [ -s "$manifest" ] || rm -f "$manifest"
@@ -81,7 +79,7 @@ setup_project() {
 
 # 5. tenbox: link agents/ and workflows/ into ~/.claude/.
 install_tenbox() {
-  (cd /opt/tenbox && as_tenbox tenbox install > /dev/null)
+  (cd /opt/tenbox && clean_env tenbox install > /dev/null)
 }
 
 # 6. The project's variables as NAME=VALUE words for env. They come before HOME and PATH, so
@@ -96,7 +94,7 @@ read_project_env() {
 
 # 7. After the command: stay while a claude session works: its status is busy. A resumed session
 #    can keep state working after its turn ended, so state does not count.
-sessions_json() { as_tenbox claude agents --json 2> /dev/null || echo "[]"; }
+sessions_json() { clean_env claude agents --json 2> /dev/null || echo "[]"; }
 wait_for_sessions() {
   local idle=0 sessions working
   while :; do
@@ -137,10 +135,9 @@ read_project_env
 unset GITHUB_TOKEN PROJECT_GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
 log "ready at $(date -u +%FT%TZ)"
 
-install -m 644 /dev/null /var/log/tenbox-run.log
+: > /var/log/tenbox-run.log
 set +e
-sudo -u tenbox -H env "${project_env[@]}" HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin \
-  bash -c "cd '$main' && $TENBOX_CMD" 2>&1 < /dev/null | tee -a /var/log/tenbox-run.log
+env -i "${project_env[@]}" "${box_env[@]}" bash -c "cd '$main' && $TENBOX_CMD" 2>&1 < /dev/null | tee -a /var/log/tenbox-run.log
 status="${PIPESTATUS[0]}"
 log "command ended with exit code $status"
 wait_for_sessions

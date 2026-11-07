@@ -9,7 +9,7 @@ ARG TENBOX_REF=unknown
 ENV DEBIAN_FRONTEND=noninteractive DISABLE_AUTOUPDATER=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg jq sudo unzip openssh-client procps \
+      ca-certificates curl git gnupg jq unzip openssh-client procps \
   && install -d -m 755 /etc/apt/keyrings \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -28,8 +28,7 @@ RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
   && apt-get clean && rm -rf /var/lib/apt/lists/* \
   && corepack enable && node --version
 
-RUN useradd --create-home --shell /bin/bash tenbox \
-  && echo 'tenbox ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tenbox && chmod 440 /etc/sudoers.d/tenbox
+RUN useradd --create-home --shell /bin/bash tenbox
 
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash && bun --version
 
@@ -41,8 +40,9 @@ RUN mkdir -p /opt/claude && HOME=/opt/claude bash -c "curl -fsSL https://claude.
 COPY .build/tenbox.bundle /tmp/tenbox.bundle
 RUN git clone --quiet --branch "$TENBOX_BRANCH" /tmp/tenbox.bundle /opt/tenbox \
   && git -C /opt/tenbox remote set-url origin https://github.com/enojen/tenbox.git \
-  && rm /tmp/tenbox.bundle && chown -R tenbox:tenbox /opt/tenbox \
-  && cd /opt/tenbox && sudo -u tenbox -H bun install --frozen-lockfile \
+  && rm /tmp/tenbox.bundle && cd /opt/tenbox && bun install --frozen-lockfile \
+  && chown -R tenbox:tenbox /opt/tenbox \
+  && install -o tenbox -g tenbox -m 644 /dev/null /var/log/tenbox-run.log \
   && printf '#!/bin/sh\nexec /usr/local/bin/bun /opt/tenbox/cli/main.ts "$@"\n' > /usr/local/bin/tenbox \
   && chmod 755 /usr/local/bin/tenbox \
   && install -m 755 /opt/tenbox/machines/k8s/boot.sh /usr/local/bin/tenbox-boot \
@@ -51,4 +51,5 @@ RUN git clone --quiet --branch "$TENBOX_BRANCH" /tmp/tenbox.bundle /opt/tenbox \
        '{ tenbox: { branch: $branch, ref: $ref }, bun: $bun, gh: $gh, node: $node, claude: $claude }' \
        > /etc/tenbox-image.json
 
+USER tenbox
 CMD ["/usr/local/bin/tenbox-boot"]
