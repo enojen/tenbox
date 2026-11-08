@@ -2,7 +2,7 @@
  * Generic helpers. Only pure, general functions belong here: no Tenbox concept, no clock,
  * no file system, no process.
  */
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import type { z } from "zod";
 import { issueLines } from "./errors/index.ts";
 
@@ -103,4 +103,6 @@ export const durations = { MS_PER_SECOND, msToMinutes, minutesBetween };
 
 export const hashes = {
   sha256Hex: (text: string): string => createHash("sha256").update(text).digest("hex"),
+  hmacSha256Base64Url: (key: string, text: string): string =>
+    createHmac("sha256", key).update(text).digest("base64url"),
 };

@@ -29,6 +29,11 @@ export interface VolumeEnv {
   ntfy: string | null;
 }
 
+interface RunCredentialEnv {
+  key: string;
+  injectorToken: string;
+}
+
 /** What the node watch needs inside the cluster. */
 export interface NodeWatchEnv {
   /** `https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT`, port default 443. */
@@ -36,6 +41,12 @@ export interface NodeWatchEnv {
   hetzner: HetznerEnv;
   volumes: VolumeEnv;
   githubApp: GitHubApp | null;
+  runCredentials: RunCredentialEnv | null;
+}
+
+interface SecretFile {
+  name: string;
+  expected: string;
 }
 
 /** One port variable, its value and the port it stands for when unset. */
@@ -54,6 +65,14 @@ const DEFAULT_GRACE_DAYS = 3;
 const DEFAULT_GITHUB_URL = "https://api.github.com";
 const APP_ID = "TENBOX_SERVER_GITHUB_APP_ID";
 const APP_KEY_FILE = "TENBOX_SERVER_GITHUB_APP_KEY_FILE";
+const RUN_CREDENTIAL_KEY: SecretFile = {
+  name: "TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE",
+  expected: "a file with the key of the run placeholders",
+};
+const INJECTOR_TOKEN: SecretFile = {
+  name: "TENBOX_SERVER_INJECTOR_TOKEN_FILE",
+  expected: "a file with the token of the injector",
+};
 const WHOLE_NUMBER = /^[0-9]+$/;
 /** The ntfy topic is a secret: anyone who knows it reads the notices, so an error never shows it. */
 const HIDDEN = "(not shown)";
@@ -87,12 +106,32 @@ export function nodeWatchEnv(): NodeWatchEnv | null {
     raw: process.env.KUBERNETES_SERVICE_PORT,
     fallback: DEFAULT_KUBERNETES_PORT,
   });
+  const app = githubApp();
   return {
     kubernetesUrl: `https://${host.includes(":") ? `[${host}]` : host}:${servicePort}`,
     hetzner: { url: process.env.HCLOUD_ENDPOINT ?? DEFAULT_HETZNER_URL, token },
     volumes: volumeEnv(),
-    githubApp: githubApp(),
+    githubApp: app,
+    runCredentials: app === null ? null : runCredentials(),
   };
+}
+
+function runCredentials(): RunCredentialEnv {
+  return { key: secretFile(RUN_CREDENTIAL_KEY), injectorToken: secretFile(INJECTOR_TOKEN) };
+}
+
+function secretFile(file: SecretFile): string {
+  const { name, expected } = file;
+  const at = process.env[name]?.trim() ?? "";
+  if (at === "") throw envError(name, at, expected);
+  let text = "";
+  try {
+    text = fs.readFileSync(at, "utf8").trim();
+  } catch {
+    throw envError(name, at, expected);
+  }
+  if (text === "") throw envError(name, at, expected);
+  return text;
 }
 
 function githubApp(): GitHubApp | null {

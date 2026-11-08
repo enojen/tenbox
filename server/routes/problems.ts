@@ -42,6 +42,9 @@ export function onError(error: Error, c: Context): Response {
   if (error instanceof TenboxError && error.code === "bad-input") {
     return problem(c, BAD_REQUEST_STATUS, error.code, error.message);
   }
+  if (error instanceof TenboxError && error.code === "run-credential-not-found") {
+    return problem(c, NOT_FOUND_STATUS, error.code, error.message);
+  }
   // Until TEN-362 brings a logger, the hidden error goes to stderr as it is.
   console.error(error);
   const code = error instanceof TenboxError ? error.code : "internal";

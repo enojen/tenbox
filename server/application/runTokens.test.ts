@@ -6,12 +6,13 @@ import path from "node:path";
 import type { Server } from "bun";
 import { z } from "zod";
 import { projectId } from "../../domain/ids.ts";
+import { runPlaceholder } from "../../domain/runTokens.ts";
 import { jsons } from "../../domain/utils.ts";
 import { type Db, database } from "../infra/db/index.ts";
 import type { GitHubApp } from "../infra/github.ts";
 import type { KubernetesApi } from "../infra/kubernetes.ts";
 import { projects } from "./projects.ts";
-import { runTokens } from "./runTokens.ts";
+import { type RunTokenWatch, runTokens } from "./runTokens.ts";
 
 const TOKEN = "sa-token";
 const APP_ID = "123456";
@@ -29,6 +30,8 @@ const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
 const DEMO_ID = "k7f3qa";
 const NOW = new Date("2026-11-08T17:00:00Z");
+const KEY = "run-credential-key";
+const LATE = new Date("2026-11-08T17:55:00Z");
 
 interface FakeJob {
   name: string;
@@ -187,15 +190,17 @@ function addDemo(db: Db): void {
   });
 }
 
-function poller(fakes: Fakes): () => Promise<void> {
-  return runTokens.poller(fakes.db, {
-    kubernetes: fakes.kubernetes,
-    github: fakes.github,
-    now: () => NOW,
-  });
+function watch(fakes: Fakes, now: () => Date = () => NOW): RunTokenWatch {
+  return { kubernetes: fakes.kubernetes, github: fakes.github, key: KEY, now, tokens: new Map() };
 }
 
-test("an open Job of a project gets a Secret with a token for its repository only", async () => {
+function poller(fakes: Fakes): () => Promise<void> {
+  return runTokens.poller(fakes.db, watch(fakes));
+}
+
+const DEMO_PLACEHOLDER = runPlaceholder(KEY, DEMO_JOB.uid);
+
+test("an open Job of a project gets a Secret with its placeholder, after a token for its repository only", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
   await poller(fakes)();
@@ -212,7 +217,7 @@ test("an open Job of a project gets a Secret with a token for its repository onl
   expect(secret?.metadata.ownerReferences).toEqual([
     expect.objectContaining({ kind: "Job", name: DEMO_JOB.name, uid: DEMO_JOB.uid }),
   ]);
-  expect(secret?.stringData).toEqual({ token: RUN_TOKEN });
+  expect(secret?.stringData).toEqual({ token: DEMO_PLACEHOLDER });
 });
 
 test("a Job gets its Secret once, over many polls", async () => {
@@ -235,7 +240,7 @@ test("a Secret that exists already counts as written", async () => {
   expect(fakes.secrets).toHaveLength(1);
 });
 
-test("a repository without the App gets an empty token, so the project's own token is used", async () => {
+test("a repository without the App gets an empty token", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
   fakes.installed = [];
@@ -273,7 +278,7 @@ test("a token GitHub cannot give is logged and asked again on the next poll", as
   expect(String(logged.mock.calls[0]?.[0])).toContain(DEMO_JOB.name);
   await poll();
   logged.mockRestore();
-  expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([{ token: RUN_TOKEN }]);
+  expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([{ token: DEMO_PLACEHOLDER }]);
 });
 
 test("a failed Secret write is asked again on the next poll", async () => {
@@ -286,4 +291,77 @@ test("a failed Secret write is asked again on the next poll", async () => {
   await poll();
   logged.mockRestore();
   expect(fakes.secrets).toHaveLength(2);
+});
+
+test("the placeholder of an open Job gives the token of its repository on GitHub's hosts", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  const watching = watch(fakes);
+  for (const host of ["api.github.com", "github.com"]) {
+    const value = await runTokens.resolve({
+      db: fakes.db,
+      watch: watching,
+      placeholder: DEMO_PLACEHOLDER,
+      host,
+    });
+    expect(value).toBe(RUN_TOKEN);
+  }
+  expect(fakes.tokenRequests).toEqual([expect.objectContaining({ repositories: ["tenbox-demo"] })]);
+});
+
+test("another host, an unknown placeholder or an ended Job gives nothing", async () => {
+  const fakes = setup([
+    DEMO_JOB,
+    { ...DEMO_JOB, name: "task-demo-2", uid: "job-uid-2", ended: "Complete" },
+  ]);
+  addDemo(fakes.db);
+  const watching = watch(fakes);
+  const asked = [
+    { placeholder: DEMO_PLACEHOLDER, host: "api.linear.app" },
+    { placeholder: runPlaceholder("another-key", DEMO_JOB.uid), host: "github.com" },
+    { placeholder: runPlaceholder(KEY, "job-uid-2"), host: "github.com" },
+  ];
+  for (const ask of asked) {
+    const value = await runTokens.resolve({ db: fakes.db, watch: watching, ...ask });
+    expect(value).toBeNull();
+  }
+  expect(fakes.tokenRequests).toEqual([]);
+});
+
+test("a repository without the App gives nothing", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  fakes.installed = [];
+  const value = await runTokens.resolve({
+    db: fakes.db,
+    watch: watch(fakes),
+    placeholder: DEMO_PLACEHOLDER,
+    host: "github.com",
+  });
+  expect(value).toBeNull();
+});
+
+test("a token is minted again when less than 10 minutes are left", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  let now = NOW;
+  const watching = watch(fakes, () => now);
+  const ask = { db: fakes.db, watch: watching, placeholder: DEMO_PLACEHOLDER, host: "github.com" };
+  await runTokens.resolve(ask);
+  await runTokens.resolve(ask);
+  expect(fakes.tokenRequests).toHaveLength(1);
+  now = LATE;
+  await runTokens.resolve(ask);
+  expect(fakes.tokenRequests).toHaveLength(2);
+});
+
+test("the token the watch mints for the Secret is the first one resolve gives", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  const watching = watch(fakes);
+  await runTokens.poller(fakes.db, watching)();
+  const ask = { db: fakes.db, watch: watching, placeholder: DEMO_PLACEHOLDER, host: "github.com" };
+  const value = await runTokens.resolve(ask);
+  expect(value).toBe(RUN_TOKEN);
+  expect(fakes.tokenRequests).toHaveLength(1);
 });
