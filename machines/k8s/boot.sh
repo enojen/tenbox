@@ -23,8 +23,6 @@ main="$home/wt/$TENBOX_PROJECT/main"
 worktree="$home/wt/$TENBOX_PROJECT/$TENBOX_TASK"
 
 box_env=(HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin USER=tenbox LOGNAME=tenbox SHELL=/bin/bash)
-# The egress proxy and the claude settings of the cluster, when the Job sets them; curl and git
-# read http_proxy only in lowercase.
 for name in HTTPS_PROXY HTTP_PROXY NO_PROXY; do
   if [ -n "${!name:-}" ]; then box_env+=("$name=${!name}" "${name,,}=${!name}"); fi
 done
