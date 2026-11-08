@@ -50,9 +50,11 @@ branch), stops with exit 1 and a log line naming the base when `tenbox.yaml` is 
 main checkout, then runs `TENBOX_CMD`
 in the foreground in the project's main checkout. The whole container runs as `tenbox`, with no
 root and no `sudo`; tenyard's Job gives a new volume to its group with `fsGroup`. `env -i` drops
-the rest of the env, so the command gets only `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL` and the
+the rest of the env, so the command gets only `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the
+egress settings the Job sets (`HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, each also in lowercase,
+`NODE_USE_ENV_PROXY`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`) and the
 project's variables: `TENBOX_ENV` holds `machine.env` of `tenbox.yaml` as one JSON object, each
-key one variable; a key named like one of the box's five loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
+key one variable; a key named like one of the box's loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
 that session works (its `status` in `claude agents --json` is `busy`) and ends once no session is
 left or the sessions have been idle for `IDLE_MINUTES` (1; a plan that waits for approval). A
