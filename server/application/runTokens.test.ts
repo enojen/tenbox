@@ -14,8 +14,8 @@ import { projects } from "./projects.ts";
 import { runTokens } from "./runTokens.ts";
 
 const TOKEN = "sa-token";
-const APP_ID = "5669876";
-const INSTALLATION = 179912928;
+const APP_ID = "123456";
+const INSTALLATION = 987654;
 const RUN_TOKEN = "ghs_run";
 const EXPIRES = "2026-11-08T18:00:00Z";
 const HTTP_OK = 200;
@@ -27,7 +27,7 @@ const HTTP_BAD_REQUEST = 400;
 const HTTP_SERVER_ERROR = 500;
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
-const DEMO_ID = "rw68a5";
+const DEMO_ID = "k7f3qa";
 const NOW = new Date("2026-11-08T17:00:00Z");
 
 interface FakeJob {

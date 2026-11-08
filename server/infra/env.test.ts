@@ -144,11 +144,11 @@ function keyFile(text: string): string {
 
 test("the GitHub App: its id, the key read from its file and the default API", () => {
   inCluster();
-  process.env.TENBOX_SERVER_GITHUB_APP_ID = "5669876";
+  process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
   process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = keyFile("a key\n");
   expect(nodeWatchEnv()?.githubApp).toEqual({
     url: "https://api.github.com",
-    appId: "5669876",
+    appId: "123456",
     key: "a key\n",
   });
   process.env.GITHUB_API_URL = "http://127.0.0.1:9001";
@@ -157,7 +157,7 @@ test("the GitHub App: its id, the key read from its file and the default API", (
 
 test("an App id without its key file, a missing key file or an id that is not a number is an error", () => {
   inCluster();
-  process.env.TENBOX_SERVER_GITHUB_APP_ID = "5669876";
+  process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_KEY_FILE/);
   process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = "/no/such/key.pem";
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_KEY_FILE/);
