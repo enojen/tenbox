@@ -113,14 +113,15 @@ wait_for_sessions() {
   done
 }
 
-# 8. What the box used, for the resource classes of tenyard: the peak RAM, the CPU time and the OOM kills of
-#    its cgroup, from the boot to now.
+# 8. What the box used, for the resource classes of tenyard: the peak RAM, the CPU time, the peak of
+#    processes and threads, and the OOM kills of its cgroup, from the boot to now.
 log_usage() {
-  local cgroup=/sys/fs/cgroup peak cpu oom
+  local cgroup=/sys/fs/cgroup peak cpu pids oom
   peak="$(cat "$cgroup/memory.peak" 2> /dev/null)" || { log "no memory.peak in $cgroup"; return; }
   cpu="$(awk '$1 == "usage_usec" { print int($2 / 1000000) }' "$cgroup/cpu.stat")"
+  pids="$(cat "$cgroup/pids.peak" 2> /dev/null)"
   oom="$(awk '$1 == "oom_kill" { print $2 }' "$cgroup/memory.events" 2> /dev/null)"
-  log "memory peak $((peak / 1048576)) MiB, cpu $cpu s, oom_kill ${oom:-0}"
+  log "memory peak $((peak / 1048576)) MiB, cpu $cpu s, pids peak ${pids:-?}, oom_kill ${oom:-0}"
 }
 
 # 9. The logins live only as long as the run: the volume outlives it.
