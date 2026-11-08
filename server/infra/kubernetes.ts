@@ -11,6 +11,10 @@ const NODES_PATH = "/api/v1/nodes";
 const PODS_PATH = "/api/v1/namespaces/tenbox/pods";
 /** The task volumes, one PVC per task. */
 const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
+const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
+const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
+const JOB_ENDS = new Set(["Complete", "Failed"]);
+const CONDITION_TRUE = "True";
 /** The label of the pods and the PVCs of the task Jobs. */
 const TASK_SELECTOR = "app=tenyard";
 /** The PVC phase once its volume exists. */
@@ -20,6 +24,7 @@ const BOX = "box";
 const POD_SCHEDULED = { type: "PodScheduled", status: "True" } as const;
 const SERVICE = "kubernetes";
 const HTTP_NOT_FOUND = 404;
+const HTTP_CONFLICT = 409;
 
 /** The cluster API and the files of the service account; the token is read at each request, as the kubelet rotates it. */
 export interface KubernetesApi {
@@ -119,7 +124,36 @@ const PvcSchema = z.object({
 
 const PvcListSchema = z.object({ items: z.array(PvcSchema) });
 
+const JobSchema = z.object({
+  metadata: z.object({
+    name: z.string().min(1),
+    uid: z.string().min(1),
+    labels: z.record(z.string(), z.string()).default({}),
+  }),
+  status: z
+    .object({
+      conditions: z.array(z.object({ type: z.string(), status: z.string() })).default([]),
+    })
+    .default({ conditions: [] }),
+});
+
+const JobListSchema = z.object({ items: z.array(JobSchema) });
+
+export interface OpenJob {
+  name: string;
+  uid: string;
+  projectId: string;
+}
+
+interface JobSecret {
+  api: KubernetesApi;
+  name: string;
+  job: OpenJob;
+  data: Record<string, string>;
+}
+
 type Pod = z.infer<typeof PodSchema>;
+type Job = z.infer<typeof JobSchema>;
 type Pvc = z.infer<typeof PvcSchema>;
 type Container = z.infer<typeof ContainerSchema>;
 type ContainerStatus = z.infer<typeof ContainerStatusSchema>;
@@ -194,6 +228,38 @@ async function jobPods(api: KubernetesApi): Promise<ListedPod[]> {
   return items.flatMap(listedPod);
 }
 
+async function openJobs(api: KubernetesApi): Promise<OpenJob[]> {
+  const items = await taskItems({ api, path: JOBS_PATH, schema: JobListSchema });
+  return items.flatMap(openJob);
+}
+
+function openJob(job: Job): OpenJob[] {
+  const { metadata, status } = job;
+  const projectId = metadata.labels["project-id"];
+  const ended = status.conditions.some(
+    (condition) => JOB_ENDS.has(condition.type) && condition.status === CONDITION_TRUE,
+  );
+  if (projectId === undefined || ended) return [];
+  return [{ name: metadata.name, uid: metadata.uid, projectId }];
+}
+
+async function createSecret(input: JobSecret): Promise<void> {
+  const { api, name, job, data } = input;
+  const body = {
+    apiVersion: "v1",
+    kind: "Secret",
+    metadata: {
+      name,
+      ownerReferences: [{ apiVersion: "batch/v1", kind: "Job", name: job.name, uid: job.uid }],
+    },
+    type: "Opaque",
+    stringData: data,
+  };
+  const answer = await send({ api, apiPath: SECRETS_PATH, method: "POST", body });
+  if (answer.ok || answer.status === HTTP_CONFLICT) return;
+  throw failed(answer);
+}
+
 /** The Bound task PVCs in one request; a PVC without a `task` label or a capacity is left out. */
 async function taskVolumes(api: KubernetesApi): Promise<ListedVolume[]> {
   const items = await taskItems({ api, path: PVCS_PATH, schema: PvcListSchema });
@@ -236,14 +302,15 @@ async function removeVolume(input: VolumeName): Promise<void> {
   throw failed(answer);
 }
 
-type ClusterMethod = "GET" | "DELETE";
+type ClusterMethod = "GET" | "DELETE" | "POST";
 
-/** One request whose answer is not a JSON list: a log or a DELETE. */
+/** One request whose answer is not a JSON list: a log, a DELETE or a POST with its JSON body. */
 interface ClusterRequest {
   api: KubernetesApi;
   /** The API path, with its query. */
   apiPath: string;
   method: ClusterMethod;
+  body?: unknown;
 }
 
 /** The status of an answer and its body as text. */
@@ -254,13 +321,14 @@ interface ClusterAnswer {
 }
 
 async function send(request: ClusterRequest): Promise<ClusterAnswer> {
-  const { api, apiPath, method } = request;
+  const { api, apiPath, method, body } = request;
   const { token, ca } = await credentials(api);
   const response = await fetch(`${api.url}${apiPath}`, {
     method,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     signal: http.timeout(),
     tls: { ca },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
   return { ok: response.ok, status: response.status, text };
@@ -329,6 +397,8 @@ export const kubernetes = {
   inCluster,
   nodes,
   jobPods,
+  openJobs,
+  createSecret,
   taskVolumes,
   lastLogLine,
   boxLog,

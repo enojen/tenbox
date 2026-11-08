@@ -33,6 +33,8 @@ export interface TemplateFields {
   repo: string;
   /** `base` of the manifest: the branch the box checks out. */
   base: string;
+  gitName: string;
+  gitEmail: string;
   image: string;
   /** The command name, e.g. `build`: no flags, no id. */
   command: string;
@@ -330,6 +332,8 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__PROJECT_ID__", fields.projectId],
     ["__REPO__", fields.repo],
     ["__BASE__", fields.base],
+    ["__GIT_NAME__", fields.gitName],
+    ["__GIT_EMAIL__", fields.gitEmail],
     ["__IMAGE__", fields.image],
     ["__COMMAND__", fields.command],
     ["__CMD__", fields.cmd],

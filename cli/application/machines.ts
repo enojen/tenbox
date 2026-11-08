@@ -12,6 +12,7 @@ import {
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import {
+  gitAuthor,
   JOB_STATUS,
   type JobStatus,
   OOM_KILLED,
@@ -29,6 +30,7 @@ import type { Project } from "../../domain/projects.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
+import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import {
   type Cluster,
@@ -371,6 +373,8 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
   const { id, words, project, projectId, manifest } = command;
   const boxEnv = Object.assign({}, ...services.map((s) => s.env), manifest.machine.env);
   const repo = await originUrl(project);
+  const user = await gh.user(project.mainDir);
+  const author = gitAuthor(user);
   const name = resourceClass(command);
   const file = path.join(homePath(manifest.machine.template), "classes.yaml");
   const resources = await kubernetes.readClass({ file, name });
@@ -382,6 +386,8 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
     projectId,
     repo,
     base: manifest.base,
+    gitName: author.name,
+    gitEmail: author.email,
     image: BOX_IMAGE,
     command: command.cmd,
     cmd: words.map(shellWord).join(" "),
