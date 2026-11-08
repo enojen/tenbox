@@ -14,7 +14,7 @@ export interface GitHubApp {
   key: string;
 }
 
-interface RepoToken {
+export interface RepoToken {
   token: string;
   expiresAt: string;
 }

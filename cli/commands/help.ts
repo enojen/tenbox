@@ -249,10 +249,6 @@ Flags:
 machine.plan_class (plan, build or heavy; default plan) is the resource class of start;
 machine.class is the one of the commands that run tests.
 
-A project's own GitHub token: machine.github_token_file in tenbox.local.yaml, a ~/ path to a
-file with the token. run writes it as github_token to the project Secret project-<project id>;
-the box uses it instead of the shared github-token Secret. A missing or empty file refuses.
-
 Output: run { ok, task, cmd, url }; stop { ok, task, stopped }; rm { ok, task, volume }; ls { ok, runs } with a reason such as OOMKilled; logs { ok, task, job, status, reason }
 
 Example:

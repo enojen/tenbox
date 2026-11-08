@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import { forbiddenError, unauthorizedError } from "../../domain/errors/auth.ts";
 import { memberships } from "../application/memberships.ts";
@@ -13,9 +14,9 @@ export interface AuthEnv {
 const BEARER_PREFIX = "Bearer ";
 const OPEN_PATHS = new Set(["/health", "/metrics", "/openapi.json", "/docs"]);
 
-export function requireToken(db: Db): MiddlewareHandler<AuthEnv> {
+export function requireToken(db: Db, injectorPaths: Set<string>): MiddlewareHandler<AuthEnv> {
   return (c, next) => {
-    if (OPEN_PATHS.has(c.req.path)) return next();
+    if (OPEN_PATHS.has(c.req.path) || injectorPaths.has(c.req.path)) return next();
     const token = bearerToken(c.req.header("Authorization"));
     if (token === null) throw unauthorizedError();
     const user = users.findByToken(db, token);
@@ -28,6 +29,17 @@ export function requireToken(db: Db): MiddlewareHandler<AuthEnv> {
 /** Cluster-wide data, such as the costs of every project, is for an organization admin only. */
 export function requireAdmin(db: Db, user: User, what: string): void {
   if (memberships.findAdmin(db, user.id) === null) throw forbiddenError(what);
+}
+
+export function requireInjector(injectorToken: string): MiddlewareHandler<AuthEnv> {
+  const expected = Buffer.from(injectorToken);
+  return (c, next) => {
+    const given = Buffer.from(bearerToken(c.req.header("Authorization")) ?? "");
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      throw unauthorizedError();
+    }
+    return next();
+  };
 }
 
 function bearerToken(header: string | undefined): string | null {

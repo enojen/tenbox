@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { githubRepo, runTokenSecret } from "./runTokens.ts";
+import { githubRepo, runPlaceholder, runTokenSecret } from "./runTokens.ts";
 
 describe("githubRepo", () => {
   test("reads github.com/<owner>/<name>", () => {
@@ -27,4 +27,18 @@ describe("githubRepo", () => {
 
 test("runTokenSecret names the Secret after the Job", () => {
   expect(runTokenSecret("task-demo-1-1108-160406")).toBe("task-demo-1-1108-160406-github");
+});
+
+describe("runPlaceholder", () => {
+  test("is the prefix and the HMAC of the Job uid, the same each time", () => {
+    const placeholder = runPlaceholder("key-1", "job-uid-1");
+    expect(placeholder).toMatch(/^tbxph_[A-Za-z0-9_-]{43}$/);
+    expect(runPlaceholder("key-1", "job-uid-1")).toBe(placeholder);
+  });
+
+  test("differs for another Job or another key", () => {
+    const placeholder = runPlaceholder("key-1", "job-uid-1");
+    expect(runPlaceholder("key-1", "job-uid-2")).not.toBe(placeholder);
+    expect(runPlaceholder("key-2", "job-uid-1")).not.toBe(placeholder);
+  });
 });

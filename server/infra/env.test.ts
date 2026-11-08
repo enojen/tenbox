@@ -16,6 +16,8 @@ const KEYS = [
   "TENBOX_SERVER_NTFY",
   "TENBOX_SERVER_GITHUB_APP_ID",
   "TENBOX_SERVER_GITHUB_APP_KEY_FILE",
+  "TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE",
+  "TENBOX_SERVER_INJECTOR_TOKEN_FILE",
   "GITHUB_API_URL",
 ];
 const VOLUME_DEFAULTS = { graceDays: 3, ntfy: null };
@@ -80,6 +82,7 @@ test("in-cluster: the service URL and the Hetzner token, with the default endpoi
     hetzner: { url: "https://api.hetzner.cloud/v1", token: "t" },
     volumes: VOLUME_DEFAULTS,
     githubApp: null,
+    runCredentials: null,
   });
 });
 
@@ -94,6 +97,7 @@ test("KUBERNETES_SERVICE_PORT and HCLOUD_ENDPOINT override the defaults; an IPv6
     hetzner: { url: "http://127.0.0.1:9000/v1", token: "t" },
     volumes: VOLUME_DEFAULTS,
     githubApp: null,
+    runCredentials: null,
   });
 });
 
@@ -142,8 +146,14 @@ function keyFile(text: string): string {
   return file;
 }
 
+function withRunCredentials(): void {
+  process.env.TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE = keyFile("a run key\n");
+  process.env.TENBOX_SERVER_INJECTOR_TOKEN_FILE = keyFile("an injector token\n");
+}
+
 test("the GitHub App: its id, the key read from its file and the default API", () => {
   inCluster();
+  withRunCredentials();
   process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
   process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = keyFile("a key\n");
   expect(nodeWatchEnv()?.githubApp).toEqual({
@@ -157,6 +167,7 @@ test("the GitHub App: its id, the key read from its file and the default API", (
 
 test("an App id without its key file, a missing key file or an id that is not a number is an error", () => {
   inCluster();
+  withRunCredentials();
   process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_KEY_FILE/);
   process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = "/no/such/key.pem";
@@ -166,4 +177,33 @@ test("an App id without its key file, a missing key file or an id that is not a 
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_ID/);
   delete process.env.TENBOX_SERVER_GITHUB_APP_ID;
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_ID/);
+});
+
+test("with the App: the run credential key and the injector token, each read from its file", () => {
+  inCluster();
+  withRunCredentials();
+  process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
+  process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = keyFile("a key");
+  expect(nodeWatchEnv()?.runCredentials).toEqual({
+    key: "a run key",
+    injectorToken: "an injector token",
+  });
+});
+
+test("the App without the run credential key or the injector token is an error", () => {
+  inCluster();
+  process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
+  process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = keyFile("a key");
+  process.env.TENBOX_SERVER_INJECTOR_TOKEN_FILE = keyFile("an injector token");
+  expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE/);
+  process.env.TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE = keyFile("  \n");
+  expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE/);
+  process.env.TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE = keyFile("a run key");
+  delete process.env.TENBOX_SERVER_INJECTOR_TOKEN_FILE;
+  expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_INJECTOR_TOKEN_FILE/);
+});
+
+test("without the App there are no run credentials", () => {
+  inCluster();
+  expect(nodeWatchEnv()?.runCredentials).toBeNull();
 });

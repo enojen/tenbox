@@ -1,27 +1,41 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { runCredentialNotFoundError } from "../../domain/errors/auth.ts";
 import { costs } from "../application/costs.ts";
 import { events } from "../application/events.ts";
 import { machineRuns } from "../application/machineRuns.ts";
 import { nodes } from "../application/nodes.ts";
+import { type RunTokenWatch, runTokens } from "../application/runTokens.ts";
 import type { Db } from "../infra/db/index.ts";
-import { type AuthEnv, requireAdmin, requireToken } from "./auth.ts";
+import { type AuthEnv, requireAdmin, requireInjector, requireToken } from "./auth.ts";
 import { costsRoute } from "./costs.ts";
 import { eventsRoute } from "./events.ts";
 import { healthRoute } from "./health.ts";
 import { METRICS_CONTENT_TYPE, metricsText } from "./metrics.ts";
 import { failBadInput, notFound, onError } from "./problems.ts";
+import { RUN_CREDENTIALS_PATH, runCredentialsRoute } from "./runCredentials.ts";
 import { taskRunsRoute } from "./runs.ts";
 
 const OPENAPI_PATH = "/openapi.json";
 const OPENAPI_VERSION = "3.1.0";
 
+export interface RunCredentialsApi {
+  watch: RunTokenWatch;
+  injectorToken: string;
+}
+
 /** The HTTP API: each route has a zod schema, and `/openapi.json` is built from them. */
-export function createApp(db: Db): OpenAPIHono<AuthEnv> {
+export function createApp(
+  db: Db,
+  credentials: RunCredentialsApi | null = null,
+): OpenAPIHono<AuthEnv> {
   const app = new OpenAPIHono<AuthEnv>({ defaultHook: failBadInput });
   app.onError(onError);
   app.notFound(notFound);
-  app.use("*", requireToken(db));
+  const injectorPaths = new Set(credentials === null ? [] : [RUN_CREDENTIALS_PATH]);
+  if (credentials !== null)
+    app.use(RUN_CREDENTIALS_PATH, requireInjector(credentials.injectorToken));
+  app.use("*", requireToken(db, injectorPaths));
   app.openapi(healthRoute, (c) => c.json({ ok: true }));
   app.openapi(eventsRoute, (c) => {
     const saved = events.save(db, { userId: c.get("user").id, events: c.req.valid("json") });
@@ -34,6 +48,14 @@ export function createApp(db: Db): OpenAPIHono<AuthEnv> {
   app.openapi(taskRunsRoute, (c) =>
     c.json({ ok: true, runs: machineRuns.list(db, c.req.valid("param").task) }),
   );
+  if (credentials !== null) {
+    app.openapi(runCredentialsRoute, async (c) => {
+      const { placeholder, host } = c.req.valid("json");
+      const value = await runTokens.resolve({ db, watch: credentials.watch, placeholder, host });
+      if (value === null) throw runCredentialNotFoundError();
+      return c.json({ ok: true, value });
+    });
+  }
   app.get("/metrics", (c) => {
     c.header("Content-Type", METRICS_CONTENT_TYPE);
     return c.body(metricsText(nodes.up(db)));

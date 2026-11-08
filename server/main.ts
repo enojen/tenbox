@@ -5,7 +5,7 @@ import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { costs } from "./application/costs.ts";
 import { nodes, type Watching } from "./application/nodes.ts";
 import { projects } from "./application/projects.ts";
-import { runTokens } from "./application/runTokens.ts";
+import { type RunTokenWatch, runTokens } from "./application/runTokens.ts";
 import { users } from "./application/users.ts";
 import { readBackupArgs } from "./commands/backup.ts";
 import { readCostsArgs } from "./commands/costs.ts";
@@ -14,7 +14,7 @@ import { readUserAddArgs } from "./commands/userAdd.ts";
 import { type Db, database } from "./infra/db/index.ts";
 import { type NodeWatchEnv, nodeWatchEnv, type ServerEnv, serverEnv } from "./infra/env.ts";
 import { kubernetes } from "./infra/kubernetes.ts";
-import { createApp } from "./routes/index.ts";
+import { createApp, type RunCredentialsApi } from "./routes/index.ts";
 
 const FAILURE_EXIT_CODE = 1;
 const USAGE =
@@ -66,23 +66,41 @@ function serve(): void {
 function serveWith(env: ServerEnv, nodeEnv: NodeWatchEnv | null): void {
   const { host, port, dbFile } = env;
   const db = database.open(dbFile);
-  const server = Bun.serve({ hostname: host, port, fetch: createApp(db).fetch });
-  const watching = nodeEnv === null ? [] : watchCluster(db, nodeEnv);
+  const credentials = nodeEnv === null ? null : runCredentialsApi(nodeEnv);
+  const server = Bun.serve({ hostname: host, port, fetch: createApp(db, credentials).fetch });
+  const watching = nodeEnv === null ? [] : watchCluster({ db, env: nodeEnv, credentials });
   stopOnSignals({ server, db, watching });
   console.error(`listening on http://${host}:${port}, docs on /docs`);
 }
 
-function watchCluster(db: Db, env: NodeWatchEnv): Watching[] {
-  const api = kubernetes.inCluster(env.kubernetesUrl);
-  const now = () => new Date();
+interface ClusterWatch {
+  db: Db;
+  env: NodeWatchEnv;
+  credentials: RunCredentialsApi | null;
+}
+
+function runCredentialsApi(env: NodeWatchEnv): RunCredentialsApi | null {
+  if (env.githubApp === null || env.runCredentials === null) return null;
+  const watch: RunTokenWatch = {
+    kubernetes: kubernetes.inCluster(env.kubernetesUrl),
+    github: env.githubApp,
+    key: env.runCredentials.key,
+    now: () => new Date(),
+    tokens: new Map(),
+  };
+  return { watch, injectorToken: env.runCredentials.injectorToken };
+}
+
+function watchCluster(input: ClusterWatch): Watching[] {
+  const { db, env, credentials } = input;
   const watchingNodes = nodes.watch(db, {
-    kubernetes: api,
+    kubernetes: kubernetes.inCluster(env.kubernetesUrl),
     hetzner: env.hetzner,
-    now,
+    now: () => new Date(),
     volumeEnv: env.volumes,
   });
-  if (env.githubApp === null) return [watchingNodes];
-  return [watchingNodes, runTokens.watch(db, { kubernetes: api, github: env.githubApp, now })];
+  if (credentials === null) return [watchingNodes];
+  return [watchingNodes, runTokens.watch(db, credentials.watch)];
 }
 
 /** What runs until a stop signal. */

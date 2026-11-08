@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # The box's main process. Reads the task from the machine env (TENBOX_TASK, TENBOX_PROJECT,
 # TENBOX_REPO, TENBOX_CMD, and TENBOX_BASE, the project's base branch to check out) and the
-# secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN, TRACKER_API_KEY, NTFY_URL,
-# CLAUDE_CREDENTIALS); PROJECT_GITHUB_TOKEN, the project's own token,
-# wins over GITHUB_TOKEN, the run token, when it is set and not empty. It prepares the volume
+# secrets from the app (GITHUB_TOKEN, TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS);
+# GITHUB_TOKEN is the run's placeholder, which the injector behind the egress proxy swaps for
+# the run token; TENBOX_INJECTOR_CA is the file of the injector's CA, which git, gh, curl, node
+# and bun then trust next to the system roots. It prepares the volume
 # at /home/tenbox and runs the tenbox command in the foreground, as tenbox, in the project's
 # main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
 # one JSON object). The command may
@@ -15,7 +16,7 @@
 set -euo pipefail
 : "${TENBOX_TASK:?}" "${TENBOX_PROJECT:?}" "${TENBOX_REPO:?}" "${TENBOX_CMD:?}"
 : "${CLAUDE_CREDENTIALS:?}"
-: "${PROJECT_GITHUB_TOKEN:-${GITHUB_TOKEN:?no GitHub token: no run token and no project token}}"
+: "${GITHUB_TOKEN:?no GitHub token: the App is not installed on the repository}"
 IDLE_MINUTES="${IDLE_MINUTES:-1}"
 CHECK_SECONDS=30
 
@@ -30,6 +31,11 @@ done
 for name in NODE_USE_ENV_PROXY DISABLE_TELEMETRY DISABLE_ERROR_REPORTING; do
   if [ -n "${!name:-}" ]; then box_env+=("$name=${!name}"); fi
 done
+if [ -n "${TENBOX_INJECTOR_CA:-}" ]; then
+  ca_bundle=/tmp/tenbox-ca-bundle.pem
+  cat /etc/ssl/certs/ca-certificates.crt "$TENBOX_INJECTOR_CA" > "$ca_bundle"
+  box_env+=(SSL_CERT_FILE="$ca_bundle" GIT_SSL_CAINFO="$ca_bundle" NODE_EXTRA_CA_CERTS="$TENBOX_INJECTOR_CA")
+fi
 clean_env() { env -i "${box_env[@]}" "$@"; }
 log() { echo "tenbox-boot: $*"; }
 
@@ -57,7 +63,7 @@ setup_claude() {
 # 3. GitHub: gh and git push use the token; commits carry TENBOX_GIT_NAME and TENBOX_GIT_EMAIL,
 # else the token owner's name.
 setup_github() {
-  clean_env gh auth login --with-token <<< "${PROJECT_GITHUB_TOKEN:-$GITHUB_TOKEN}"
+  clean_env gh auth login --with-token <<< "$GITHUB_TOKEN"
   clean_env gh auth setup-git
   if [ -n "${TENBOX_GIT_NAME:-}" ] && [ -n "${TENBOX_GIT_EMAIL:-}" ]; then
     clean_env git config --global user.name "$TENBOX_GIT_NAME"
@@ -153,7 +159,7 @@ install_tenbox
 read_project_env
 
 # The secrets now live in their files; the tenbox command does not get them in its env.
-unset GITHUB_TOKEN PROJECT_GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
+unset GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
 log "ready at $(date -u +%FT%TZ)"
 
 : > /var/log/tenbox-run.log

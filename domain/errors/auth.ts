@@ -7,3 +7,10 @@ export function unauthorizedError(): TenboxError {
 export function forbiddenError(what: string): TenboxError {
   return new TenboxError(`${what} is only for an admin of an organization`, "forbidden");
 }
+
+export function runCredentialNotFoundError(): TenboxError {
+  return new TenboxError(
+    "no open run has this placeholder for this host",
+    "run-credential-not-found",
+  );
+}

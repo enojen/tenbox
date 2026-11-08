@@ -27,7 +27,8 @@ and `ls` lists the Jobs labeled `app=tenyard`. The server's Job watch stores a `
 Job pod and `GET /tasks/{task}/runs` lists them (#94); for a `close` pod that exited 0 it also stores
 `close.output`, the last JSON object of the box log; its volume watch deletes a closed task's volume after
 a grace period and sends one `idle-volume` notice for an open one with no run for 7 days; its run token watch
-writes a GitHub App token of one repository for each open Job. No sandbox yet.
+writes the placeholder of each open Job, and `POST /run-credentials` gives the injector of tenyard the
+GitHub App token of that Job's repository for it. No sandbox yet.
 
 ## Rules
 
@@ -110,7 +111,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
 | idle-volume | The notification state the server's volume watch sends for an open task's volume (no `close.output`, or a run after it) whose newest run ended 7 or more days ago; once per idle stretch, kept as event `volume.idle:<uid>:<stretch start>`; the detail is `<days> days`, the next command `tenbox machine rm <id>` (`VolumeNotice`). |
-| run token | The GitHub token of one machine run: a GitHub App installation token for the repository of the Job's project only, with contents, pull requests and issues write, ended by GitHub after one hour; the server writes it to the Secret `<job name>-github`, which the Job owns, and leaves it empty when the App is not installed there (`runTokens.poller`, `githubRepo`). |
+| run token | The GitHub token of one machine run: a GitHub App installation token for the repository of the Job's project only, with contents, pull requests and issues write, ended by GitHub after one hour; the box never holds it: the server gives it to the injector for the run's placeholder (`runTokens.resolve`, `githubRepo`). GitHub goes only through the App. |
+| run placeholder | What the box holds instead of its run token: `tbxph_` and the HMAC of the Job's uid with the server's key; the server writes it to the Secret `<job name>-github`, which the Job owns, empty when the App is not installed there; the injector behind the egress proxy swaps it for the run token (`runPlaceholder`, `runTokens.poller`). |
 | volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). The same watch deletes the PVC of a closed task (a `close.output` newer than the volume, no run created after it, no pod listed) once `TENBOX_SERVER_VOLUME_GRACE_DAYS` (default 3) have passed (`volumeAction`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |

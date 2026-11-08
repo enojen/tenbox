@@ -95,10 +95,6 @@ export function noMachineRunError(task: string): TenboxError {
   );
 }
 
-export function githubTokenFileError(file: string, reason: string): TenboxError {
-  return new TenboxError(`machine.github_token_file ${file}: ${reason}`, "github-token-file");
-}
-
 export function machineBusyError(task: string, jobs: string[]): TenboxError {
   return new TenboxError(
     `task ${task} still runs on the cluster: ${jobs.join(", ")}; wait until it ends`,

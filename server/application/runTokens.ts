@@ -1,17 +1,32 @@
 import { errorMessage } from "../../domain/errors/index.ts";
-import { githubRepo, runTokenSecret } from "../../domain/runTokens.ts";
+import {
+  GITHUB_HOSTS,
+  githubRepo,
+  runPlaceholder,
+  runTokenSecret,
+} from "../../domain/runTokens.ts";
 import type { Db } from "../infra/db/index.ts";
-import { type GitHubApp, github } from "../infra/github.ts";
+import { type GitHubApp, github, type RepoToken } from "../infra/github.ts";
 import { type KubernetesApi, kubernetes, type OpenJob } from "../infra/kubernetes.ts";
 import { projectsRepository } from "../infra/repositories/projects.ts";
 import type { Watching } from "./nodes.ts";
 
 const POLL_INTERVAL_MS = 5000;
+const RENEW_BEFORE_MS = 600_000;
 
-interface RunTokenWatch {
+export interface RunTokenWatch {
   kubernetes: KubernetesApi;
   github: GitHubApp;
+  key: string;
   now: () => Date;
+  tokens: Map<string, RepoToken>;
+}
+
+interface RunCredentialRequest {
+  db: Db;
+  watch: RunTokenWatch;
+  placeholder: string;
+  host: string;
 }
 
 interface JobToken {
@@ -69,16 +84,44 @@ async function writeLogged(input: JobToken): Promise<boolean> {
 }
 
 async function write(input: JobToken): Promise<void> {
-  const { db, job } = input;
-  const { kubernetes: api, github: app, now } = input.input;
-  const project = projectsRepository.findById(db, job.projectId);
-  const repo = project === null ? null : githubRepo(project.repo);
-  const token = await (repo === null ? null : github.repoToken({ app, repo, now: now() }));
+  const { job } = input;
+  const { kubernetes: api, key } = input.input;
+  const token = await mint(input);
+  if (token !== null) input.input.tokens.set(job.uid, token);
   const name = runTokenSecret(job.name);
-  await kubernetes.createSecret({ api, name, job, data: { token: token?.token ?? "" } });
-  const to = repo === null ? "no repository" : `${repo.owner}/${repo.name}`;
-  const until = token === null ? "no App token" : `until ${token.expiresAt}`;
-  console.log(`run token of ${job.name}: ${to}, ${until}`);
+  const value = token === null ? "" : runPlaceholder(key, job.uid);
+  await kubernetes.createSecret({ api, name, job, data: { token: value } });
+  const until = token === null ? "no App token" : `token until ${token.expiresAt}`;
+  console.log(`run token of ${job.name}: ${until}`);
 }
 
-export const runTokens = { poller, watch };
+function mint(input: JobToken): Promise<RepoToken | null> {
+  const { db, job } = input;
+  const { github: app, now } = input.input;
+  const project = projectsRepository.findById(db, job.projectId);
+  const repo = project === null ? null : githubRepo(project.repo);
+  return repo === null ? Promise.resolve(null) : github.repoToken({ app, repo, now: now() });
+}
+
+async function resolve(input: RunCredentialRequest): Promise<string | null> {
+  const { db, watch: watching, placeholder, host } = input;
+  if (!GITHUB_HOSTS.includes(host)) return null;
+  const open = await kubernetes.openJobs(watching.kubernetes);
+  const job = open.find((candidate) => runPlaceholder(watching.key, candidate.uid) === placeholder);
+  if (job === undefined) return null;
+  const cached = watching.tokens.get(job.uid);
+  const left = cached === undefined ? 0 : Date.parse(cached.expiresAt) - watching.now().getTime();
+  if (cached !== undefined && left > RENEW_BEFORE_MS) return cached.token;
+  const token = await mint({ db, job, input: watching });
+  if (token === null) return null;
+  forgetEnded(watching.tokens, open);
+  watching.tokens.set(job.uid, token);
+  return token.token;
+}
+
+function forgetEnded(tokens: Map<string, RepoToken>, open: OpenJob[]): void {
+  const uids = new Set(open.map((job) => job.uid));
+  for (const uid of tokens.keys()) if (!uids.has(uid)) tokens.delete(uid);
+}
+
+export const runTokens = { poller, watch, resolve };

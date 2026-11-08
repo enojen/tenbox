@@ -1,3 +1,5 @@
+import { hashes } from "./utils.ts";
+
 export interface GitHubRepo {
   owner: string;
   name: string;
@@ -20,4 +22,12 @@ export function githubRepo(text: string): GitHubRepo | null {
 
 export function runTokenSecret(job: string): string {
   return `${job}-github`;
+}
+
+const RUN_PLACEHOLDER_PREFIX = "tbxph_";
+
+export const GITHUB_HOSTS: readonly string[] = ["github.com", "api.github.com"];
+
+export function runPlaceholder(key: string, jobUid: string): string {
+  return `${RUN_PLACEHOLDER_PREFIX}${hashes.hmacSha256Base64Url(key, jobUid)}`;
 }
