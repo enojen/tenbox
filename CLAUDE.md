@@ -26,7 +26,8 @@ the login sync to the Secrets of the box (`machines/login/`), and `tenbox machin
 and `ls` lists the Jobs labeled `app=tenyard`. The server's Job watch stores a `job.finished` per
 Job pod and `GET /tasks/{task}/runs` lists them (#94); for a `close` pod that exited 0 it also stores
 `close.output`, the last JSON object of the box log; its volume watch deletes a closed task's volume after
-a grace period and sends one `idle-volume` notice for an open one with no run for 7 days. No sandbox yet.
+a grace period and sends one `idle-volume` notice for an open one with no run for 7 days; its run token watch
+writes a GitHub App token of one repository for each open Job. No sandbox yet.
 
 ## Rules
 
@@ -109,6 +110,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
 | idle-volume | The notification state the server's volume watch sends for an open task's volume (no `close.output`, or a run after it) whose newest run ended 7 or more days ago; once per idle stretch, kept as event `volume.idle:<uid>:<stretch start>`; the detail is `<days> days`, the next command `tenbox machine rm <id>` (`VolumeNotice`). |
+| run token | The GitHub token of one machine run: a GitHub App installation token for the repository of the Job's project only, with contents, pull requests and issues write, ended by GitHub after one hour; the server writes it to the Secret `<job name>-github`, which the Job owns, and leaves it empty when the App is not installed there (`runTokens.poller`, `githubRepo`). |
 | volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). The same watch deletes the PVC of a closed task (a `close.output` newer than the volume, no run created after it, no pod listed) once `TENBOX_SERVER_VOLUME_GRACE_DAYS` (default 3) have passed (`volumeAction`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
@@ -196,9 +198,9 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
-            nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
+            nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch; runTokens, the run token watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
             infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line, the task PVCs,
-            hetzner: one server and the volume price, db/ with the drizzle
+            hetzner: one server and the volume price, github: the App's installation token, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)

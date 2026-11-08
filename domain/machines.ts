@@ -34,3 +34,19 @@ export function oomKilledInLog(text: string): boolean {
   const count = /oom_kill (\d+)\s*$/.exec(last)?.[1];
   return count !== undefined && Number(count) > 0;
 }
+
+export interface GitHubUser {
+  login: string;
+  id: number;
+  name: string | null;
+}
+
+export interface GitAuthor {
+  name: string;
+  email: string;
+}
+
+export function gitAuthor(user: GitHubUser): GitAuthor {
+  const { login, id, name } = user;
+  return { name: name ?? login, email: `${id}+${login}@users.noreply.github.com` };
+}

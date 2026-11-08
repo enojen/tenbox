@@ -82,9 +82,11 @@ uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API
 `CLICKUP_API_KEY`), `ntfy_url` from `notify.ntfy`, and `github_token` from the file named by
 `machine.github_token_file` (a `~/` path, meant for `tenbox.local.yaml`; trimmed; a missing or
 empty file refuses with `github-token-file`; without the key the Secret has no `github_token`).
-The Job passes it as `PROJECT_GITHUB_TOKEN` (optional) next to the shared `GITHUB_TOKEN`; the box
-uses the project token when it is set and not empty, else the shared one, and unsets both before
-the command. A project without an `id` in its
+The Job passes it as `PROJECT_GITHUB_TOKEN` (optional) next to `GITHUB_TOKEN`, the run token the
+server writes for the Job (empty when the GitHub App is not installed on the repository); the box
+uses the project token when it is set and not empty, else the run token, stops at start with
+neither, and unsets both before the command. Commits carry `TENBOX_GIT_NAME` and
+`TENBOX_GIT_EMAIL` of the Job, else the name of the token's user. A project without an `id` in its
 `tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
 does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
 volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.

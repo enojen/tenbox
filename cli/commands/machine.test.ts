@@ -4,6 +4,7 @@ import { z } from "zod";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
+import { fakeTool } from "../test/fakeTools.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
@@ -23,6 +24,7 @@ const GITHUB_TOKEN = "github_pat_SECRET";
 const NTFY_URL = "https://ntfy.sh/secret-topic";
 const JOB_NAME = /^task-ten-1-\d{4}-\d{6}$/;
 const CREATED = "2026-10-21T10:00:00Z";
+const GITHUB_USER = { login: "octo", id: 42, name: "Octo Cat" };
 
 let project: TempProject;
 let claudeDir: string;
@@ -50,6 +52,8 @@ spec:
             - { name: TENBOX_PROJECT, value: "__PROJECT__" }
             - { name: TENBOX_REPO, value: "__REPO__" }
             - { name: TENBOX_BASE, value: "__BASE__" }
+            - { name: TENBOX_GIT_NAME, value: "__GIT_NAME__" }
+            - { name: TENBOX_GIT_EMAIL, value: "__GIT_EMAIL__" }
             - name: TENBOX_CMD
               value: |-
                 __CMD__
@@ -366,6 +370,9 @@ describe("machine", () => {
     await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
     await writeLogin(Date.now() + DAY_MS);
     env.KUBECONFIG = kubeFile;
+    fakeTool("gh", (args) =>
+      args.join(" ") === "api user" ? { stdout: JSON.stringify(GITHUB_USER) } : { code: 1 },
+    );
   });
 
   afterEach(() => api.stop());
@@ -386,6 +393,8 @@ describe("machine", () => {
       TENBOX_PROJECT: "demo",
       TENBOX_REPO: "https://github.com/o/demo.git",
       TENBOX_BASE: "main",
+      TENBOX_GIT_NAME: "Octo Cat",
+      TENBOX_GIT_EMAIL: "42+octo@users.noreply.github.com",
       TENBOX_CMD: "tenbox build TEN-1",
       TENBOX_ENV: "{}",
     });
@@ -400,6 +409,24 @@ describe("machine", () => {
       url: `${api.url}${JOBS_PATH}/${meta.name}`,
     });
     expect(run.out).not.toContain(TOKEN);
+  });
+
+  test("a GitHub user with no name is the author by login", async () => {
+    fakeTool("gh", () => ({ stdout: JSON.stringify({ ...GITHUB_USER, name: null }) }));
+    const run = await build();
+    expect(run.code).toBe(0);
+    const env = jobEnv(posts().find((c) => c.path === JOBS_PATH));
+    expect([env.TENBOX_GIT_NAME, env.TENBOX_GIT_EMAIL]).toEqual([
+      "octo",
+      "42+octo@users.noreply.github.com",
+    ]);
+  });
+
+  test("machine run stops before the cluster when gh cannot name the user", async () => {
+    fakeTool("gh", () => ({ code: 1, stderr: "not logged in" }));
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "gh"]);
+    expect(posts()).toEqual([]);
   });
 
   test("machine run on k8s keeps an existing PVC", async () => {

@@ -3,7 +3,7 @@
 # TENBOX_REPO, TENBOX_CMD, and TENBOX_BASE, the project's base branch to check out) and the
 # secrets from the app (GITHUB_TOKEN, PROJECT_GITHUB_TOKEN, TRACKER_API_KEY, NTFY_URL,
 # CLAUDE_CREDENTIALS); PROJECT_GITHUB_TOKEN, the project's own token,
-# wins over GITHUB_TOKEN, the shared one, when it is set and not empty. It prepares the volume
+# wins over GITHUB_TOKEN, the run token, when it is set and not empty. It prepares the volume
 # at /home/tenbox and runs the tenbox command in the foreground, as tenbox, in the project's
 # main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
 # one JSON object). The command may
@@ -14,7 +14,8 @@
 # /var/log/tenbox-run.log.
 set -euo pipefail
 : "${TENBOX_TASK:?}" "${TENBOX_PROJECT:?}" "${TENBOX_REPO:?}" "${TENBOX_CMD:?}"
-: "${GITHUB_TOKEN:?}" "${CLAUDE_CREDENTIALS:?}"
+: "${CLAUDE_CREDENTIALS:?}"
+: "${PROJECT_GITHUB_TOKEN:-${GITHUB_TOKEN:?no GitHub token: no run token and no project token}}"
 IDLE_MINUTES="${IDLE_MINUTES:-1}"
 CHECK_SECONDS=30
 
@@ -53,10 +54,16 @@ setup_claude() {
     > "$home/.claude.json"
 }
 
-# 3. GitHub: gh and git push use the token; commits carry the token owner's name.
+# 3. GitHub: gh and git push use the token; commits carry TENBOX_GIT_NAME and TENBOX_GIT_EMAIL,
+# else the token owner's name.
 setup_github() {
   clean_env gh auth login --with-token <<< "${PROJECT_GITHUB_TOKEN:-$GITHUB_TOKEN}"
   clean_env gh auth setup-git
+  if [ -n "${TENBOX_GIT_NAME:-}" ] && [ -n "${TENBOX_GIT_EMAIL:-}" ]; then
+    clean_env git config --global user.name "$TENBOX_GIT_NAME"
+    clean_env git config --global user.email "$TENBOX_GIT_EMAIL"
+    return
+  fi
   local login id name
   read -r login id name < <(clean_env gh api user --jq '[.login, .id, (.name // .login)] | @tsv')
   clean_env git config --global user.name "$name"

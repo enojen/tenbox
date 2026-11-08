@@ -5,6 +5,7 @@ import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { costs } from "./application/costs.ts";
 import { nodes, type Watching } from "./application/nodes.ts";
 import { projects } from "./application/projects.ts";
+import { runTokens } from "./application/runTokens.ts";
 import { users } from "./application/users.ts";
 import { readBackupArgs } from "./commands/backup.ts";
 import { readCostsArgs } from "./commands/costs.ts";
@@ -66,32 +67,36 @@ function serveWith(env: ServerEnv, nodeEnv: NodeWatchEnv | null): void {
   const { host, port, dbFile } = env;
   const db = database.open(dbFile);
   const server = Bun.serve({ hostname: host, port, fetch: createApp(db).fetch });
-  const watching = nodeEnv === null ? null : watchNodes(db, nodeEnv);
+  const watching = nodeEnv === null ? [] : watchCluster(db, nodeEnv);
   stopOnSignals({ server, db, watching });
   console.error(`listening on http://${host}:${port}, docs on /docs`);
 }
 
-function watchNodes(db: Db, env: NodeWatchEnv): Watching {
-  return nodes.watch(db, {
-    kubernetes: kubernetes.inCluster(env.kubernetesUrl),
+function watchCluster(db: Db, env: NodeWatchEnv): Watching[] {
+  const api = kubernetes.inCluster(env.kubernetesUrl);
+  const now = () => new Date();
+  const watchingNodes = nodes.watch(db, {
+    kubernetes: api,
     hetzner: env.hetzner,
-    now: () => new Date(),
+    now,
     volumeEnv: env.volumes,
   });
+  if (env.githubApp === null) return [watchingNodes];
+  return [watchingNodes, runTokens.watch(db, { kubernetes: api, github: env.githubApp, now })];
 }
 
 /** What runs until a stop signal. */
 interface Running {
   server: Server<undefined>;
   db: Db;
-  watching: Watching | null;
+  watching: Watching[];
 }
 
 /** Lets open requests and a running poll finish, then closes the database; the process then exits with 0. */
 function stopOnSignals(running: Running): void {
   const { server, db, watching } = running;
   const stop = async () => {
-    await watching?.stop();
+    await Promise.all(watching.map((watch) => watch.stop()));
     await server.stop();
     database.close(db);
   };

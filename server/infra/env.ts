@@ -1,6 +1,8 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { envError } from "../../domain/errors/manifest.ts";
+import type { GitHubApp } from "./github.ts";
 
 export interface ServerEnv {
   /** `TENBOX_SERVER_HOST`, default `localhost`: loopback only, as tokens travel over plain HTTP. */
@@ -33,6 +35,7 @@ export interface NodeWatchEnv {
   kubernetesUrl: string;
   hetzner: HetznerEnv;
   volumes: VolumeEnv;
+  githubApp: GitHubApp | null;
 }
 
 /** One port variable, its value and the port it stands for when unset. */
@@ -48,6 +51,9 @@ const DEFAULT_KUBERNETES_PORT = 443;
 const DEFAULT_HETZNER_URL = "https://api.hetzner.cloud/v1";
 const MAX_PORT = 65535;
 const DEFAULT_GRACE_DAYS = 3;
+const DEFAULT_GITHUB_URL = "https://api.github.com";
+const APP_ID = "TENBOX_SERVER_GITHUB_APP_ID";
+const APP_KEY_FILE = "TENBOX_SERVER_GITHUB_APP_KEY_FILE";
 const WHOLE_NUMBER = /^[0-9]+$/;
 /** The ntfy topic is a secret: anyone who knows it reads the notices, so an error never shows it. */
 const HIDDEN = "(not shown)";
@@ -85,7 +91,25 @@ export function nodeWatchEnv(): NodeWatchEnv | null {
     kubernetesUrl: `https://${host.includes(":") ? `[${host}]` : host}:${servicePort}`,
     hetzner: { url: process.env.HCLOUD_ENDPOINT ?? DEFAULT_HETZNER_URL, token },
     volumes: volumeEnv(),
+    githubApp: githubApp(),
   };
+}
+
+function githubApp(): GitHubApp | null {
+  const appId = process.env[APP_ID]?.trim() ?? "";
+  const keyFile = process.env[APP_KEY_FILE]?.trim() ?? "";
+  if (appId === "" && keyFile === "") return null;
+  if (!WHOLE_NUMBER.test(appId)) throw envError(APP_ID, appId, "the number of a GitHub App");
+  if (keyFile === "") throw envError(APP_KEY_FILE, keyFile, "the file of the App's private key");
+  return { url: process.env.GITHUB_API_URL ?? DEFAULT_GITHUB_URL, appId, key: readKey(keyFile) };
+}
+
+function readKey(file: string): string {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    throw envError(APP_KEY_FILE, file, "a readable file with the App's private key");
+  }
 }
 
 function volumeEnv(): VolumeEnv {

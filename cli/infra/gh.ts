@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { ghError } from "../../domain/errors/tools.ts";
+import type { GitHubUser } from "../../domain/machines.ts";
 import { bodyHasLine, type CiCheck, parseCiChecks } from "../../domain/prs.ts";
 import { jsons } from "../../domain/utils.ts";
 import { processes } from "./processes.ts";
@@ -45,6 +46,12 @@ interface NewIssue {
 }
 
 /** The output of `gh issue view <n> --json number,title,body,url,state`. */
+const GitHubUserSchema = z.object({
+  login: z.string().min(1),
+  id: z.number().int(),
+  name: z.string().nullable(),
+});
+
 const IssueSchema = z.object({
   number: z.number(),
   title: z.string(),
@@ -81,6 +88,7 @@ const ISSUE_URL = /\/issues\/(\d+)$/;
 
 /** The GitHub CLI commands Tenbox uses, run in the directory of the repository. */
 export const gh = {
+  user,
   findPr,
   isMergedAt,
   countParents,
@@ -178,6 +186,11 @@ async function run(args: string[], cwd: string): Promise<string> {
   if (result.code === 0) return result.stdout.trim();
   const reason = result.stderr.trim() || result.stdout.trim();
   throw ghError(args.slice(0, SUBCOMMAND_WORDS).join(" "), reason);
+}
+
+async function user(dir: string): Promise<GitHubUser> {
+  const out = await run(["api", "user"], dir);
+  return checkOutput({ schema: GitHubUserSchema, subcommand: "api user", stdout: out });
 }
 
 /** The PR of the branch, or null when there is none or `gh` cannot answer (missing, no login). */
