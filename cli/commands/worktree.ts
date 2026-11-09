@@ -4,7 +4,7 @@ import { projects } from "../application/projects.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import type { WorktreeResult } from "./results.ts";
 
-export interface GroupWorktreeInput {
+interface GroupWorktreeInput {
   id: TaskId;
   group: number;
 }

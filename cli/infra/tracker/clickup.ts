@@ -58,7 +58,7 @@ const TaskRefSchema = z.object({ id: z.string(), url: z.string() });
 /** The output of `GET /list/{id}/task`: the open tasks of the list. */
 const ListTasksSchema = z.object({ tasks: z.array(TaskRefSchema.extend({ name: z.string() })) });
 
-export type ClickupStatus = z.infer<typeof ClickupStatusSchema>;
+type ClickupStatus = z.infer<typeof ClickupStatusSchema>;
 type Task = z.infer<typeof TaskSchema>;
 
 interface Connection {
@@ -200,7 +200,7 @@ async function getComments(connection: Connection, id: string): Promise<TrackerC
  * The list status to set: the configured name, else the default one of `DEFAULT_NAMES`. Null for
  * an optional status the project does not name and the list lacks: the list does not use it.
  */
-export function pickStatus(choice: StatusChoice): string | null {
+function pickStatus(choice: StatusChoice): string | null {
   const sorted = [...choice.statuses].sort((a, b) => a.orderindex - b.orderindex);
   const configured = choice.names[choice.status];
   const name = configured ?? DEFAULT_NAMES[choice.status];

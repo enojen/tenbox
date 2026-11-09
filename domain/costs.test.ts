@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
-import { type CostWindow, costReport, type StoredEvent } from "./costs.ts";
-import type { JobFinished } from "./events.ts";
+import { type CostWindow, costReport } from "./costs.ts";
+import type { JobFinished, NodeEvent, VolumeEvent } from "./events.ts";
+
+/** A node or volume event and the `at` of its row, as the report reads it. */
+interface StoredEvent {
+  event: NodeEvent | VolumeEvent;
+  at: string;
+}
 
 const WINDOW: CostWindow = { from: "2026-11-02T00:00:00Z", to: "2026-11-09T00:00:00Z" };
 const PRICE = { net: "0.0076", gross: "0.0090" };

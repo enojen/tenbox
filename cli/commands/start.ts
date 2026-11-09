@@ -15,7 +15,7 @@ import { env } from "../infra/env.ts";
 import { makeTracker } from "../infra/tracker/index.ts";
 import type { StartResult } from "./results.ts";
 
-export interface StartInput {
+interface StartInput {
   id: TaskId;
   /** With a title, no tracker is needed. */
   title: string | undefined;

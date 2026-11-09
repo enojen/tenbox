@@ -5,7 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { taskId } from "../../domain/ids.ts";
 import { files } from "../infra/files.ts";
-import { GH_STATE, type GhPrState } from "../infra/gh.ts";
+import { GH_STATE } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { type CliRun, tenbox } from "../test/cli.ts";
 import { type FakeAnswer, type FakeTool, fakeTool } from "../test/fakeTools.ts";
@@ -59,6 +59,8 @@ interface FakePr {
   title: string;
   body: string;
 }
+
+type GhPrState = (typeof GH_STATE)[keyof typeof GH_STATE];
 
 const flagOf = (args: string[], name: string): string => args[args.indexOf(name) + 1] ?? "";
 

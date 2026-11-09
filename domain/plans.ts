@@ -21,7 +21,7 @@ const exampleText = text.superRefine((value, ctx) => {
 });
 
 /** The longest `plan.md` that `tenbox plan done` and `tenbox approve` accept. */
-export const PLAN_MD_MAX_LINES = 60;
+const PLAN_MD_MAX_LINES = 60;
 
 /** `id` is the two-digit part number of the part file, `01`. */
 export const PlanPartSchema = z.object({
@@ -146,7 +146,7 @@ export function planLines(plan: PlanResult): string[] {
 }
 
 type Example = z.infer<typeof ExampleSchema>;
-export type Question = z.infer<typeof QuestionSchema>;
+type Question = z.infer<typeof QuestionSchema>;
 
 /** A heading, then each entry indented; `none` for no entry. */
 function section(heading: string, entries: string[][]): string[] {

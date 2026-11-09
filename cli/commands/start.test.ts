@@ -8,7 +8,9 @@ import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { type FakeClaude, makeFakeClaude, notificationHooks, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
-import { type StartInput, startTask } from "./start.ts";
+import { startTask } from "./start.ts";
+
+type StartInput = Parameters<typeof startTask> extends [infer Input] ? Input : never;
 
 let project: TempProject;
 let taskWorktree: string;

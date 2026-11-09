@@ -5,7 +5,7 @@ import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
-import { ensureGroupWorktree, type GroupWorktreeInput } from "./worktree.ts";
+import { ensureGroupWorktree } from "./worktree.ts";
 
 const RECIPE = { model: "sonnet", effort: "medium", lenses: [], tier: "fast" };
 const group = (id: number, needs: number[]) => ({
@@ -20,7 +20,7 @@ let project: TempProject;
 let taskWorktree: string;
 let startCwd: string;
 
-const input = (n: number): GroupWorktreeInput => ({ id: taskId("T-1"), group: n });
+const input = (n: number) => ({ id: taskId("T-1"), group: n });
 const groupPath = (n: number) => path.join(project.wtRoot, "demo", `T-1-${n}`);
 
 async function savePlan(needs: number[][]): Promise<void> {

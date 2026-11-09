@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { z } from "zod";
 import {
   assertKindFits,
   type BuildResult,
@@ -9,7 +10,7 @@ import {
   readBuild,
 } from "./builds.ts";
 import type { DiffFile } from "./diffs.ts";
-import type { Group, Recipe } from "./groups.ts";
+import type { Group, GroupSchema } from "./groups.ts";
 import type { TaskKind } from "./kinds.ts";
 import type { PlanPart, PlanResult } from "./plans.ts";
 
@@ -70,6 +71,8 @@ test("an answered card whose time is not an ISO date-time is bad-input", () => {
     expect.objectContaining({ code: "bad-input" }),
   );
 });
+
+type Recipe = z.infer<typeof GroupSchema.shape.recipe>;
 
 const RECIPE: Recipe = {
   model: "opus",
