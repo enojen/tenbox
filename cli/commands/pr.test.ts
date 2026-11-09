@@ -60,8 +60,6 @@ interface FakePr {
   body: string;
 }
 
-type GhPrState = (typeof GH_STATE)[keyof typeof GH_STATE];
-
 const flagOf = (args: string[], name: string): string => args[args.indexOf(name) + 1] ?? "";
 
 /** The fake `gh` of these tests: it logs its calls and keeps the PRs it creates in `prs.json`. */
@@ -149,7 +147,7 @@ async function installGh() {
       const log = await files.read(path.join(state, "calls.log"));
       return log ?? "";
     },
-    setState: async (branch: string, next: GhPrState) => {
+    setState: async (branch: string, next: string) => {
       const prs = await read();
       for (const pr of prs) if (pr.headRefName === branch) pr.state = next;
       await files.write(db, JSON.stringify(prs));

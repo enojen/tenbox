@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import type { z } from "zod";
-import type { GroupSchema } from "./groups.ts";
+import type { Group } from "./groups.ts";
 import { taskId } from "./ids.ts";
 import {
   checkPlanMd,
@@ -152,20 +151,20 @@ test("planLines says none for an empty list", () => {
     "  none",
   ]);
 });
-type Recipe = z.infer<typeof GroupSchema.shape.recipe>;
-
-const recipe: Recipe = {
-  model: "sonnet",
-  effort: "medium",
-  lenses: [],
-  tier: "fast",
+const GROUP_1: Group = {
+  id: 1,
+  name: "feat: group 1",
+  parts: ["01"],
+  needs: [],
+  recipe: { model: "sonnet", effort: "medium", lenses: [], tier: "fast" },
 };
-const group = (id: number, parts: string[], needs: number[]) => ({
+const recipe = GROUP_1.recipe;
+const group = (id: number, parts: string[], needs: number[]): Group => ({
+  ...GROUP_1,
   id,
   name: `feat: group ${id}`,
   parts,
   needs,
-  recipe,
 });
 const twoGroups = [group(1, ["01"], []), group(2, ["02"], [1])];
 
