@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import type { Server } from "bun";
 import { z } from "zod";
-import type { ListedPod } from "../../domain/events.ts";
 import { type Db, database } from "../infra/db/index.ts";
 import type { KubernetesApi } from "../infra/kubernetes.ts";
 import { createApp } from "../routes/index.ts";
@@ -44,6 +43,7 @@ interface Fakes {
   logCalls: string[];
   logFails: boolean;
   kubernetes: KubernetesApi;
+  poll: () => Promise<void>;
 }
 
 const roots: string[] = [];
@@ -135,7 +135,9 @@ function setup(): Fakes {
     logCalls: [],
     logFails: false,
     kubernetes: { url: "", tokenFile, caFile },
+    poll: () => Promise.resolve(),
   };
+  fakes.poll = machineRuns.poller(db, { kubernetes: fakes.kubernetes, now: () => POLL_AT });
   const cluster = Bun.serve({ port: 0, fetch: (request) => answer(fakes, request) });
   servers.push(cluster);
   fakes.kubernetes.url = `http://127.0.0.1:${cluster.port}`;
@@ -160,16 +162,12 @@ function bodies(db: Db): Record<string, unknown>[] {
   return rows(db).map((row) => JSON.parse(row.body));
 }
 
-function pollOnce(fakes: Fakes, seen: ListedPod[] = []): Promise<ListedPod[]> {
-  return machineRuns.poll(fakes.db, { kubernetes: fakes.kubernetes, seen, at: POLL_AT });
-}
-
 const ENDED: FakePod = { uid: "uid-1", name: `${JOB}-abcde`, exitCode: 1 };
 
 test("stores job.finished for an ended box pod", async () => {
   const fakes = setup();
   fakes.pods = [ENDED, { uid: "uid-2", name: `${JOB}-fghij` }];
-  await pollOnce(fakes);
+  await fakes.poll();
   const [row, ...rest] = rows(fakes.db);
   expect(rest).toEqual([]);
   expect(row).toMatchObject({
@@ -203,8 +201,8 @@ test("stores job.finished for an ended box pod", async () => {
 test("second poll stores nothing twice", async () => {
   const fakes = setup();
   fakes.pods = [ENDED];
-  const seen = await pollOnce(fakes);
-  await pollOnce(fakes, seen);
+  await fakes.poll();
+  await fakes.poll();
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-1"]);
   expect(fakes.logCalls).toEqual([`${JOB}-abcde`]);
 });
@@ -227,7 +225,7 @@ test("oom from reason or boot log line", async () => {
       log: "tenbox-boot: memory peak 300 MiB, cpu 5 s, oom_kill 0\n",
     },
   ];
-  await pollOnce(fakes);
+  await fakes.poll();
   const oom = Object.fromEntries(bodies(fakes.db).map((body) => [body.pod, body.oom]));
   expect(oom).toEqual({ "by-reason": true, "by-log": true, "no-oom": false });
 });
@@ -235,10 +233,10 @@ test("oom from reason or boot log line", async () => {
 test("pod gone before it ended is stored with null exit code", async () => {
   const fakes = setup();
   fakes.pods = [{ uid: "uid-2", name: `${JOB}-fghij` }];
-  const seen = await pollOnce(fakes);
+  await fakes.poll();
   expect(rows(fakes.db)).toEqual([]);
   fakes.pods = [];
-  await pollOnce(fakes, seen);
+  await fakes.poll();
   const [row, ...rest] = rows(fakes.db);
   expect(rest).toEqual([]);
   expect(row).toMatchObject({ id: "job.finished:uid-2", at: "2026-11-05T11:00:00.000Z" });
@@ -257,13 +255,13 @@ test("an ended pod whose log fails is logged and stored on the next poll", async
   fakes.pods = [ENDED];
   fakes.logFails = true;
   const errors = spyOn(console, "error").mockImplementation(() => undefined);
-  const seen = await pollOnce(fakes);
+  await fakes.poll();
   const calls = [...errors.mock.calls];
   errors.mockRestore();
   expect(rows(fakes.db)).toEqual([]);
   expect(calls).toEqual([[expect.stringContaining(`job watch: pod ${JOB}-abcde`)]]);
   fakes.logFails = false;
-  await pollOnce(fakes, seen);
+  await fakes.poll();
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-1"]);
 });
 
@@ -312,7 +310,7 @@ test("GET task runs lists the stored runs", async () => {
     ENDED,
     { uid: "uid-other", name: "other", task: "TEN-8", exitCode: 0 },
   ];
-  await pollOnce(fakes);
+  await fakes.poll();
   const saved = users.save(fakes.db, {
     name: "Enes",
     github: "enojen",
@@ -365,7 +363,7 @@ const CLOSED: FakePod = {
 test("a close pod with exit 0 stores its close output", async () => {
   const fakes = setup();
   fakes.pods = [CLOSED];
-  await pollOnce(fakes);
+  await fakes.poll();
   const stored = rows(fakes.db);
   expect(stored.map((row) => row.id).sort()).toEqual(["close.output:uid-c", "job.finished:uid-c"]);
   const row = stored.find((item) => item.id === "close.output:uid-c");
@@ -381,7 +379,7 @@ test("a close pod with exit 0 stores its close output", async () => {
 test("a failed close stores no close output", async () => {
   const fakes = setup();
   fakes.pods = [{ ...CLOSED, exitCode: 1 }];
-  await pollOnce(fakes);
+  await fakes.poll();
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);
   expect(fakes.logCalls).toEqual([`${JOB}-close`]);
 });
@@ -389,15 +387,15 @@ test("a failed close stores no close output", async () => {
 test("a pod of another command stores no close output", async () => {
   const fakes = setup();
   fakes.pods = [{ ...CLOSED, command: "tenbox build TEN-7" }];
-  await pollOnce(fakes);
+  await fakes.poll();
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);
 });
 
 test("a second poll stores the close output once", async () => {
   const fakes = setup();
   fakes.pods = [CLOSED];
-  const seen = await pollOnce(fakes);
-  await pollOnce(fakes, seen);
+  await fakes.poll();
+  await fakes.poll();
   expect(rows(fakes.db)).toHaveLength(2);
   expect(fakes.logCalls).toEqual([`${JOB}-close (whole)`]);
 });
@@ -406,7 +404,7 @@ test("a close log with no JSON object is one stderr line and no close output", a
   const fakes = setup();
   fakes.pods = [{ ...CLOSED, log: `no json here\n${BOOT_LINE}` }];
   const errors = spyOn(console, "error").mockImplementation(() => undefined);
-  await pollOnce(fakes);
+  await fakes.poll();
   const calls = [...errors.mock.calls];
   errors.mockRestore();
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["job.finished:uid-c"]);

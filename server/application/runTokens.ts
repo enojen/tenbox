@@ -9,7 +9,7 @@ import type { Db } from "../infra/db/index.ts";
 import { type GitHubApp, github, type RepoToken } from "../infra/github.ts";
 import { type KubernetesApi, kubernetes, type OpenJob } from "../infra/kubernetes.ts";
 import { projectsRepository } from "../infra/repositories/projects.ts";
-import type { Watching } from "./nodes.ts";
+import { type Watching, watchers } from "./watchers.ts";
 
 const POLL_INTERVAL_MS = 5000;
 const RENEW_BEFORE_MS = 600_000;
@@ -55,22 +55,7 @@ function poller(db: Db, input: RunTokenWatch): () => Promise<void> {
 }
 
 function watch(db: Db, input: RunTokenWatch): Watching {
-  const pollTokens = poller(db, input);
-  let running: Promise<void> | null = null;
-  const tick = () => {
-    if (running !== null) return;
-    running = pollTokens().finally(() => {
-      running = null;
-    });
-  };
-  tick();
-  const timer = setInterval(tick, POLL_INTERVAL_MS);
-  return {
-    stop: async () => {
-      clearInterval(timer);
-      await running;
-    },
-  };
+  return watchers.every({ intervalMs: POLL_INTERVAL_MS, tick: poller(db, input) });
 }
 
 async function writeLogged(input: JobToken): Promise<boolean> {
@@ -124,4 +109,4 @@ function forgetEnded(tokens: Map<string, RepoToken>, open: OpenJob[]): void {
   for (const uid of tokens.keys()) if (!uids.has(uid)) tokens.delete(uid);
 }
 
-export const runTokens = { poller, watch, resolve };
+export const runTokens = { watch, resolve };

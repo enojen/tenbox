@@ -19,6 +19,7 @@ import { eventsRepository } from "../infra/repositories/events.ts";
 import { events } from "./events.ts";
 import { machineRuns } from "./machineRuns.ts";
 import { volumes } from "./volumes.ts";
+import { type Watching, watchers } from "./watchers.ts";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -38,11 +39,6 @@ interface NodeWatch extends NodeApis {
   now: () => Date;
   /** The rules of the volume watch; without them it only records volumes. */
   volumeEnv?: VolumeEnv;
-}
-
-/** A running watch; `stop` waits for the poll in progress. */
-export interface Watching {
-  stop: () => Promise<void>;
 }
 
 /** One node event and the time it happened. */
@@ -77,27 +73,16 @@ async function poll(db: Db, input: NodePoll): Promise<void> {
 function watch(db: Db, input: NodeWatch): Watching {
   const startedAt = input.now();
   let late = true;
-  let running: Promise<unknown> | null = null;
   const pollJobs = machineRuns.poller(db, input);
   const pollVolumes = volumes.poller(db, { ...input, env: input.volumeEnv ?? null });
   const tick = () => {
-    if (running !== null) return;
     const removedAt = late ? startedAt : input.now();
     const pollNodes = poll(db, { ...input, removedAt, late }).then(() => {
       late = false;
     }, logWatchFailure);
-    running = Promise.all([pollNodes, pollJobs(), pollVolumes()]).finally(() => {
-      running = null;
-    });
+    return Promise.all([pollNodes, pollJobs(), pollVolumes()]);
   };
-  tick();
-  const timer = setInterval(tick, POLL_INTERVAL_MS);
-  return {
-    stop: async () => {
-      clearInterval(timer);
-      await running;
-    },
-  };
+  return watchers.every({ intervalMs: POLL_INTERVAL_MS, tick });
 }
 
 function listedNode(node: ClusterNode): ListedNode[] {
@@ -158,4 +143,4 @@ function logFailure(error: unknown, what: string): void {
 }
 
 /** Nodes: the workers of the cluster, each stored as it came and went, with its server type and price. */
-export const nodes = { poll, watch, up };
+export const nodes = { watch, up };

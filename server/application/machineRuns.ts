@@ -137,4 +137,4 @@ function logFailure(error: unknown, what: string): void {
 }
 
 /** Machine runs: each pod of a task Job, stored once when its box container ends or its pod goes. */
-export const machineRuns = { poll, poller, list };
+export const machineRuns = { poller, list };

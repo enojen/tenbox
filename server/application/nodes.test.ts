@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, jest, spyOn, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +9,7 @@ import type { KubernetesApi } from "../infra/kubernetes.ts";
 import { createApp } from "../routes/index.ts";
 import { nodes } from "./nodes.ts";
 import { users } from "./users.ts";
+import { watchers } from "./watchers.ts";
 
 const TOKEN = "sa-token";
 const HCLOUD_TOKEN = "hcloud-token";
@@ -22,6 +23,8 @@ const SERVER_ID = 42;
 const CREATED = "2026-11-05T10:00:00+00:00";
 const LEFT_AT = new Date("2026-11-05T12:00:30Z");
 const STARTED_AT = new Date("2026-11-06T08:00:00Z");
+const WATCH_INTERVAL_MS = 30_000;
+const SETTLE_ROUNDS = 5;
 
 /** One Node as the Kubernetes API lists it. */
 interface FakeNode {
@@ -39,6 +42,7 @@ interface Fakes {
   /** The PVC list of the volume watch answers 403, as without the RBAC of tenyard. */
   pvcsForbidden: boolean;
   hetznerCalls: number;
+  nodeLists: number;
   kubernetes: KubernetesApi;
   hetzner: HetznerApi;
 }
@@ -48,6 +52,7 @@ const servers: Server<undefined>[] = [];
 const dbs: Db[] = [];
 
 afterEach(() => {
+  jest.useRealTimers();
   for (const db of dbs.splice(0)) database.close(db);
   for (const server of servers.splice(0)) server.stop(true);
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true });
@@ -98,6 +103,7 @@ function setup(): Fakes {
     podsForbidden: false,
     pvcsForbidden: false,
     hetznerCalls: 0,
+    nodeLists: 0,
     kubernetes: { url: "", tokenFile, caFile },
     hetzner: { url: "", token: HCLOUD_TOKEN },
   };
@@ -116,6 +122,7 @@ function setup(): Fakes {
       if (new URL(request.url).pathname !== "/api/v1/nodes") {
         return new Response("", { status: HTTP_NOT_FOUND });
       }
+      fakes.nodeLists += 1;
       const items = fakes.listed.map((node) => ({
         metadata: { name: node.name },
         spec: node.providerID === undefined ? {} : { providerID: node.providerID },
@@ -154,18 +161,68 @@ function rows(db: Db): Row[] {
   return db.$client.query<Row, []>("select * from events order by rowid").all();
 }
 
-function pollAt(fakes: Fakes, removedAt: Date): Promise<void> {
-  return nodes.poll(fakes.db, {
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function until(done: () => boolean): Promise<void> {
+  while (!done()) await settle();
+  for (let round = 0; round < SETTLE_ROUNDS; round += 1) await settle();
+}
+
+function watchOnce(fakes: Fakes): Promise<void> {
+  const watching = nodes.watch(fakes.db, {
     kubernetes: fakes.kubernetes,
     hetzner: fakes.hetzner,
-    removedAt,
-    late: false,
+    now: () => STARTED_AT,
   });
+  return watching.stop();
 }
+
+test("watchers.every runs the tick at once and on each interval, and stop waits for the running tick", async () => {
+  jest.useFakeTimers();
+  let calls = 0;
+  const counted = watchers.every({
+    intervalMs: WATCH_INTERVAL_MS,
+    tick: async () => {
+      calls += 1;
+    },
+  });
+  expect(calls).toBe(1);
+  await settle();
+  jest.advanceTimersByTime(WATCH_INTERVAL_MS);
+  await settle();
+  jest.advanceTimersByTime(WATCH_INTERVAL_MS);
+  expect(calls).toBe(3);
+  await counted.stop();
+  jest.advanceTimersByTime(2 * WATCH_INTERVAL_MS);
+  expect(calls).toBe(3);
+
+  let held = 0;
+  const release = Promise.withResolvers<void>();
+  const holding = watchers.every({
+    intervalMs: WATCH_INTERVAL_MS,
+    tick: () => {
+      held += 1;
+      return release.promise;
+    },
+  });
+  jest.advanceTimersByTime(2 * WATCH_INTERVAL_MS);
+  expect(held).toBe(1);
+  let stopped = false;
+  const stopping = holding.stop().then(() => {
+    stopped = true;
+  });
+  await settle();
+  expect(stopped).toBe(false);
+  release.resolve();
+  await stopping;
+  expect(stopped).toBe(true);
+});
 
 test("stores node.added with type and price", async () => {
   const fakes = setup();
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   const [row, ...rest] = rows(fakes.db);
   expect(rest).toEqual([]);
   expect(row).toMatchObject({
@@ -186,11 +243,21 @@ test("stores node.added with type and price", async () => {
   });
 });
 
-test("stores node.removed when the node leaves", async () => {
+test("stores node.removed when the node leaves (through nodes.watch)", async () => {
+  jest.useFakeTimers();
   const fakes = setup();
-  await pollAt(fakes, LEFT_AT);
+  let now = STARTED_AT;
+  const watching = nodes.watch(fakes.db, {
+    kubernetes: fakes.kubernetes,
+    hetzner: fakes.hetzner,
+    now: () => now,
+  });
+  await until(() => rows(fakes.db).length === 1);
   fakes.listed = [];
-  await pollAt(fakes, LEFT_AT);
+  now = LEFT_AT;
+  jest.advanceTimersByTime(WATCH_INTERVAL_MS);
+  await watching.stop();
+  expect(fakes.nodeLists).toBe(2);
   const [, row, ...rest] = rows(fakes.db);
   expect(rest).toEqual([]);
   expect(row).toMatchObject({
@@ -213,11 +280,11 @@ test("stores node.removed when the node leaves", async () => {
 
 test("a restart writes no duplicate node events", async () => {
   const fakes = setup();
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   database.close(fakes.db);
   fakes.db = database.open(fakes.dbFile);
   dbs.splice(0, 1, fakes.db);
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   const added = rows(fakes.db).filter((row) => row.type === "node.added");
   expect(added.map((row) => row.id)).toEqual(["node.added:42"]);
   expect(fakes.hetznerCalls).toBe(1);
@@ -225,14 +292,9 @@ test("a restart writes no duplicate node events", async () => {
 
 test("a node removed while the server was down is recorded late at start", async () => {
   const fakes = setup();
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   fakes.listed = [];
-  const watching = nodes.watch(fakes.db, {
-    kubernetes: fakes.kubernetes,
-    hetzner: fakes.hetzner,
-    now: () => STARTED_AT,
-  });
-  await watching.stop();
+  await watchOnce(fakes);
   const removed = rows(fakes.db).filter((row) => row.type === "node.removed");
   expect(removed).toHaveLength(1);
   expect(removed[0]?.at).toBe("2026-11-06T08:00:00.000Z");
@@ -243,12 +305,7 @@ test("job poll failure does not stop node poll", async () => {
   const fakes = setup();
   fakes.podsForbidden = true;
   const errors = spyOn(console, "error").mockImplementation(() => undefined);
-  const watching = nodes.watch(fakes.db, {
-    kubernetes: fakes.kubernetes,
-    hetzner: fakes.hetzner,
-    now: () => STARTED_AT,
-  });
-  await watching.stop();
+  await watchOnce(fakes);
   const calls = [...errors.mock.calls];
   errors.mockRestore();
   expect(calls).toEqual([[expect.stringMatching(/^job watch: .*HTTP 403/)]]);
@@ -259,12 +316,7 @@ test("a forbidden PVC list is logged and the node poll goes on", async () => {
   const fakes = setup();
   fakes.pvcsForbidden = true;
   const errors = spyOn(console, "error").mockImplementation(() => undefined);
-  const watching = nodes.watch(fakes.db, {
-    kubernetes: fakes.kubernetes,
-    hetzner: fakes.hetzner,
-    now: () => STARTED_AT,
-  });
-  await watching.stop();
+  await watchOnce(fakes);
   const calls = [...errors.mock.calls];
   errors.mockRestore();
   expect(calls).toEqual([[expect.stringMatching(/^volume watch: .*HTTP 403/)]]);
@@ -274,7 +326,7 @@ test("a forbidden PVC list is logged and the node poll goes on", async () => {
 test("a node without an hcloud providerID is not recorded", async () => {
   const fakes = setup();
   fakes.listed = [{ name: "control-1" }, { name: "robot-1", providerID: "hrobot://7" }];
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   expect(rows(fakes.db)).toEqual([]);
   expect(fakes.hetznerCalls).toBe(0);
 });
@@ -285,9 +337,9 @@ test("a server Hetzner does not know is skipped and asked again on the next poll
     { name: "worker-9", providerID: "hcloud://9" },
     { name: "worker-1", providerID: `hcloud://${SERVER_ID}` },
   ];
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   expect(rows(fakes.db).map((row) => row.id)).toEqual(["node.added:42"]);
-  await pollAt(fakes, LEFT_AT);
+  await watchOnce(fakes);
   expect(fakes.hetznerCalls).toBe(3);
 });
 
