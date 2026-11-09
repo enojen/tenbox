@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, jest, spyOn, test } from "bun:test";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -32,6 +32,8 @@ const DEMO_ID = "k7f3qa";
 const NOW = new Date("2026-11-08T17:00:00Z");
 const KEY = "run-credential-key";
 const LATE = new Date("2026-11-08T17:55:00Z");
+const WATCH_INTERVAL_MS = 5000;
+const SETTLE_ROUNDS = 5;
 
 interface FakeJob {
   name: string;
@@ -51,6 +53,7 @@ interface Fakes {
   tokenRequests: unknown[];
   tokenStatuses: number[];
   verifiedIssuers: string[];
+  jobLists: number;
 }
 
 const SecretBodySchema = z.object({
@@ -70,6 +73,7 @@ const servers: Server<undefined>[] = [];
 const dbs: Db[] = [];
 
 afterEach(() => {
+  jest.useRealTimers();
   for (const db of dbs.splice(0)) database.close(db);
   for (const server of servers.splice(0)) server.stop(true);
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true });
@@ -105,6 +109,7 @@ async function answerCluster(fakes: Fakes, request: Request): Promise<Response> 
   if (url.pathname !== JOBS_PATH || url.searchParams.get("labelSelector") !== "app=tenyard") {
     return new Response("", { status: HTTP_NOT_FOUND });
   }
+  fakes.jobLists += 1;
   return Response.json({ kind: "JobList", items: fakes.jobs.map(jobItem) });
 }
 
@@ -169,6 +174,7 @@ function setup(jobs: FakeJob[]): Fakes {
     tokenRequests: [],
     tokenStatuses: [],
     verifiedIssuers: [],
+    jobLists: 0,
   };
   const cluster = Bun.serve({ port: 0, fetch: (request) => answerCluster(fakes, request) });
   const github = Bun.serve({
@@ -194,16 +200,30 @@ function watch(fakes: Fakes, now: () => Date = () => NOW): RunTokenWatch {
   return { kubernetes: fakes.kubernetes, github: fakes.github, key: KEY, now, tokens: new Map() };
 }
 
-function poller(fakes: Fakes): () => Promise<void> {
-  return runTokens.poller(fakes.db, watch(fakes));
+function watchOnce(fakes: Fakes, watching: RunTokenWatch = watch(fakes)): Promise<void> {
+  return runTokens.watch(fakes.db, watching).stop();
+}
+
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function watchTwice(fakes: Fakes, firstDone: () => boolean): Promise<void> {
+  jest.useFakeTimers();
+  const watching = runTokens.watch(fakes.db, watch(fakes));
+  while (!firstDone()) await settle();
+  for (let round = 0; round < SETTLE_ROUNDS; round += 1) await settle();
+  jest.advanceTimersByTime(WATCH_INTERVAL_MS);
+  await watching.stop();
+  expect(fakes.jobLists).toBe(2);
 }
 
 const DEMO_PLACEHOLDER = runPlaceholder(KEY, DEMO_JOB.uid);
 
-test("an open Job of a project gets a Secret with its placeholder, after a token for its repository only", async () => {
+test("an open Job of a project gets a Secret with its placeholder (through runTokens.watch), after a token for its repository only", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
-  await poller(fakes)();
+  await watchOnce(fakes);
   expect(fakes.tokenRequests).toEqual([
     {
       repositories: ["tenbox-demo"],
@@ -223,9 +243,9 @@ test("an open Job of a project gets a Secret with its placeholder, after a token
 test("a Job gets its Secret once, over many polls", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
-  const poll = poller(fakes);
-  await poll();
-  await poll();
+  const written = spyOn(console, "log").mockImplementation(() => undefined);
+  await watchTwice(fakes, () => written.mock.calls.length === 1);
+  written.mockRestore();
   expect(fakes.secrets).toHaveLength(1);
   expect(fakes.tokenRequests).toHaveLength(1);
 });
@@ -234,9 +254,9 @@ test("a Secret that exists already counts as written", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
   fakes.secretStatuses = [HTTP_CONFLICT];
-  const poll = poller(fakes);
-  await poll();
-  await poll();
+  const written = spyOn(console, "log").mockImplementation(() => undefined);
+  await watchTwice(fakes, () => written.mock.calls.length === 1);
+  written.mockRestore();
   expect(fakes.secrets).toHaveLength(1);
 });
 
@@ -244,14 +264,14 @@ test("a repository without the App gets an empty token", async () => {
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
   fakes.installed = [];
-  await poller(fakes)();
+  await watchOnce(fakes);
   expect(fakes.tokenRequests).toEqual([]);
   expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([{ token: "" }]);
 });
 
 test("a project the server does not know gets an empty token without asking GitHub", async () => {
   const fakes = setup([DEMO_JOB]);
-  await poller(fakes)();
+  await watchOnce(fakes);
   expect(fakes.verifiedIssuers).toEqual([]);
   expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([{ token: "" }]);
 });
@@ -263,7 +283,7 @@ test("an ended Job and a Job without a project id get no Secret", async () => {
     { name: "task-old-1", uid: "job-uid-3" },
   ]);
   addDemo(fakes.db);
-  await poller(fakes)();
+  await watchOnce(fakes);
   expect(fakes.secrets).toEqual([]);
 });
 
@@ -272,11 +292,8 @@ test("a token GitHub cannot give is logged and asked again on the next poll", as
   addDemo(fakes.db);
   fakes.tokenStatuses = [HTTP_SERVER_ERROR];
   const logged = spyOn(console, "error").mockImplementation(() => undefined);
-  const poll = poller(fakes);
-  await poll();
-  expect(fakes.secrets).toEqual([]);
+  await watchTwice(fakes, () => logged.mock.calls.length === 1);
   expect(String(logged.mock.calls[0]?.[0])).toContain(DEMO_JOB.name);
-  await poll();
   logged.mockRestore();
   expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([{ token: DEMO_PLACEHOLDER }]);
 });
@@ -286,9 +303,7 @@ test("a failed Secret write is asked again on the next poll", async () => {
   addDemo(fakes.db);
   fakes.secretStatuses = [HTTP_SERVER_ERROR, HTTP_OK];
   const logged = spyOn(console, "error").mockImplementation(() => undefined);
-  const poll = poller(fakes);
-  await poll();
-  await poll();
+  await watchTwice(fakes, () => logged.mock.calls.length === 1);
   logged.mockRestore();
   expect(fakes.secrets).toHaveLength(2);
 });
@@ -359,7 +374,7 @@ test("the token the watch mints for the Secret is the first one resolve gives", 
   const fakes = setup([DEMO_JOB]);
   addDemo(fakes.db);
   const watching = watch(fakes);
-  await runTokens.poller(fakes.db, watching)();
+  await watchOnce(fakes, watching);
   const ask = { db: fakes.db, watch: watching, placeholder: DEMO_PLACEHOLDER, host: "github.com" };
   const value = await runTokens.resolve(ask);
   expect(value).toBe(RUN_TOKEN);

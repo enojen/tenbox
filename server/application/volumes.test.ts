@@ -57,6 +57,8 @@ interface Fakes {
   /** The answers to the next ntfy POSTs; 200 when none is left. */
   ntfyStatuses: number[];
   env: VolumeEnv;
+  now: Date;
+  poll: () => Promise<void>;
 }
 
 /** One stored run of a task. */
@@ -182,7 +184,15 @@ function setup(): Fakes {
     notices: [],
     ntfyStatuses: [],
     env: { graceDays: GRACE_DAYS, ntfy: null },
+    now: LEFT_AT,
+    poll: () => Promise.resolve(),
   };
+  fakes.poll = volumes.poller(db, {
+    kubernetes: fakes.kubernetes,
+    hetzner: fakes.hetzner,
+    now: () => fakes.now,
+    env: fakes.env,
+  });
   const cluster = Bun.serve({ port: 0, fetch: (request) => answerCluster(fakes, request) });
   const ntfy = Bun.serve({ port: 0, fetch: (request) => answerNtfy(fakes, request) });
   const hetzner = Bun.serve({
@@ -219,15 +229,9 @@ function rows(db: Db): Row[] {
   return db.$client.query<Row, []>("select * from events order by rowid").all();
 }
 
-function pollAt(fakes: Fakes, removedAt: Date): Promise<void> {
-  return volumes.poll(fakes.db, {
-    kubernetes: fakes.kubernetes,
-    hetzner: fakes.hetzner,
-    removedAt,
-    late: false,
-    now: removedAt,
-    env: fakes.env,
-  });
+function pollAt(fakes: Fakes, at: Date): Promise<void> {
+  fakes.now = at;
+  return fakes.poll();
 }
 
 /** A poll at a day of November 2026, 10:00 UTC. */

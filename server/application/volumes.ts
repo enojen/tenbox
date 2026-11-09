@@ -265,4 +265,4 @@ function logFailure(error: unknown, what: string): void {
 }
 
 /** Volumes: the task PVCs of the cluster, each stored as it came and went, with its size and price; a closed task's volume deleted after its grace period, an idle open one noticed. */
-export const volumes = { poll, poller };
+export const volumes = { poller };
