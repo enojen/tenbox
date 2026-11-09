@@ -2,6 +2,8 @@ import { errorMessage } from "../../domain/errors/index.ts";
 import {
   GITHUB_HOSTS,
   githubRepo,
+  type KeyTracker,
+  keyTracker,
   runPlaceholder,
   runTokenSecret,
 } from "../../domain/runTokens.ts";
@@ -10,6 +12,7 @@ import { type GitHubApp, github, type RepoToken } from "../infra/github.ts";
 import { type KubernetesApi, kubernetes, type OpenJob } from "../infra/kubernetes.ts";
 import { projectsRepository } from "../infra/repositories/projects.ts";
 import type { Watching } from "./nodes.ts";
+import { trackerKeys } from "./trackerKeys.ts";
 
 const POLL_INTERVAL_MS = 5000;
 const RENEW_BEFORE_MS = 600_000;
@@ -18,6 +21,7 @@ export interface RunTokenWatch {
   kubernetes: KubernetesApi;
   github: GitHubApp;
   key: string;
+  encryptionKey: Buffer;
   now: () => Date;
   tokens: Map<string, RepoToken>;
 }
@@ -27,6 +31,13 @@ interface RunCredentialRequest {
   watch: RunTokenWatch;
   placeholder: string;
   host: string;
+}
+
+interface TrackerRequest {
+  db: Db;
+  watch: RunTokenWatch;
+  job: OpenJob;
+  tracker: KeyTracker;
 }
 
 interface JobToken {
@@ -84,13 +95,16 @@ async function writeLogged(input: JobToken): Promise<boolean> {
 }
 
 async function write(input: JobToken): Promise<void> {
-  const { job } = input;
+  const { db, job } = input;
   const { kubernetes: api, key } = input.input;
   const token = await mint(input);
   if (token !== null) input.input.tokens.set(job.uid, token);
   const name = runTokenSecret(job.name);
-  const value = token === null ? "" : runPlaceholder(key, job.uid);
-  await kubernetes.createSecret({ api, name, job, data: { token: value } });
+  const placeholder = runPlaceholder(key, job.uid);
+  const value = token === null ? "" : placeholder;
+  const hasTracker = projectsRepository.findTrackerKey(db, job.projectId) !== null;
+  const data = hasTracker ? { token: value, tracker: placeholder } : { token: value };
+  await kubernetes.createSecret({ api, name, job, data });
   const until = token === null ? "no App token" : `token until ${token.expiresAt}`;
   console.log(`run token of ${job.name}: ${until}`);
 }
@@ -105,10 +119,12 @@ function mint(input: JobToken): Promise<RepoToken | null> {
 
 async function resolve(input: RunCredentialRequest): Promise<string | null> {
   const { db, watch: watching, placeholder, host } = input;
-  if (!GITHUB_HOSTS.includes(host)) return null;
+  const tracker = keyTracker(host);
+  if (tracker === null && !GITHUB_HOSTS.includes(host)) return null;
   const open = await kubernetes.openJobs(watching.kubernetes);
   const job = open.find((candidate) => runPlaceholder(watching.key, candidate.uid) === placeholder);
   if (job === undefined) return null;
+  if (tracker !== null) return trackerKey({ db, watch: watching, job, tracker });
   const cached = watching.tokens.get(job.uid);
   const left = cached === undefined ? 0 : Date.parse(cached.expiresAt) - watching.now().getTime();
   if (cached !== undefined && left > RENEW_BEFORE_MS) return cached.token;
@@ -117,6 +133,12 @@ async function resolve(input: RunCredentialRequest): Promise<string | null> {
   forgetEnded(watching.tokens, open);
   watching.tokens.set(job.uid, token);
   return token.token;
+}
+
+function trackerKey(input: TrackerRequest): string | null {
+  const { db, watch: watching, job, tracker } = input;
+  const { encryptionKey } = watching;
+  return trackerKeys.find(db, { project: job.projectId, tracker, encryptionKey });
 }
 
 function forgetEnded(tokens: Map<string, RepoToken>, open: OpenJob[]): void {

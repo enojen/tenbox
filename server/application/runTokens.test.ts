@@ -13,6 +13,7 @@ import type { GitHubApp } from "../infra/github.ts";
 import type { KubernetesApi } from "../infra/kubernetes.ts";
 import { projects } from "./projects.ts";
 import { type RunTokenWatch, runTokens } from "./runTokens.ts";
+import { trackerKeys } from "./trackerKeys.ts";
 
 const TOKEN = "sa-token";
 const APP_ID = "123456";
@@ -32,6 +33,9 @@ const DEMO_ID = "k7f3qa";
 const NOW = new Date("2026-11-08T17:00:00Z");
 const KEY = "run-credential-key";
 const LATE = new Date("2026-11-08T17:55:00Z");
+const ENCRYPTION_KEY = Buffer.alloc(32, 7);
+const CLICKUP_KEY = "pk_demo_secret";
+const OTHER_ID = "rsgjhl";
 
 interface FakeJob {
   name: string;
@@ -58,7 +62,7 @@ const SecretBodySchema = z.object({
     name: z.string(),
     ownerReferences: z.array(z.object({ kind: z.string(), name: z.string(), uid: z.string() })),
   }),
-  stringData: z.object({ token: z.string() }),
+  stringData: z.object({ token: z.string(), tracker: z.string().optional() }),
 });
 
 type SecretBody = z.infer<typeof SecretBodySchema>;
@@ -191,7 +195,32 @@ function addDemo(db: Db): void {
 }
 
 function watch(fakes: Fakes, now: () => Date = () => NOW): RunTokenWatch {
-  return { kubernetes: fakes.kubernetes, github: fakes.github, key: KEY, now, tokens: new Map() };
+  return {
+    kubernetes: fakes.kubernetes,
+    github: fakes.github,
+    key: KEY,
+    encryptionKey: ENCRYPTION_KEY,
+    now,
+    tokens: new Map(),
+  };
+}
+
+function addClickUpKey(db: Db, id: string, key: string): void {
+  trackerKeys.update(db, {
+    project: projectId(id),
+    tracker: "clickup",
+    key,
+    encryptionKey: ENCRYPTION_KEY,
+  });
+}
+
+function addOther(db: Db): void {
+  projects.save(db, {
+    id: projectId(OTHER_ID),
+    name: "other",
+    repo: "github.com/enojen/other",
+    org: "enojen",
+  });
 }
 
 function poller(fakes: Fakes): () => Promise<void> {
@@ -364,4 +393,58 @@ test("the token the watch mints for the Secret is the first one resolve gives", 
   const value = await runTokens.resolve(ask);
   expect(value).toBe(RUN_TOKEN);
   expect(fakes.tokenRequests).toHaveLength(1);
+});
+
+test("a project with a tracker key gets the same placeholder for its tracker", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  addClickUpKey(fakes.db, DEMO_ID, CLICKUP_KEY);
+  await poller(fakes)();
+  expect(fakes.secrets.map((secret) => secret.stringData)).toEqual([
+    { token: DEMO_PLACEHOLDER, tracker: DEMO_PLACEHOLDER },
+  ]);
+});
+
+test("the placeholder gives the project's tracker key on its tracker's host only", async () => {
+  const fakes = setup([DEMO_JOB]);
+  addDemo(fakes.db);
+  addClickUpKey(fakes.db, DEMO_ID, CLICKUP_KEY);
+  const ask = { db: fakes.db, watch: watch(fakes), placeholder: DEMO_PLACEHOLDER };
+  const clickup = await runTokens.resolve({ ...ask, host: "api.clickup.com" });
+  const linear = await runTokens.resolve({ ...ask, host: "api.linear.app" });
+  const app = await runTokens.resolve({ ...ask, host: "app.clickup.com" });
+  expect(clickup).toBe(CLICKUP_KEY);
+  expect(linear).toBeNull();
+  expect(app).toBeNull();
+  expect(fakes.tokenRequests).toEqual([]);
+});
+
+test("each Job gets the tracker key of its own project; a project without one gets nothing", async () => {
+  const otherJob: FakeJob = { name: "task-other-1", uid: "job-uid-2", projectId: OTHER_ID };
+  const fakes = setup([DEMO_JOB, otherJob]);
+  addDemo(fakes.db);
+  addOther(fakes.db);
+  const watching = watch(fakes);
+  const otherPlaceholder = runPlaceholder(KEY, otherJob.uid);
+  const ask = { db: fakes.db, watch: watching, host: "api.clickup.com" };
+  const before = await runTokens.resolve({ ...ask, placeholder: DEMO_PLACEHOLDER });
+  expect(before).toBeNull();
+  addClickUpKey(fakes.db, OTHER_ID, "pk_other_secret");
+  const other = await runTokens.resolve({ ...ask, placeholder: otherPlaceholder });
+  const demo = await runTokens.resolve({ ...ask, placeholder: DEMO_PLACEHOLDER });
+  expect(other).toBe("pk_other_secret");
+  expect(demo).toBeNull();
+});
+
+test("the placeholder of an ended Job gives no tracker key", async () => {
+  const fakes = setup([{ ...DEMO_JOB, ended: "Complete" }]);
+  addDemo(fakes.db);
+  addClickUpKey(fakes.db, DEMO_ID, CLICKUP_KEY);
+  const value = await runTokens.resolve({
+    db: fakes.db,
+    watch: watch(fakes),
+    placeholder: DEMO_PLACEHOLDER,
+    host: "api.clickup.com",
+  });
+  expect(value).toBeNull();
 });

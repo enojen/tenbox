@@ -32,6 +32,7 @@ export interface VolumeEnv {
 interface RunCredentialEnv {
   key: string;
   injectorToken: string;
+  encryptionKey: Buffer;
 }
 
 /** What the node watch needs inside the cluster. */
@@ -73,6 +74,11 @@ const INJECTOR_TOKEN: SecretFile = {
   name: "TENBOX_SERVER_INJECTOR_TOKEN_FILE",
   expected: "a file with the token of the injector",
 };
+const ENCRYPTION_KEY: SecretFile = {
+  name: "TENBOX_SERVER_ENCRYPTION_KEY_FILE",
+  expected: "a file with the key of the tracker keys, 32 bytes in base64",
+};
+const ENCRYPTION_KEY_BYTES = 32;
 const WHOLE_NUMBER = /^[0-9]+$/;
 /** The ntfy topic is a secret: anyone who knows it reads the notices, so an error never shows it. */
 const HIDDEN = "(not shown)";
@@ -117,7 +123,17 @@ export function nodeWatchEnv(): NodeWatchEnv | null {
 }
 
 function runCredentials(): RunCredentialEnv {
-  return { key: secretFile(RUN_CREDENTIAL_KEY), injectorToken: secretFile(INJECTOR_TOKEN) };
+  return {
+    key: secretFile(RUN_CREDENTIAL_KEY),
+    injectorToken: secretFile(INJECTOR_TOKEN),
+    encryptionKey: encryptionKey(),
+  };
+}
+
+export function encryptionKey(): Buffer {
+  const key = Buffer.from(secretFile(ENCRYPTION_KEY), "base64");
+  if (key.length === ENCRYPTION_KEY_BYTES) return key;
+  throw envError(ENCRYPTION_KEY.name, HIDDEN, ENCRYPTION_KEY.expected);
 }
 
 function secretFile(file: SecretFile): string {

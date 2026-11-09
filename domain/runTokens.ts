@@ -1,3 +1,4 @@
+import { TRACKER_KIND } from "./manifests.ts";
 import { hashes } from "./utils.ts";
 
 export interface GitHubRepo {
@@ -27,6 +28,19 @@ export function runTokenSecret(job: string): string {
 const RUN_PLACEHOLDER_PREFIX = "tbxph_";
 
 export const GITHUB_HOSTS: readonly string[] = ["github.com", "api.github.com"];
+
+export const KEY_TRACKERS = [TRACKER_KIND.linear, TRACKER_KIND.clickup] as const;
+
+export type KeyTracker = (typeof KEY_TRACKERS)[number];
+
+const TRACKER_HOSTS: Record<KeyTracker, string> = {
+  [TRACKER_KIND.linear]: "api.linear.app",
+  [TRACKER_KIND.clickup]: "api.clickup.com",
+};
+
+export function keyTracker(host: string): KeyTracker | null {
+  return KEY_TRACKERS.find((tracker) => TRACKER_HOSTS[tracker] === host) ?? null;
+}
 
 export function runPlaceholder(key: string, jobUid: string): string {
   return `${RUN_PLACEHOLDER_PREFIX}${hashes.hmacSha256Base64Url(key, jobUid)}`;

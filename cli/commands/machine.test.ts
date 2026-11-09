@@ -60,8 +60,8 @@ spec:
             - name: TENBOX_ENV
               value: |-
                 __ENV__
-            - name: TRACKER_API_KEY
-              valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: tracker_api_key } }
+            - name: NTFY_URL
+              valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: ntfy_url } }
       volumes:
         - name: home
           persistentVolumeClaim: { claimName: task-__NAME__ }
@@ -398,8 +398,8 @@ describe("machine", () => {
       TENBOX_CMD: "tenbox build TEN-1",
       TENBOX_ENV: "{}",
     });
-    expect(jobValueFrom(job, "TRACKER_API_KEY")).toEqual({
-      secretKeyRef: { name: PROJECT_SECRET, key: "tracker_api_key" },
+    expect(jobValueFrom(job, "NTFY_URL")).toEqual({
+      secretKeyRef: { name: PROJECT_SECRET, key: "ntfy_url" },
     });
     expect(posts().map((c) => c.auth)).toEqual(Array(3).fill(`Bearer ${TOKEN}`));
     expect(run.json).toEqual({
@@ -436,24 +436,25 @@ describe("machine", () => {
     expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
   });
 
-  test("the project Secret holds the tracker key and the ntfy URL of the local manifest", async () => {
+  test("the project Secret holds the ntfy URL; the tracker key of the manifest never leaves this computer", async () => {
     await writeManifest(`${machineLine()}tracker: { kind: linear }\n`);
     await writeLocal(`tracker:\n  api_key: "${TRACKER_KEY}"\nnotify:\n  ntfy: "${NTFY_URL}"\n`);
     const run = await build();
     expect(run.code).toBe(0);
     const secret = secretBody(posts()[0]);
     expect(secret.metadata.name).toBe(PROJECT_SECRET);
-    expect(secret.stringData).toEqual({ tracker_api_key: TRACKER_KEY, ntfy_url: NTFY_URL });
+    expect(secret.stringData).toEqual({ ntfy_url: NTFY_URL });
+    expect(JSON.stringify(posts().map((c) => c.body))).not.toContain(TRACKER_KEY);
     expect(run.out).not.toContain(TRACKER_KEY);
   });
 
-  test("without a key in the manifest the Secret takes the tracker's env variable", async () => {
+  test("the tracker's env variable never leaves this computer either", async () => {
     await writeManifest(`${machineLine()}tracker: { kind: clickup }\n`);
     env.CLICKUP_API_KEY = TRACKER_KEY;
-    env.LINEAR_API_KEY = "SECRET-OTHER-TRACKER";
     const run = await build();
     expect(run.code).toBe(0);
-    expect(secretBody(posts()[0]).stringData).toEqual({ tracker_api_key: TRACKER_KEY });
+    expect(secretBody(posts()[0]).stringData).toEqual({});
+    expect(JSON.stringify(posts().map((c) => c.body))).not.toContain(TRACKER_KEY);
   });
 
   test("a project with no tracker and no ntfy gets an empty Secret, no key of the shell", async () => {

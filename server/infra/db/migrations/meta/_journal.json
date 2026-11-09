@@ -29,6 +29,13 @@
       "when": 1793914377529,
       "tag": "0003_events_without_user",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794191121194,
+      "tag": "0004_project_tracker_keys",
+      "breakpoints": true
     }
   ]
 }

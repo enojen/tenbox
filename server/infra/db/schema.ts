@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { MEMBERSHIP_TYPES } from "../../../domain/memberships.ts";
+import { KEY_TRACKERS } from "../../../domain/runTokens.ts";
 
 const MEMBERSHIP_TYPE_LIST = MEMBERSHIP_TYPES.map((type) => `'${type}'`).join(", ");
 
@@ -43,6 +44,8 @@ export const projects = sqliteTable("projects", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text().notNull(),
   repo: text().notNull(),
+  tracker: text({ enum: KEY_TRACKERS }),
+  trackerKey: text("tracker_key"),
 });
 
 export const events = sqliteTable("events", {

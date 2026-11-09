@@ -77,12 +77,12 @@ class from `task/classes.yaml` (`machine.plan_class` for `start`, default `plan`
 `TENBOX_ENV`, where `machine.env` wins), and posts the
 volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
 `tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
-the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer
-uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API_KEY` or
-`CLICKUP_API_KEY`) and `ntfy_url` from `notify.ntfy`. `GITHUB_TOKEN` is the run's placeholder,
+the Job reads as `NTFY_URL`: `ntfy_url` from `notify.ntfy`. `GITHUB_TOKEN` is the run's placeholder,
 which the server writes for the Job (empty when the GitHub App is not installed on the
 repository, and the box then stops at start); the injector behind the egress proxy swaps it for
-the run token on its way to GitHub. With `TENBOX_INJECTOR_CA`, the file of the injector's CA, the
+the run token on its way to GitHub. `TRACKER_API_KEY` is the same placeholder when the server
+has a tracker key for the project (`tenbox-server project tracker-key`); the injector swaps it
+for that key on the tracker's host only. With `TENBOX_INJECTOR_CA`, the file of the injector's CA, the
 box gives the command `SSL_CERT_FILE` and `GIT_SSL_CAINFO` (the system roots and that CA in one
 file) and `NODE_EXTRA_CA_CERTS`. The box unsets the secrets before the command. Commits carry `TENBOX_GIT_NAME` and
 `TENBOX_GIT_EMAIL` of the Job, else the name of the token's user. A project without an `id` in its

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { nodeWatchEnv, serverEnv } from "./env.ts";
+import { encryptionKey, nodeWatchEnv, serverEnv } from "./env.ts";
 
 const KEYS = [
   "TENBOX_SERVER_PORT",
@@ -18,8 +18,10 @@ const KEYS = [
   "TENBOX_SERVER_GITHUB_APP_KEY_FILE",
   "TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE",
   "TENBOX_SERVER_INJECTOR_TOKEN_FILE",
+  "TENBOX_SERVER_ENCRYPTION_KEY_FILE",
   "GITHUB_API_URL",
 ];
+const ENCRYPTION_KEY = Buffer.alloc(32, 7);
 const VOLUME_DEFAULTS = { graceDays: 3, ntfy: null };
 const saved: Record<string, string | undefined> = Object.fromEntries(
   KEYS.map((key) => [key, process.env[key]]),
@@ -149,6 +151,7 @@ function keyFile(text: string): string {
 function withRunCredentials(): void {
   process.env.TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE = keyFile("a run key\n");
   process.env.TENBOX_SERVER_INJECTOR_TOKEN_FILE = keyFile("an injector token\n");
+  process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE = keyFile(`${ENCRYPTION_KEY.toString("base64")}\n`);
 }
 
 test("the GitHub App: its id, the key read from its file and the default API", () => {
@@ -179,7 +182,7 @@ test("an App id without its key file, a missing key file or an id that is not a 
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_GITHUB_APP_ID/);
 });
 
-test("with the App: the run credential key and the injector token, each read from its file", () => {
+test("with the App: the run credential key, the injector token and the encryption key, each read from its file", () => {
   inCluster();
   withRunCredentials();
   process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
@@ -187,6 +190,7 @@ test("with the App: the run credential key and the injector token, each read fro
   expect(nodeWatchEnv()?.runCredentials).toEqual({
     key: "a run key",
     injectorToken: "an injector token",
+    encryptionKey: ENCRYPTION_KEY,
   });
 });
 
@@ -201,6 +205,27 @@ test("the App without the run credential key or the injector token is an error",
   process.env.TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE = keyFile("a run key");
   delete process.env.TENBOX_SERVER_INJECTOR_TOKEN_FILE;
   expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_INJECTOR_TOKEN_FILE/);
+});
+
+test("the App without the encryption key is an error", () => {
+  inCluster();
+  withRunCredentials();
+  process.env.TENBOX_SERVER_GITHUB_APP_ID = "123456";
+  process.env.TENBOX_SERVER_GITHUB_APP_KEY_FILE = keyFile("a key");
+  delete process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE;
+  expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_ENCRYPTION_KEY_FILE/);
+});
+
+test("the encryption key is 32 bytes in base64; any other length is an error", () => {
+  inCluster();
+  process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE = keyFile(ENCRYPTION_KEY.toString("base64"));
+  expect(encryptionKey()).toEqual(ENCRYPTION_KEY);
+  process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE = keyFile(Buffer.alloc(16).toString("base64"));
+  expect(() => encryptionKey()).toThrow(/TENBOX_SERVER_ENCRYPTION_KEY_FILE/);
+  process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE = keyFile("a key");
+  expect(() => encryptionKey()).toThrow(/TENBOX_SERVER_ENCRYPTION_KEY_FILE/);
+  delete process.env.TENBOX_SERVER_ENCRYPTION_KEY_FILE;
+  expect(() => encryptionKey()).toThrow(/TENBOX_SERVER_ENCRYPTION_KEY_FILE/);
 });
 
 test("without the App there are no run credentials", () => {

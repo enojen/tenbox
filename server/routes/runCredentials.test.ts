@@ -53,6 +53,7 @@ function setup() {
     kubernetes: { url: cluster.url.origin, tokenFile, caFile },
     github: { url: "http://127.0.0.1:1", appId: "1", key: "" },
     key: KEY,
+    encryptionKey: Buffer.alloc(32),
     now: () => NOW,
     tokens: new Map([[JOB.uid, { token: CACHED, expiresAt: "2026-11-08T18:00:00Z" }]]),
   };
