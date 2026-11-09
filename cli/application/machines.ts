@@ -38,7 +38,6 @@ import {
   type TemplateFields,
 } from "../infra/kubernetes.ts";
 import { pollUntil } from "../infra/poll.ts";
-import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
 /** What one command takes after its id; `tests` commands run the project's tests or the build. */
@@ -334,16 +333,12 @@ async function runJob(command: CommandRun): Promise<string> {
 }
 
 /**
- * The project Secret the tenyard Job template reads, `project-<project id>`: the tracker key and
- * the ntfy URL this computer uses for the project. A value the project lacks is left out.
+ * The project Secret the tenyard Job template reads, `project-<project id>`: the ntfy URL this
+ * computer uses for the project, left out when unset. The tracker key stays on the server.
  */
 function projectSecretValues(manifest: Manifest): Record<string, string> {
-  const trackerKey = findApiKey(manifest.tracker);
   const ntfy = manifest.notify.ntfy;
-  return {
-    ...(trackerKey === null ? {} : { tracker_api_key: trackerKey }),
-    ...(ntfy === undefined ? {} : { ntfy_url: ntfy }),
-  };
+  return ntfy === undefined ? {} : { ntfy_url: ntfy };
 }
 
 interface FieldsInput {

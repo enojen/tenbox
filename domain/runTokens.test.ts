@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { githubRepo, runPlaceholder, runTokenSecret } from "./runTokens.ts";
+import { githubRepo, keyTracker, runPlaceholder, runTokenSecret } from "./runTokens.ts";
 
 describe("githubRepo", () => {
   test("reads github.com/<owner>/<name>", () => {
@@ -40,5 +40,17 @@ describe("runPlaceholder", () => {
     const placeholder = runPlaceholder("key-1", "job-uid-1");
     expect(runPlaceholder("key-1", "job-uid-2")).not.toBe(placeholder);
     expect(runPlaceholder("key-2", "job-uid-1")).not.toBe(placeholder);
+  });
+});
+
+describe("keyTracker", () => {
+  test("is the tracker whose key a host takes", () => {
+    expect(keyTracker("api.clickup.com")).toBe("clickup");
+    expect(keyTracker("api.linear.app")).toBe("linear");
+  });
+
+  test("is null for GitHub and any other host", () => {
+    expect(keyTracker("api.github.com")).toBeNull();
+    expect(keyTracker("app.clickup.com")).toBeNull();
   });
 });

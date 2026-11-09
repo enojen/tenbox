@@ -6,19 +6,27 @@ import { costs } from "./application/costs.ts";
 import { nodes, type Watching } from "./application/nodes.ts";
 import { projects } from "./application/projects.ts";
 import { type RunTokenWatch, runTokens } from "./application/runTokens.ts";
+import { trackerKeys } from "./application/trackerKeys.ts";
 import { users } from "./application/users.ts";
 import { readBackupArgs } from "./commands/backup.ts";
 import { readCostsArgs } from "./commands/costs.ts";
 import { readProjectAddArgs } from "./commands/projectAdd.ts";
+import { readTrackerKey, readTrackerKeyArgs } from "./commands/trackerKey.ts";
 import { readUserAddArgs } from "./commands/userAdd.ts";
 import { type Db, database } from "./infra/db/index.ts";
-import { type NodeWatchEnv, nodeWatchEnv, type ServerEnv, serverEnv } from "./infra/env.ts";
+import {
+  encryptionKey,
+  type NodeWatchEnv,
+  nodeWatchEnv,
+  type ServerEnv,
+  serverEnv,
+} from "./infra/env.ts";
 import { kubernetes } from "./infra/kubernetes.ts";
 import { createApp, type RunCredentialsApi } from "./routes/index.ts";
 
 const FAILURE_EXIT_CODE = 1;
 const USAGE =
-  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]\n       tenbox-server project add --id <id> --name <n> --repo <r> --org <o>\n       tenbox-server backup --to <file>\n       tenbox-server costs --from <iso> --to <iso>";
+  "usage: tenbox-server [user add --name <n> --github <g> --org <o> [--email <e>] [--type admin|member]]\n       tenbox-server project add --id <id> --name <n> --repo <r> --org <o>\n       tenbox-server project tracker-key --id <id> --tracker linear|clickup < key\n       tenbox-server backup --to <file>\n       tenbox-server costs --from <iso> --to <iso>";
 const STOP_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 
 interface ErrorOutput {
@@ -39,6 +47,10 @@ function main(args: string[]): void {
   }
   if (command === "project" && subcommand === "add") {
     runProjectAdd(rest);
+    return;
+  }
+  if (command === "project" && subcommand === "tracker-key") {
+    void runTrackerKey(rest);
     return;
   }
   if (command === "backup") {
@@ -85,6 +97,7 @@ function runCredentialsApi(env: NodeWatchEnv): RunCredentialsApi | null {
     kubernetes: kubernetes.inCluster(env.kubernetesUrl),
     github: env.githubApp,
     key: env.runCredentials.key,
+    encryptionKey: env.runCredentials.encryptionKey,
     now: () => new Date(),
     tokens: new Map(),
   };
@@ -121,9 +134,11 @@ function stopOnSignals(running: Running): void {
   for (const signal of STOP_SIGNALS) process.once(signal, stop);
 }
 
+type Save<Input, Saved> = (db: Db, input: Input) => Saved;
+
 interface AddCommand<Input, Saved> {
   read: (argv: string[]) => Input;
-  save: (db: Db, input: Input) => Saved;
+  save: Save<Input, Saved>;
 }
 
 function runUserAdd(argv: string[]): void {
@@ -132,6 +147,20 @@ function runUserAdd(argv: string[]): void {
 
 function runProjectAdd(argv: string[]): void {
   runAdd(argv, { read: readProjectAddArgs, save: projects.save });
+}
+
+async function runTrackerKey(argv: string[]): Promise<void> {
+  try {
+    const args = readTrackerKeyArgs(argv);
+    const stdin = await Bun.stdin.text();
+    const key = readTrackerKey(stdin);
+    const input = { ...args, key, encryptionKey: encryptionKey() };
+    const saved = saveOnce(trackerKeys.update, input);
+    console.log(JSON.stringify({ ok: true, ...saved }));
+  } catch (error) {
+    console.log(JSON.stringify(errorOutput(error)));
+    process.exitCode = FAILURE_EXIT_CODE;
+  }
 }
 
 function runBackup(argv: string[]): void {
@@ -179,7 +208,7 @@ function runAdd<Input, Saved extends object>(
   command: AddCommand<Input, Saved>,
 ): void {
   try {
-    const saved = saveOnce(command, command.read(argv));
+    const saved = saveOnce(command.save, command.read(argv));
     console.log(JSON.stringify({ ok: true, ...saved }));
   } catch (error) {
     console.log(JSON.stringify(errorOutput(error)));
@@ -188,10 +217,10 @@ function runAdd<Input, Saved extends object>(
 }
 
 /** One command, one connection: open, save, close, also on an error. */
-function saveOnce<Input, Saved>(command: AddCommand<Input, Saved>, input: Input): Saved {
+function saveOnce<Input, Saved>(save: Save<Input, Saved>, input: Input): Saved {
   const db = database.open(serverEnv().dbFile);
   try {
-    return command.save(db, input);
+    return save(db, input);
   } finally {
     database.close(db);
   }
