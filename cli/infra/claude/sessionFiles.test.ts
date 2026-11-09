@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { cp } from "node:fs/promises";
 import path from "node:path";
-import { captureStderr } from "../../test/stderr.ts";
+import { captureStderr } from "../../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../../test/tempProject.ts";
 import { env } from "../env.ts";
 import { files } from "../files.ts";

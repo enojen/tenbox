@@ -8,10 +8,9 @@ import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { checkResult } from "../test/checkResult.ts";
 import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { type FakeTool, fakeTool } from "../test/fakeTools.ts";
-import { readStatus } from "../test/taskStatus.ts";
+import { checkResult, readStatus } from "../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const MS_PER_MINUTE = 60_000;

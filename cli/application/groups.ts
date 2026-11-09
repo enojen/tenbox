@@ -2,9 +2,9 @@ import { groupMergeConflictError, unknownGroupError } from "../../domain/errors/
 import { groupBranch, groupWorktreeDir, readGroupStart } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
-import { taskBranch } from "../../domain/names.ts";
 import type { Project } from "../../domain/projects.ts";
 import { groupDir, groupFile, tenboxDir } from "../../domain/taskDirs.ts";
+import { taskBranch } from "../../domain/worktrees.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { plans } from "./plans.ts";

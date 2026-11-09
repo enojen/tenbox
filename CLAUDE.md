@@ -215,7 +215,6 @@ machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml 
             on every merge), server/ (the server image; server.yml pushes it), login/ (the claude.ai login sync from your computer to the Secrets
             of the box)
 docs/       design.md (the target design), reference.md, the icon
-hooks/  schemas/  pane/  panel/   empty until a later phase (docs/design.md)
 ```
 
 ## Trying it

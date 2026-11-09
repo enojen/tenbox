@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, symlink } from "node:fs/promises";
 import path from "node:path";
 import { files } from "../infra/files.ts";
-import { checkResult } from "../test/checkResult.ts";
 import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
+import { checkResult } from "../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const EXECUTABLE = 0o755;

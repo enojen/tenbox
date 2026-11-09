@@ -7,3 +7,4 @@ tenbox.local.yaml
 .tenbox/
 .DS_Store
 machines/k8s/.build/
+docs/notes/

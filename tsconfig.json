@@ -15,5 +15,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["cli", "domain", "server", "rules", "hooks", "workflows", "schemas"]
+  "include": ["cli", "domain", "server", "rules", "workflows"]
 }

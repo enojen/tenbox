@@ -10,7 +10,6 @@ import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { groupBranch } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
-import { taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import type { Project } from "../../domain/projects.ts";
 import {
@@ -25,6 +24,7 @@ import {
 } from "../../domain/prs.ts";
 import { groupRoot, planMdFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
+import { taskBranch } from "../../domain/worktrees.ts";
 import { checks } from "../application/checks.ts";
 import { groups } from "../application/groups.ts";
 import { notifications } from "../application/notifications.ts";

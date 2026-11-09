@@ -2,7 +2,6 @@ import path from "node:path";
 import { TenboxError } from "../../domain/errors/index.ts";
 import { isSafeName, type TaskId, taskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
-import { taskBranch } from "../../domain/names.ts";
 import { roundNumbers } from "../../domain/rounds.ts";
 import type {
   ListedReport,
@@ -11,7 +10,7 @@ import type {
   StatusReport,
 } from "../../domain/statusReports.ts";
 import { approvedFile, checksFile, roundDir, roundsDir, tenboxDir } from "../../domain/taskDirs.ts";
-import { taskWorktreeDir, taskWorktreeNames } from "../../domain/worktrees.ts";
+import { taskBranch, taskWorktreeDir, taskWorktreeNames } from "../../domain/worktrees.ts";
 import { env, log } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { GH_STATE, gh } from "../infra/gh.ts";
