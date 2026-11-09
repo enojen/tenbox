@@ -6,7 +6,7 @@ import { projectDir } from "../infra/claude/sessionFiles.ts";
 import { env } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { type CliRun, type FakeClaude, type Json, makeFakeClaude, tenbox } from "../test/cli.ts";
-import { readStatus } from "../test/taskStatus.ts";
+import { readStatus } from "../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;

@@ -3,7 +3,7 @@ import path from "node:path";
 import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
-import { readStatus } from "../test/taskStatus.ts";
+import { readStatus } from "../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;

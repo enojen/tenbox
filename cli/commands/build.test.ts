@@ -14,8 +14,8 @@ import {
 } from "../test/cli.ts";
 import { installFakeGh } from "../test/fakeGh.ts";
 import { type FakeTool, fakeTool } from "../test/fakeTools.ts";
+import { readStatus } from "../test/helpers.ts";
 import { type FakeNtfy, startFakeNtfy } from "../test/ntfy.ts";
-import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;

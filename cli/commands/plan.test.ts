@@ -3,8 +3,8 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { tenbox } from "../test/cli.ts";
+import { readStatus } from "../test/helpers.ts";
 import { startFakeNtfy } from "../test/ntfy.ts";
-import { readStatus } from "../test/taskStatus.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;

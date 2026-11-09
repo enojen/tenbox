@@ -15,7 +15,6 @@ import { errorMessage } from "../../domain/errors/index.ts";
 import { groupBranch, groupWorktreeDir } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { CHECK_TIER, type Manifest, TRACKER_KIND } from "../../domain/manifests.ts";
-import { sessionName, taskBranch } from "../../domain/names.ts";
 import { NOTIFICATION_STATE, notificationStateOf } from "../../domain/notifications.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
@@ -29,6 +28,7 @@ import {
   type Tracker,
 } from "../../domain/tracker.ts";
 import { durations } from "../../domain/utils.ts";
+import { sessionName, taskBranch } from "../../domain/worktrees.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";

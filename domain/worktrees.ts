@@ -1,5 +1,6 @@
 import path from "node:path";
-import type { TaskId } from "./ids.ts";
+import { isSafeName, type TaskId } from "./ids.ts";
+import type { Names } from "./manifests.ts";
 
 /* The checkouts under the worktree root: `~/wt/<project>/main` and one task worktree per task. */
 
@@ -30,3 +31,23 @@ export const EXCLUDED_PATHS: readonly string[] = [
   ".claude/worktrees/", // Claude Code's own worktrees
   ".claude/settings.local.json", // written by `tenbox start`
 ];
+
+export function taskBranch(names: Names, id: TaskId): string {
+  return fillName(names.branch, id);
+}
+
+/** True when `branch` is what `names.branch` makes of some task id. */
+export function isTaskBranch(names: Names, branch: string): boolean {
+  const [prefix = "", suffix = ""] = names.branch.split("{id}");
+  if (!branch.startsWith(prefix) || !branch.endsWith(suffix)) return false;
+  return isSafeName(branch.slice(prefix.length, branch.length - suffix.length));
+}
+
+/** The `claude -n` name of the task's background sessions. */
+export function sessionName(names: Names, id: TaskId): string {
+  return fillName(names.session, id);
+}
+
+function fillName(template: string, id: TaskId): string {
+  return template.replace("{id}", id);
+}

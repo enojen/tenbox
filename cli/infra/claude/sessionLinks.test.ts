@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { captureStderr } from "../../test/stderr.ts";
+import { captureStderr } from "../../test/helpers.ts";
 import { files } from "../files.ts";
 import { sessionLinks } from "./sessionLinks.ts";
 

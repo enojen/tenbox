@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { captureStderr } from "../../test/stderr.ts";
+import { captureStderr } from "../../test/helpers.ts";
 import { files } from "../files.ts";
 import { claudeFiles } from "./claudeFiles.ts";
 
