@@ -58,7 +58,7 @@ interface Command extends ArgSpec {
 }
 
 const START_USAGE =
-  'tenbox start <id> [--title "..."] [--base <branch>] [--kind docs|small|normal|large] [--no-setup] [--no-claude]';
+  'tenbox start <id> [--title "..."] [--base <branch>] [--kind docs|small|normal|large] [--no-setup] [--no-claude] [--force]';
 const QUEUE_USAGE = "tenbox queue <id>";
 const CHECK_USAGE =
   "tenbox check <id> [--group N] [--tier fast|full] [--round N] [--base <branch>] [--timeout 600]";
@@ -118,6 +118,7 @@ const COMMANDS: Record<CommandName, Command> = {
       kind: { type: "string" },
       setup: { type: "boolean", default: true },
       claude: { type: "boolean", default: true },
+      force: { type: "boolean", default: false },
     },
     run: (positionals, values) =>
       startTask({
@@ -127,6 +128,7 @@ const COMMANDS: Record<CommandName, Command> = {
         kind: kindValue(values),
         setup: flagValue(values, "setup"),
         claude: flagValue(values, "claude"),
+        force: flagValue(values, "force"),
       }),
   },
   [COMMAND.queue]: {

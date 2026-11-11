@@ -30,6 +30,7 @@ Flags:
   --kind K        the task kind: ${TASK_KINDS.join(", ")}
   --no-setup      skip the manifest setup command
   --no-claude     do not start the background session
+  --force         start even when the task branch is on origin (task-in-progress)
 
 Output: { ok, task, title, project, worktree, branch, base, created, task_md, setup, tracker, claude }
   claude.state is started, exists, skipped or unavailable.

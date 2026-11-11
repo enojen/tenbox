@@ -7,6 +7,7 @@ import { manifests } from "../application/manifests.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { type FakeClaude, makeFakeClaude, notificationHooks, tenbox } from "../test/cli.ts";
+import { fakeTool } from "../test/fakeTools.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { type StartInput, startTask } from "./start.ts";
 
@@ -22,6 +23,7 @@ const input = (extra: Partial<StartInput> = {}): StartInput => ({
   claude: false,
   setup: true,
   kind: undefined,
+  force: false,
   ...extra,
 });
 const taskMdPath = (): string => path.join(taskWorktree, ".tenbox", "task.md");
@@ -509,4 +511,80 @@ test("a failed fetch of the base keeps the local base and goes on", async () => 
   }
   const worktreeHead = await head(taskWorktree);
   expect(worktreeHead).toBe(localHead);
+});
+
+/** A bare origin with `main` and the task branch `feat/T-1` pushed, as another run left it. */
+async function addOriginWithTaskBranch(): Promise<void> {
+  const origin = path.join(project.root, "origin.git");
+  await git.run(["init", "-q", "--bare", "-b", "main", origin], project.root);
+  await git.run(["remote", "add", "origin", origin], project.mainDir);
+  await git.run(["push", "-q", "origin", "main", "main:feat/T-1"], project.mainDir);
+}
+
+const OPEN_PR = {
+  number: 7,
+  url: "https://github.com/o/r/pull/7",
+  isDraft: false,
+  state: "OPEN",
+  body: "",
+  headRefName: "feat/T-1",
+};
+
+const ghPrList = (prs: object[]) => () => ({ stdout: JSON.stringify(prs) });
+
+test("a task branch on origin with an open PR stops the start with task-in-progress", async () => {
+  await setup("project: demo\n");
+  await addOriginWithTaskBranch();
+  fakeTool("gh", ghPrList([OPEN_PR]));
+  await expect(startTask(input({ setup: false }))).rejects.toMatchObject({
+    code: "task-in-progress",
+    message: expect.stringContaining("https://github.com/o/r/pull/7"),
+    details: { branch: "feat/T-1", pr: "https://github.com/o/r/pull/7" },
+  });
+  const made = await files.isDir(taskWorktree);
+  expect(made).toBe(false);
+});
+
+test("a task branch on origin with no open PR stops the start and names the branch", async () => {
+  await setup("project: demo\n");
+  await addOriginWithTaskBranch();
+  fakeTool("gh", ghPrList([{ ...OPEN_PR, state: "CLOSED" }]));
+  await expect(startTask(input({ setup: false }))).rejects.toMatchObject({
+    code: "task-in-progress",
+    message: expect.stringContaining("feat/T-1"),
+    details: { branch: "feat/T-1", pr: null },
+  });
+});
+
+test("--force starts a task whose branch is on origin", async () => {
+  await setup("project: demo\n");
+  await addOriginWithTaskBranch();
+  fakeTool("gh", ghPrList([OPEN_PR]));
+  const r = await startTask(input({ setup: false, force: true }));
+  expect(r.created).toBe(true);
+});
+
+test("a second start that reuses the task worktree does not look at origin", async () => {
+  await setup("project: demo\n");
+  await startTask(input({ setup: false }));
+  await addOriginWithTaskBranch();
+  const r = await startTask(input({ setup: false }));
+  expect(r.created).toBe(false);
+});
+
+test("an origin that cannot be reached is one stderr line and the start goes on", async () => {
+  await setup("project: demo\n");
+  const gone = path.join(project.root, "gone.git");
+  await git.run(["remote", "add", "origin", gone], project.mainDir);
+  const logged = spyOn(process.stderr, "write");
+  try {
+    const r = await startTask(input({ setup: false }));
+    expect(r.created).toBe(true);
+    const lines = logged.mock.calls.map((call) => String(call[0]));
+    expect(
+      lines.filter((line) => line.includes("git ls-remote origin feat/T-1 failed")),
+    ).toHaveLength(1);
+  } finally {
+    logged.mockRestore();
+  }
 });
