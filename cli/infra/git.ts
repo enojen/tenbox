@@ -36,6 +36,7 @@ export const git = {
   deleteBranch,
   hasChanges,
   isMerged,
+  listMergeConflicts,
   isAncestor,
   push,
   forcePush,
@@ -222,6 +223,15 @@ async function isMerged(dir: string, base: string, branch: string): Promise<bool
   if (mergedTree === null) return false;
   const baseTree = await run(["rev-parse", `${base}^{tree}`], dir);
   return mergedTree.split("\n")[0] === baseTree;
+}
+
+/** The files that conflict when `branch` is merged into `base`; empty for a clean merge. */
+async function listMergeConflicts(dir: string, base: string, branch: string): Promise<string[]> {
+  const args = ["merge-tree", "--write-tree", "--name-only", "--no-messages", base, branch];
+  const result = await runRaw(args, dir);
+  if (result.code === 0) return [];
+  if (result.code !== 1) throw gitError(args, result);
+  return result.stdout.trim().split("\n").slice(1).filter(Boolean);
 }
 
 /** True when `commit` is reachable from `ref`; exit 1 of `merge-base --is-ancestor` means no. */
