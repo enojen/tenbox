@@ -14,8 +14,9 @@ a command.
    `tenbox decide <id> --no-build --json '[{"question": 1, "answer": "..."}]'`, with `question`
    the number that `tenbox plan show` gives the question (its text works too).
    Temporary, until #249: `answer` is one line. Read `ok: true` in the output before the
-   approval. Temporary, until #160: `approve` and `build` do not stop on an open question, so
-   look at the question list yourself.
+   approval. `approve` does not stop on an open question, so look at the question
+   list yourself. `build` stops with `open-questions`; `tenbox build <id> --defaults` starts it
+   with the open questions that are not blocking.
 5. A decision that holds for every task of the project belongs in `decisions:` of
    `tenbox.yaml`, not in a note typed on each task.
 6. `tenbox approve <id>`, then `tenbox build <id>`.

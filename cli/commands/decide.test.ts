@@ -30,6 +30,8 @@ afterEach(async () => {
   await project.remove();
 });
 
+const tickQuestions = (from: string) =>
+  files.write(questionsFile, QUESTIONS.replace(from, from.replace("[ ]", "[x]")));
 const decide = (...args: string[]) => tenbox(["decide", "T-1", ...args], project.mainDir, fake.env);
 const PLAN = {
   summary: "s",
@@ -176,6 +178,7 @@ describe("tenbox decide", () => {
 
   test("sends the build after the answers", async () => {
     await approve();
+    await tickQuestions("- [ ] Other?");
     const run = await decide("--json", JSON.stringify(ANSWER));
     const calls = await bgCalls();
     expect([run.code, run.json]).toEqual([
@@ -192,6 +195,17 @@ describe("tenbox decide", () => {
     expect(calls.map((call) => call.args.at(-1))).toEqual([SENT]);
   });
 
+  test("decide that leaves a question open writes its answers then is open-questions", async () => {
+    await approve();
+    const run = await decide("--json", JSON.stringify(ANSWER));
+    const decisions = await files.read(decisionsFile);
+    const started = await bgCalls();
+    expect([run.code, run.json.code]).toEqual([1, "open-questions"]);
+    expect(run.json.error).toContain("2. Other?");
+    expect(decisions).toBe("- Can a shipped order be cancelled?\n  Answer: No\n");
+    expect(started).toEqual([]);
+  });
+
   test("decide after a finished build writes the answer then is nothing-to-build", async () => {
     await approve();
     const part = path.join(path.dirname(decisionsFile), "parts", "01-a.md");
@@ -206,6 +220,7 @@ describe("tenbox decide", () => {
 
   test("decide sends the build once a done part is set back to todo", async () => {
     await approve();
+    await files.write(questionsFile, QUESTIONS.replaceAll("- [ ] ", "- [x] "));
     const part = path.join(path.dirname(decisionsFile), "parts", "01-a.md");
     await files.write(part, "# 01\nstatus: done\n");
     const answer = JSON.stringify([{ answer: "use 409" }]);
@@ -228,6 +243,7 @@ describe("tenbox decide", () => {
 
   test("a working session is session-busy after the answers are written", async () => {
     await approve();
+    await files.write(questionsFile, QUESTIONS.replaceAll("- [ ] ", "- [x] "));
     const cwd = await files.realPath(path.dirname(path.dirname(decisionsFile)));
     await fake.setSessions([
       { id: "s1", cwd, kind: "background", startedAt: 1, state: "working", pid: 11 },

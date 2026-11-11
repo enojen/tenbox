@@ -18,6 +18,21 @@ export function nothingToBuildError(id: string): TenboxError {
   );
 }
 
+/** An open question of `questions.md`, as `tenbox decide` numbers it. */
+interface OpenQuestion {
+  number: number;
+  text: string;
+}
+
+export function openQuestionsError(id: string, open: OpenQuestion[]): TenboxError {
+  const list = open.map((question) => `\n${question.number}. ${question.text}`).join("");
+  return new TenboxError(
+    `${id} has open questions:${list}\nAnswer them with tenbox decide, or run tenbox build ${id} --defaults`,
+    "open-questions",
+    open.map((question) => ({ number: question.number, text: question.text })),
+  );
+}
+
 export function unknownGroupError(id: string, group: number): TenboxError {
   return new TenboxError(`the plan of ${id} has no group ${group}`, "unknown-group");
 }

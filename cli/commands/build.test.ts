@@ -123,6 +123,54 @@ describe("tenbox build", () => {
     expect(after).toBe(before);
   });
 
+  const questionsFile = (): string => path.join(taskWorktree(), ".tenbox", "questions.md");
+
+  test("build with an unticked question is open-questions and starts nothing", async () => {
+    await setup();
+    await approve();
+    await files.write(questionsFile(), "## product\n- [x] Done?\n- [ ] Other?\n");
+    const before = await readStatus(taskJsonFile());
+    const built = await run("build", "T-1");
+    const prompts = await bgPrompts();
+    const after = await readStatus(taskJsonFile());
+    expect([built.code, built.json.ok, built.json.code]).toEqual([1, false, "open-questions"]);
+    expect(built.json.error).toContain("2. Other?");
+    expect(built.json.details).toEqual([{ number: 2, text: "Other?" }]);
+    expect(prompts).toEqual([]);
+    expect(after).toBe(before);
+  });
+
+  test("build with every question ticked starts as today", async () => {
+    await setup();
+    await approve();
+    const withoutFile = await run("build", "T-1");
+    await files.write(questionsFile(), "- [x] Done?\n");
+    const ticked = await run("build", "T-1");
+    expect([withoutFile.code, withoutFile.json.sent]).toEqual([0, SENT]);
+    expect([ticked.code, ticked.json.sent]).toEqual([0, SENT]);
+  });
+
+  test("build --defaults with an unticked question starts as today", async () => {
+    await setup();
+    await approve();
+    await files.write(questionsFile(), "- [ ] Other? Default: no\n");
+    const built = await run("build", "T-1", "--defaults");
+    const prompts = await bgPrompts();
+    expect([built.code, built.json.sent]).toEqual([0, SENT]);
+    expect(prompts).toEqual([SENT]);
+  });
+
+  test("build --defaults with an open blocking question is still open-questions", async () => {
+    await setup();
+    await approve();
+    await files.write(questionsFile(), "- [ ] Other?\n- [ ] (blocking) Which?\n");
+    const built = await run("build", "T-1", "--defaults");
+    const prompts = await bgPrompts();
+    expect([built.code, built.json.code]).toEqual([1, "open-questions"]);
+    expect(built.json.details).toEqual([{ number: 2, text: "Which?" }]);
+    expect(prompts).toEqual([]);
+  });
+
   test("sends the kind, its review rounds and the lenses and recipes the kind gives", async () => {
     await setup();
     const recipe = { ...RECIPE, lenses: ["contract"], tier: "full" };

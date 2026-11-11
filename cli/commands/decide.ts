@@ -20,6 +20,6 @@ export async function decide(input: DecideInput): Promise<DecideResult> {
   const saved = await decisions.save(taskWorktree, items);
   const result: DecideResult = { ok: true, task: input.id, ...saved };
   if (!input.build) return result;
-  const { sent } = await sendBuild(input.id);
+  const { sent } = await sendBuild({ id: input.id, defaults: false });
   return { ...result, sent };
 }

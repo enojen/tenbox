@@ -82,7 +82,7 @@ const APPROVED_USAGE = "tenbox approved <id>";
 const STATS_USAGE = "tenbox stats <id>";
 const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
-const BUILD_USAGE = "tenbox build <id>";
+const BUILD_USAGE = "tenbox build <id> [--defaults]";
 const MACHINE_USAGE =
   "tenbox machine run <id> [--wait [--timeout 600]] -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
@@ -265,10 +265,13 @@ const COMMANDS: Record<CommandName, Command> = {
   },
   [COMMAND.build]: {
     usage: `${BUILD_USAGE} | ${BUILD_DONE_USAGE}`,
-    options: { json: { type: "string" } },
+    options: { json: { type: "string" }, defaults: { type: "boolean", default: false } },
     run: (positionals, values) => {
       const [first, ...rest] = positionals;
-      if (first !== "done") return sendBuild(idArg(positionals, BUILD_USAGE));
+      if (first !== "done") {
+        const defaults = flagValue(values, "defaults");
+        return sendBuild({ id: idArg(positionals, BUILD_USAGE), defaults });
+      }
       const json = stringValue(values, "json");
       if (!json) throw usageError(`usage: ${BUILD_DONE_USAGE}`);
       return buildDone({ id: idArg(rest, BUILD_DONE_USAGE), json });

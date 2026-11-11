@@ -140,6 +140,7 @@ Example:
   tenbox proof TEN-301 --part 01 --file cli/a.test.ts --test "it works" --failure "got 1, want 2"`,
 
   decide: `Saves answers and plan decision overrides in decisions.md and starts a new build.
+A question left open gives open-questions after the answers are saved; decide has no --defaults.
 
 Input (--json, required): a list of items, each one
   { question?, answer }       an answer, with the question it answers: a piece of
@@ -177,6 +178,13 @@ Example:
 
 Input (build done, --json, required): the build result
   { status, round, proofs, attention, nice-to-have, unproven }
+
+Options (build):
+  --defaults  start although a question of questions.md is open and not blocking;
+              an open blocking question always stops the build
+
+An open question of questions.md gives open-questions (exit 1): the error names each as
+<number>. <text>, details are [{ number, text }], and no session starts.
 
 Output: build { ok, task, sent, tracker }; build done { ok, task, file, findings, pr?, tracker? }
   build sets the tracker task to in progress; a ready-for-you build done sets it to review.
