@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { applyDecisions, parseDecisions, takeOptions } from "./decisions.ts";
+import { applyDecisions, numberedQuestions, parseDecisions, takeOptions } from "./decisions.ts";
 import type { PlanResult } from "./plans.ts";
 
 const QUESTIONS = "## product\n- [ ] (blocking) Can a shipped order be cancelled?\n- [ ] Other?\n";
@@ -49,21 +49,64 @@ test.each([
   );
 });
 
+test("numberedQuestions counts every question line from 1 with its kind heading", () => {
+  const text = `- [ ] Before any heading?\n${QUESTIONS}\n## technical\n- [x] Which port?\n`;
+  expect(numberedQuestions(text)).toEqual([
+    { number: 1, kind: null, blocking: false, open: true, text: "Before any heading?" },
+    {
+      number: 2,
+      kind: "product",
+      blocking: true,
+      open: true,
+      text: "Can a shipped order be cancelled?",
+    },
+    { number: 3, kind: "product", blocking: false, open: true, text: "Other?" },
+    { number: 4, kind: "technical", blocking: false, open: false, text: "Which port?" },
+  ]);
+});
+
+test("a question number answers and ticks that line", () => {
+  const applied = applyDecisions([{ question: 1, answer: "No" }], texts);
+  expect(applied.decisions).toBe("- Can a shipped order be cancelled?\n  Answer: No\n");
+  expect(applied.questions).toBe(QUESTIONS.replace("- [ ] (blocking)", "- [x] (blocking)"));
+  expect([applied.added, applied.ticked]).toEqual([1, 1]);
+});
+
+test("a question number keeps its line after an earlier line is ticked", () => {
+  const first = applyDecisions([{ question: 1, answer: "No" }], texts);
+  const second = applyDecisions([{ question: 2, answer: "Yes" }], first);
+  expect(second.decisions).toContain("- Other?\n  Answer: Yes\n");
+  expect(second.ticked).toBe(1);
+});
+
+test("a question number past the last line is unknown-question and names the open questions", () => {
+  const ticked = { ...texts, questions: QUESTIONS.replace("- [ ] Other?", "- [x] Other?") };
+  const answer = () => applyDecisions([{ question: 3, answer: "x" }], ticked);
+  expect(answer).toThrow(
+    expect.objectContaining({
+      code: "unknown-question",
+      details: [{ number: 1, text: "Can a shipped order be cancelled?" }],
+    }),
+  );
+  expect(answer).toThrow("1. Can a shipped order be cancelled?");
+});
+
 test.each([
   ["not JSON", "{ nope"],
   ["not an array", '{"answer":"x"}'],
   ["a missing answer", '[{"question":"q"}]'],
   ["a blank answer", '[{"answer":"  "}]'],
   ["a newline in the answer", '[{"answer":"a\\nb"}]'],
+  ["a question number of 0", '[{"question":0,"answer":"a"}]'],
+  ["a question number that is not whole", '[{"question":1.5,"answer":"a"}]'],
 ])("parseDecisions refuses %s with bad-input", (_name, text) => {
   expect(() => parseDecisions(text)).toThrow(expect.objectContaining({ code: "bad-input" }));
 });
 
 test("parseDecisions returns the items", () => {
-  expect(parseDecisions('[{"question":"q","answer":"a"},{"answer":"n"}]')).toEqual([
-    { question: "q", answer: "a" },
-    { answer: "n" },
-  ]);
+  expect(
+    parseDecisions('[{"question":"q","answer":"a"},{"question":2,"answer":"b"},{"answer":"n"}]'),
+  ).toEqual([{ question: "q", answer: "a" }, { question: 2, answer: "b" }, { answer: "n" }]);
 });
 
 test("parseDecisions returns an item that takes an option of a plan decision", () => {

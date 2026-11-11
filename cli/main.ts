@@ -71,7 +71,7 @@ const PART_USAGE = "tenbox part done <id> --part NN [--commit <sha>] [--since <s
 const PART_REOPEN_USAGE = 'tenbox part reopen <id> --part NN --accept "..."';
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE =
-  "tenbox decide <id> --json '[{ question?, answer } | { decision, taken }]' [--no-build]";
+  "tenbox decide <id> --json '[{ question?: text | number, answer } | { decision, taken }]' [--no-build]";
 const PLAN_USAGE = "tenbox plan done <id> --json '<result>'";
 const PLAN_SHOW_USAGE = "tenbox plan show <id>";
 const BUILD_DONE_USAGE = "tenbox build done <id> --json '<result>'";

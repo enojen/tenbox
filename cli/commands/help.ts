@@ -142,8 +142,12 @@ Example:
   decide: `Saves answers and plan decision overrides in decisions.md and starts a new build.
 
 Input (--json, required): a list of items, each one
-  { question?, answer }       an answer, with the question it answers
+  { question?, answer }       an answer, with the question it answers: a piece of
+                              its line in questions.md, or its number in plan show
   { decision, taken }         a plan decision title and its option, counted from 1
+A question number counts every question line of questions.md from 1, answered ones too.
+A question that fits no line or more than one is unknown-question; the error lists
+the open questions as <n>. <text>.
 Flags:
   --no-build   save only; send no build prompt
 
@@ -151,6 +155,7 @@ Output: { ok, task, sent? }
   sent is the build prompt; missing with --no-build.
 
 Example:
+  tenbox decide TEN-301 --json '[{ "question": 1, "answer": "No" }]'
   tenbox decide TEN-301 --json '[{ "decision": "Storage", "taken": 2 }]'`,
 
   plan: `plan done saves the plan result as plan.json; plan show prints the plan for a person.
@@ -162,6 +167,8 @@ Output: plan done { ok, task, file, stale_parts };
   stale_parts: [{ part, file, reason }], the part files that do not match the result;
   reason is "not in the plan", "no part file" (file null) or "files differ"
   plan show { ok, task, file, estimated_lines, parts, groups, examples, decisions, questions }
+  plan show questions come from questions.md: [{ number, kind, blocking, open, text }];
+  number is what tenbox decide takes as question
 
 Example:
   tenbox plan show TEN-301`,

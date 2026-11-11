@@ -1,3 +1,4 @@
+import type { NumberedQuestion } from "../decisions.ts";
 import { TenboxError } from "./index.ts";
 
 /* Errors of the plan: plan files, approval, decisions, questions, parts. */
@@ -29,11 +30,23 @@ export function partNotCommittedError(part: string, reason: string): TenboxError
   return new TenboxError(`part ${part} is not committed: ${reason}`, "part-not-committed");
 }
 
-export function unknownQuestionError(question: string, count: number): TenboxError {
-  const found = count === 0 ? "no line" : `${count} lines`;
+/** A question of `tenbox decide` that fits `count` lines, and the open questions of the file. */
+export interface QuestionMiss {
+  question: string | number;
+  count: number;
+  open: NumberedQuestion[];
+}
+
+export function unknownQuestionError(miss: QuestionMiss): TenboxError {
+  const found = miss.count === 0 ? "no line" : `${miss.count} lines`;
+  const named = typeof miss.question === "number" ? miss.question : `"${miss.question}"`;
+  const open = miss.open.map((question) => ({ number: question.number, text: question.text }));
+  const list = open.map((question) => `\n${question.number}. ${question.text}`).join("");
+  const openText = open.length === 0 ? " No question is open." : ` Open questions:${list}`;
   return new TenboxError(
-    `"${question}" fits ${found} of questions.md; it must fit exactly one`,
+    `${named} fits ${found} of questions.md; it must fit exactly one.${openText}`,
     "unknown-question",
+    open,
   );
 }
 

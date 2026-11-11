@@ -3,6 +3,7 @@ import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import { planLines } from "../../domain/plans.ts";
 import { planFile, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
+import { decisions } from "../application/decisions.ts";
 import { notifications } from "../application/notifications.ts";
 import { parts } from "../application/parts.ts";
 import { plans } from "../application/plans.ts";
@@ -33,14 +34,15 @@ export async function planDone(input: PlanDoneInput): Promise<PlanDoneResult> {
   return { ok: true, task: input.id, file, stale_parts: stale };
 }
 
-/** Prints the plan of `plan.json`: as JSON on stdout, as lines on stderr. */
+/** Prints the plan of `plan.json` with the questions of `questions.md`: as JSON on stdout, as lines on stderr. */
 export async function planShow(id: TaskId): Promise<PlanShowResult> {
   const taskWorktree = await worktrees.get(id);
   const dir = tenboxDir(taskWorktree);
   const plan = await plans.get(dir);
-  log(planLines(plan).join("\n"));
-  const { estimated_lines, parts, groups, examples, decisions, questions } = plan;
+  const questions = await decisions.listQuestions(dir);
+  log(planLines(plan, questions).join("\n"));
+  const { estimated_lines, parts, groups, examples } = plan;
   const file = planFile(dir);
-  const shown = { estimated_lines, parts, groups: groups ?? null, examples, decisions, questions };
-  return { ok: true, task: id, file, ...shown };
+  const shown = { estimated_lines, parts, groups: groups ?? null, examples, questions };
+  return { ok: true, task: id, file, ...shown, decisions: plan.decisions };
 }
