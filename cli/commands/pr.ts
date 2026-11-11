@@ -9,7 +9,7 @@ import {
 import { ghNoPrError } from "../../domain/errors/tools.ts";
 import { groupBranch } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
-import type { Manifest } from "../../domain/manifests.ts";
+import { CHECK_TIER, type Manifest } from "../../domain/manifests.ts";
 import { NOTIFICATION_STATE } from "../../domain/notifications.ts";
 import type { Project } from "../../domain/projects.ts";
 import {
@@ -37,6 +37,7 @@ import { files } from "../infra/files.ts";
 import { GH_STATE, type GroupPr, gh, type PrText } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { pollUntil } from "../infra/poll.ts";
+import { runChecks } from "./check.ts";
 import type { CiResult, GroupPrResult, PrInfo, PrResult } from "./results.ts";
 
 export interface PrInput {
@@ -189,8 +190,9 @@ interface PushInput {
 
 /**
  * A group with needs and no PR yet waited for them: it is rebased onto the base first, so only
- * its own commits stay. Any other group is merged with `origin/<base>` in memory first. Returns
- * the conflicted files of that rebase or merge; nothing is pushed then.
+ * its own commits stay, and without `--force` its fast checks run again at the new head. Any
+ * other group is merged with `origin/<base>` in memory first. Returns the conflicted files of
+ * that rebase or merge; nothing is pushed then.
  */
 async function pushGroup(input: PushInput): Promise<string[]> {
   const { run, group, dir, own } = input;
@@ -204,8 +206,19 @@ async function pushGroup(input: PushInput): Promise<string[]> {
   const rebase = { taskWorktree: run.taskWorktree, group: group.id, worktree: dir };
   const conflicted = await groups.rebase({ ...rebase, base: run.baseBranch });
   if (conflicted.length > 0) return conflicted;
+  if (!run.input.force) await recheck(run, group);
   await git.forcePush(dir, group.branch);
   return [];
+}
+
+const RECHECK_TIMEOUT_SECONDS = 600;
+const RECHECK_TIMEOUT_MS = RECHECK_TIMEOUT_SECONDS * durations.MS_PER_SECOND;
+
+/** As `tenbox check <id> --group N` does, so the next `tenbox pr` finds the checks at HEAD. */
+async function recheck(run: PrRun, group: PrGroup): Promise<void> {
+  const tier = CHECK_TIER.fast;
+  const input = { id: run.input.id, group: group.id, round: undefined, tier, base: undefined };
+  await runChecks({ ...input, timeoutMs: RECHECK_TIMEOUT_MS });
 }
 
 /** The files that conflict when the branch is merged into `origin/<base>`; none without it. */
