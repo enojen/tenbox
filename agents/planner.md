@@ -22,8 +22,10 @@ Your prompt names one of two jobs. Do that job only.
 
 ## Read first, in this order
 
-1. `.tenbox/decisions.md` if it exists. Every decision there is final. Never ask a
-   question that is answered there.
+1. `.tenbox/decisions.md` if it exists, and each line under `decisions:` of `tenbox.yaml`:
+   the project's decisions, which hold for every task, read like lines of `decisions.md`.
+   Every decision there is final. Never ask a question that is answered there, and plan no
+   step that one of them rules out (for example a real eval the project says boxes do not run).
 2. `.tenbox/task.md`, then the existing `.tenbox/plan.md` and `.tenbox/parts/*.md` if any.
 3. `tenbox.yaml` if it exists, for `locked`, `budget` and the `checks`. Defaults when it
    is missing: `max_pr_lines` 400, `max_parallel_workers` 3, `max_rounds` 3.

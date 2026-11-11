@@ -16,7 +16,8 @@ session directory after each call.
 
 ## Read first
 
-1. `.tenbox/decisions.md` if it exists. A choice recorded there is not a finding.
+1. `.tenbox/decisions.md` if it exists, and each line under `decisions:` of `tenbox.yaml` (the
+   project's decisions). A choice recorded there is not a finding.
 2. `.tenbox/plan.md`, the `examples` in `.tenbox/plan.json` and the part files in `.tenbox/parts/`.
    The worker proofs are in your prompt and, when it exists, in `.tenbox/proofs.json`.
 3. The diff: `git diff main...HEAD`, or the base branch your prompt names. When your

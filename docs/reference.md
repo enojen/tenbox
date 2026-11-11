@@ -354,7 +354,15 @@ machine: { template: ~/tenyard/task }   # optional; the default; the directory o
 # machine: { plan_class: heavy }   # optional; the resource class of tenbox start in the box (the planner): plan, build or heavy; default plan
 # machine: { class: heavy }   # optional; the resource class of a build in the box: plan, build or heavy, with the numbers of tenyard's classes.yaml; default build; another name is an error
 # machine: { services: [postgres] }   # optional; sidecars of a build in the box, files of tenyard's services/; a start or close gets none; tenbox check on your computer starts none
+decisions:                       # optional; decisions that hold for every task, non-empty text lines; default none
+  - "Boxes run no real eval: no plan step or worker runs it; the person runs it on their computer."
 ```
+
+**Project decisions.** The planner, the worker and the reviewer read each line under
+`decisions:` of the task worktree's `tenbox.yaml` (not of a local layer) like a line of `.tenbox/decisions.md`: final,
+never asked again, and a step it rules out is not planned or run (`agents/*.md`). So a fact of
+the project is written once, not as a `tenbox decide` note for every task. Tenbox itself only
+checks that each line is non-empty text (else `manifest`).
 
 **Notifications.** With `notify.ntfy` (a topic URL, `<server>/<topic>`) Tenbox publishes one text
 line as ntfy JSON (`POST <server>` with `{ topic, message }`) when a person must act, and only then:
