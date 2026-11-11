@@ -377,6 +377,44 @@ test("a rebase conflict gives the group conflict with the files and pushes nothi
   expect(pushed.includes("feat/T-1-2")).toBe(false);
 });
 
+/** Main moves on origin with its own change of `a.txt`. */
+async function moveMain(text: string): Promise<void> {
+  await files.write(path.join(project.mainDir, "a.txt"), text);
+  await git.run(["commit", "-q", "-am", "main moves"], project.mainDir);
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
+}
+
+test("an open PR whose branch conflicts with the moved base gives conflict with the files", async () => {
+  await files.write(path.join(taskWorktree, "a.txt"), "task\n");
+  await git.run(["commit", "-q", "-am", "task edit"], taskWorktree);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  await moveMain("main\n");
+  await commit(taskWorktree, "b.txt");
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  const pushed = await git.run(["log", "--format=%s", "-1", "feat/T-1"], origin);
+  expect([run.code, run.json.ok]).toEqual([0, true]);
+  expect(run.json.groups).toEqual([
+    {
+      group: 1,
+      branch: "feat/T-1",
+      state: "conflict",
+      pr: { number: 1, url: "https://example.com/pull/1", draft: true },
+      files: ["a.txt"],
+    },
+  ]);
+  expect(pushed).toBe("task edit");
+});
+
+test("a branch that merges cleanly into the moved base is updated", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  await moveMain("main\n");
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  expect(states(run)).toEqual([[1, "updated"]]);
+});
+
 test("tenbox pr never merges a PR", async () => {
   await makeStackedGroups();
   const gh = await installGh();
@@ -402,6 +440,28 @@ test("a reused group branch keeps only its own commits after its need is squash 
     [2, "created"],
   ]);
   expect(own).toBe("two.txt");
+});
+
+test("a rebased group is checked again at its new head, so pr --ready needs no tenbox check", async () => {
+  await makeStackedGroups();
+  await runChecks();
+  const second = await tenbox(["check", "T-1", "--group", "2"], project.mainDir);
+  expect(second.json.ok).toBe(true);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("one.txt\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const ready = await tenbox(["pr", "T-1", "--ready"], project.mainDir, gh.env);
+  expect([ready.code, ready.json.code]).toEqual([0, undefined]);
+  expect(ready.json.groups).toEqual([
+    expect.objectContaining({ group: 1, state: "merged" }),
+    expect.objectContaining({
+      group: 2,
+      state: "updated",
+      pr: expect.objectContaining({ draft: false }),
+    }),
+  ]);
 });
 
 /** Runs `tenbox check` with one passing check, so the round has a checks.json. */
