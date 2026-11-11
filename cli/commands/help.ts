@@ -227,7 +227,9 @@ Example:
 
   status: `Prints the status report of the task from its files, session and PR.
 
-Output: { ok, task, status, round, parts, session, pr, check }
+Output: { ok, task, title, status, round, approved, parts, session, pr, checks, reason }
+reason is why a failed or needs-you build stopped: feedback, attention, findings,
+decision and the parts not done with their result line; null otherwise.
 
 Example:
   tenbox status TEN-301`,

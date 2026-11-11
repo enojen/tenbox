@@ -49,5 +49,6 @@ For the flow of a task, the files of a task and `tenbox.yaml`, read the
   draft for such names before the person says yes. A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
   as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
-  "Machines" in the reference. After its close Job ends, `tenbox machine rm <id>` deletes the
+  "Machines" in the reference. Why a build there failed or waits: `reason` of
+  `tenbox machine run <id> -- tenbox status <id>`, not `kubectl`. After its close Job ends, `tenbox machine rm <id>` deletes the
   task's volume; run it only then, it cannot be undone.

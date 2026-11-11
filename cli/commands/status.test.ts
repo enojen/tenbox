@@ -72,6 +72,7 @@ describe("tenbox status", () => {
         session: { state: "none" },
         pr: null,
         checks: null,
+        reason: null,
       },
     ]);
   });
@@ -109,6 +110,76 @@ describe("tenbox status", () => {
       true,
       3,
     ]);
+  });
+
+  test("a failed build gives its reason: feedback, attention, findings and the parts not done", async () => {
+    const part = (name: string, text: string) =>
+      files.write(path.join(tenboxDir, "parts", `${name}.md`), text);
+    await part("01-a", "# 01\nstatus: done\nresult: built a, 2 tests, abc123\n");
+    await part("02-b", "# 02\nstatus: doing\nresult: half of b, the check is red\n");
+    await part("03-c", "# 03\nstatus: todo\n");
+    const finding = { title: "t", why: "w", what: "x", done: "d", labels: [], task: null };
+    const failed = buildResult({
+      status: "failed",
+      round: 4,
+      feedback: "1 new failure: test b",
+      attention: ["read b.ts"],
+      findings: [finding],
+    });
+    await files.writeJson(path.join(tenboxDir, "build.json"), failed);
+    await files.writeJson(path.join(tenboxDir, "task.json"), {
+      id: "T-1",
+      title: "the title",
+      status: "failed",
+      tracker: "none",
+      url: null,
+    });
+    const run = await status();
+    expect(run.json.reason).toEqual({
+      feedback: "1 new failure: test b",
+      attention: ["read b.ts"],
+      findings: [finding],
+      decision: null,
+      parts: [
+        { part: "02", status: "doing", result: "half of b, the check is red" },
+        { part: "03", status: "todo", result: null },
+      ],
+    });
+  });
+
+  test("a blocked build (needs-you) gives its decision card as the reason", async () => {
+    await files.write(path.join(tenboxDir, "parts", "01-a.md"), "# 01\nstatus: blocked\n");
+    const card = {
+      title: "q",
+      options: ["a", "b"],
+      recommended: 1,
+      reason: "r",
+      auto: false,
+      kind: "scope",
+    };
+    const blocked = buildResult({ status: "needs-you", part: "01", decision: card });
+    await files.writeJson(path.join(tenboxDir, "build.json"), blocked);
+    await files.writeJson(path.join(tenboxDir, "task.json"), {
+      id: "T-1",
+      title: "the title",
+      status: "needs-you",
+      tracker: "none",
+      url: null,
+    });
+    const run = await status();
+    expect(run.json.reason).toEqual({
+      feedback: null,
+      attention: [],
+      findings: [],
+      decision: card,
+      parts: [{ part: "01", status: "blocked", result: null }],
+    });
+  });
+
+  test("a ready build has no reason", async () => {
+    await files.writeJson(path.join(tenboxDir, "build.json"), buildResult({}));
+    const run = await status();
+    expect(run.json.reason).toBeNull();
   });
 
   test("takes the round and the last check result from the newest checks.json", async () => {

@@ -12,6 +12,7 @@ const REPORT: StatusReport = {
   session: { state: "working" },
   pr: null,
   checks: null,
+  reason: null,
 };
 
 test("reportLine gives one line with the status, round, parts, session and PR", () => {
