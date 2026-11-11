@@ -67,8 +67,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | check | One named command under `checks:`; `tenbox check` runs them all. |
 | failure line | One output line of a check that matches the failure pattern (`FailureLine`). |
 | baseline | The failure lines a check has on `main` at one commit (`Baseline`). |
-| new failure | A failure line not in the baseline; the only thing that fails a check. |
-| flaky | A new failure line of a check's first run that its rerun does not repeat; listed under `flaky`, it does not fail the check. |
+| new failure | A failure line not in the baseline (after a rerun, one that both runs have); the only thing that fails a check. |
+| flaky | A new failure line that only one of a check's two runs has (the first run or its rerun); listed under `flaky`, it does not fail the check. |
 | fixed | A baseline failure line that no longer appears. |
 | approval | `approved.json` in the task dir, written by `tenbox approve` after it checks the plan as `tenbox plan done` does: the time and the sha of `plan.json` (`Approval`). |
 | round | One pass of build, checks and review inside `/tenbox-build`. |

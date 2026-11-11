@@ -179,7 +179,7 @@ describe("runChecks flaky", () => {
     const count = await runCount();
     expect(count).toBe(2);
     expect(r.summary).toBe(
-      "all 1 check(s) pass with no new failures\nunit: 1 flaky (failed once, passed on the rerun)\n  FAIL  flaky one",
+      "all 1 check(s) pass with no new failures\nunit: 1 flaky (failed in one of the two runs)\n  FAIL  flaky one",
     );
   });
 
@@ -190,6 +190,34 @@ describe("runChecks flaky", () => {
     expect(r.checks[0]).toMatchObject({ new_failures: ["FAIL  solid one"], flaky: [] });
     const count = await runCount();
     expect(count).toBe(2);
+  });
+
+  /** Prints `$1` on the first run and `$2` on the rerun, and fails both times. */
+  const twoRuns = (first: string, second: string) =>
+    `n=$(cat ../../../n 2>/dev/null || echo 0); echo $((n+1)) > ../../../n; if [ "$n" = 0 ]; then echo "${first}"; else echo "${second}"; fi; exit 1`;
+
+  test("a new failure of the rerun only is flaky and does not fail the check", async () => {
+    await setupWith(twoRuns(' FA""IL  first one', ' FA""IL  second one'));
+    const r = await runChecks(input());
+    expect(r.ok).toBe(true);
+    expect(r.checks[0]).toMatchObject({
+      new_failures: [],
+      flaky: ["FAIL  first one", "FAIL  second one"],
+    });
+  });
+
+  test("a test that fails in both runs with another duration is a new failure, not flaky", async () => {
+    await setupWith(twoRuns("   × solid one 144ms", "   × solid one 138ms"));
+    const r = await runChecks(input());
+    expect(r.ok).toBe(false);
+    expect(r.checks[0]).toMatchObject({ new_failures: ["× solid one"], flaky: [] });
+  });
+
+  test("a crash in both runs stays a new failure", async () => {
+    await setupWith(twoRuns("boom 1", "boom 2"));
+    const r = await runChecks(input());
+    expect(r.ok).toBe(false);
+    expect(r.checks[0]).toMatchObject({ new_failures: ["exit 1: boom 2"] });
   });
 
   test("a green check runs once and has an empty flaky list", async () => {

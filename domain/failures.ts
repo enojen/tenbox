@@ -4,8 +4,12 @@ import { lists, strings } from "./utils.ts";
 /** vitest/jest `FAIL × ✕ ✗`, bun `(fail)`, tsc `error TS1234`: the devbox `wtbase` default. */
 export const DEFAULT_FAILURE_PATTERN = "(^|\\s)(FAIL|\\(fail\\)|×|✕|✗)(\\s|$)|error TS[0-9]+";
 
-/** `[8.00ms]` (bun), `in 3s` (gradle): durations differ on every run. */
-const TRAILING_DURATION = /(\s*\[\d+(\.\d+)?m?s\]|\s+in\s+\d+(\.\d+)?m?s)$/;
+/** `[8.00ms]` (bun), `(12 ms)` (jest), `in 3s` (gradle), `144ms` (vitest): durations differ on every run. */
+const TRAILING_DURATION =
+  /(\s*\[\d+(\.\d+)?m?s\]|\s*\(\d+(\.\d+)?\s?m?s\)|\s+(in\s+)?\d+(\.\d+)?m?s)$/;
+
+/** The line `parseFailures` makes for a failing exit with no matching line. */
+const CRASH_LINE = /^exit \d+(:|$)/;
 
 /** Long enough for a stack trace head, short enough for a PR body. */
 const MAX_REASON_LENGTH = 200;
@@ -70,10 +74,27 @@ export function compareWithBaseline(
   };
 }
 
-/** A new failure of the first run that the rerun did not repeat. */
-export function findFlaky(firstNew: FailureLine[], rerunNew: FailureLine[]): FailureLine[] {
-  const repeated = new Set(rerunNew);
-  return firstNew.filter((line) => !repeated.has(line));
+/** What a check that ran twice counts. */
+export interface RerunJudgment {
+  newFailures: FailureLine[];
+  flaky: FailureLine[];
+}
+
+/**
+ * A new failure is a line both runs have, or a crash of the rerun. A line only one run has is
+ * flaky: it failed once and passed once.
+ */
+export function judgeRerun(firstNew: FailureLine[], rerunNew: FailureLine[]): RerunJudgment {
+  const inFirst = new Set(firstNew);
+  const inRerun = new Set(rerunNew);
+  const repeated = (line: FailureLine) => inFirst.has(line) || CRASH_LINE.test(line);
+  return {
+    newFailures: rerunNew.filter(repeated),
+    flaky: [
+      ...firstNew.filter((line) => !inRerun.has(line)),
+      ...rerunNew.filter((line) => !repeated(line)),
+    ],
+  };
 }
 
 function isFailureLine(failurePattern: string): (line: FailureLine) => boolean {
