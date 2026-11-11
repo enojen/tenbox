@@ -1,4 +1,5 @@
 import type { TaskId } from "./ids.ts";
+import type { CheckTier } from "./manifests.ts";
 
 /** What `tenbox pr` did with the PR. */
 export const PR_STATE = { created: "created", updated: "updated" } as const;
@@ -24,15 +25,18 @@ export const groupLine = (id: TaskId, group: number): string => `tenbox: ${id} g
 export const bodyHasLine = (body: string, line: string): boolean =>
   body.split(/\r?\n/).some((l) => l === line);
 
-/** The group line, the checks summary, then the whole plan folded; a part with no text is left out. */
-export function prBody(
-  line: string,
-  planText: string | null,
-  checksSummary: string | null,
-): string {
+/** The summary of one tier's checks in a round, as `checks.json` and `checks-full.json` keep it. */
+export interface TierSummary {
+  tier: CheckTier;
+  summary: string;
+}
+
+/** The group line, the summary of each tier, then the whole plan folded; a part with no text is left out. */
+export function prBody(line: string, planText: string | null, tiers: TierSummary[]): string {
+  const checks = tiers.map((t) => `### ${t.tier} tier\n\n${t.summary}`).join("\n\n");
   const parts = [
     line,
-    checksSummary ? `## Checks\n\n${checksSummary}` : null,
+    tiers.length > 0 ? `## Checks\n\n${checks}` : null,
     planText ? `<details><summary>Plan</summary>\n\n${planText.trim()}\n</details>` : null,
   ];
   return parts.filter((part) => part !== null).join("\n\n");

@@ -485,6 +485,39 @@ test("a commit after the last tenbox check is refused with checks-stale and noth
   expect(branches).toBe("");
 });
 
+/** A fast check that passes and a full check that fails only on the task branch, or passes. */
+async function runBothTiers(fullFails: boolean): Promise<void> {
+  const override = path.join(taskWorktree, ".tenbox", "override.yaml");
+  const e2e = fullFails ? "test -f b.txt || exit 0; echo ' FAIL  e2e boom'; exit 1" : "true";
+  await files.write(override, `checks:\n  fast:\n    ok: 'true'\n  full:\n    e2e: "${e2e}"\n`);
+  const fastRun = await tenbox(["check", "T-1"], project.mainDir);
+  const fullRun = await tenbox(["check", "T-1", "--tier", "full"], project.mainDir);
+  expect([fastRun.json.ok, fullRun.json.ok]).toEqual([true, !fullFails]);
+}
+
+test("a failed full tier is in the PR body with its new failures", async () => {
+  await commit(taskWorktree, "b.txt");
+  await runBothTiers(true);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const [pr] = await gh.prs();
+  expect(String(pr?.body)).toContain(
+    "## Checks\n\n### fast tier\n\nall 1 check(s) pass with no new failures\n\n### full tier\n\ne2e: 1 new failure(s)\n  FAIL  e2e boom",
+  );
+});
+
+test("a PR with both tiers green says so for each tier", async () => {
+  await commit(taskWorktree, "b.txt");
+  await runBothTiers(false);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const [pr] = await gh.prs();
+  const pass = "all 1 check(s) pass with no new failures";
+  expect(String(pr?.body)).toContain(
+    `## Checks\n\n### fast tier\n\n${pass}\n\n### full tier\n\n${pass}`,
+  );
+});
+
 test("--force pushes a stale group and creates the PR", async () => {
   await commit(taskWorktree, "b.txt");
   await runChecks();

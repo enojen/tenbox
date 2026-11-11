@@ -17,15 +17,18 @@ test("prTitle joins id and title, or gives the id alone", () => {
   expect(prTitle(taskId("TB-7"), null)).toBe("TB-7");
 });
 
-test("prBody puts the group line first, then the checks summary, then the whole plan folded", () => {
-  expect(prBody("tenbox: TB-7 group 1", PLAN, "2 checks pass")).toBe(
-    "tenbox: TB-7 group 1\n\n## Checks\n\n2 checks pass\n\n<details><summary>Plan</summary>\n\n# T\n\n## Summary\nAdd the thing.\n</details>",
+const fast = { tier: "fast", summary: "2 checks pass" } as const;
+const full = { tier: "full", summary: "e2e: 1 new failure(s)\n  FAIL x" } as const;
+
+test("prBody puts the group line first, then the summary of each tier, then the whole plan folded", () => {
+  expect(prBody("tenbox: TB-7 group 1", PLAN, [fast, full])).toBe(
+    "tenbox: TB-7 group 1\n\n## Checks\n\n### fast tier\n\n2 checks pass\n\n### full tier\n\ne2e: 1 new failure(s)\n  FAIL x\n\n<details><summary>Plan</summary>\n\n# T\n\n## Summary\nAdd the thing.\n</details>",
   );
 });
 
 test("prBody leaves out what is missing", () => {
-  expect(prBody("L", null, null)).toBe("L");
-  expect(prBody("L", null, "ok")).toBe("L\n\n## Checks\n\nok");
+  expect(prBody("L", null, [])).toBe("L");
+  expect(prBody("L", null, [fast])).toBe("L\n\n## Checks\n\n### fast tier\n\n2 checks pass");
 });
 
 test("groupLine names the task and the group", () => {
