@@ -348,7 +348,7 @@ const VolumeRemovedSchema = volumeBase.extend({
 const VolumeEventSchema = z.discriminatedUnion("event", [VolumeAddedSchema, VolumeRemovedSchema]);
 
 export type VolumeEvent = z.infer<typeof VolumeEventSchema>;
-type VolumeAdded = z.infer<typeof VolumeAddedSchema>;
+export type VolumeAdded = z.infer<typeof VolumeAddedSchema>;
 type VolumeRemoved = z.infer<typeof VolumeRemovedSchema>;
 /** A Hetzner price, net and gross, as decimal text. */
 export type Price = z.infer<typeof PriceSchema>;
@@ -390,17 +390,24 @@ export function volumeEventId(event: VolumeEvent): string {
 const isVolumeAdded = (event: VolumeEvent): event is VolumeAdded =>
   event.event === VOLUME_EVENT_NAME.added;
 
+const removedUids = (stored: VolumeEvent[]): Set<string> =>
+  new Set(stored.filter((event) => !isVolumeAdded(event)).map((event) => event.uid));
+
 /** Volumes are matched by PVC uid: a PVC name may come again. */
 export function volumeChanges(state: VolumeState): Changes<VolumeAdded, ListedVolume> {
   return presenceChanges({
     added: state.stored.filter(isVolumeAdded),
-    removed: new Set(
-      state.stored.filter((event) => !isVolumeAdded(event)).map((event) => event.uid),
-    ),
+    removed: removedUids(state.stored),
     listed: state.listed,
     addedKey: (event) => event.uid,
     listedKey: (volume) => volume.uid,
   });
+}
+
+/** The task volumes that are up: a `volume.added` whose PVC uid has no `volume.removed`. */
+export function volumesUp(stored: VolumeEvent[]): VolumeAdded[] {
+  const removed = removedUids(stored);
+  return stored.filter(isVolumeAdded).filter((event) => !removed.has(event.uid));
 }
 
 /** A new volume, sized in GiB from its capacity; `bad-file` for a capacity that is not a quantity. */

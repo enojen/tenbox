@@ -3,8 +3,8 @@ import { badFileError } from "./errors/index.ts";
 import type { JobFinished, NodeAdded, NodeEvent, VolumeEvent } from "./events.ts";
 
 const MS_PER_HOUR = 3_600_000;
-/** Hetzner bills a volume's monthly price per hour as 1/730 of it. */
-const HOURS_PER_MONTH = 730n;
+/** Hetzner bills a volume's monthly price per hour as 1/720 of it: 257 hours are 0.3569 months. */
+export const HOURS_PER_MONTH = 720n;
 const CENTS_PER_EUR = 100n;
 const DECIMAL_BASE = 10n;
 const CENT_DIGITS = 2;
@@ -61,7 +61,7 @@ const VolumeCostSchema = z.object({
   size_gb: z.number().int(),
   /** `size_gb` times the exact hours of the volume inside the window. */
   gb_hours: z.number(),
-  /** GB-hours times `price_per_gb_month.net / 730`, decimal text to cents. */
+  /** GB-hours times `price_per_gb_month.net / 720`, decimal text to cents. */
   eur: z.string(),
 });
 

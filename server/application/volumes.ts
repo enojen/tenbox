@@ -8,6 +8,7 @@ import {
   VOLUME_EVENT_NAMES,
   VOLUME_IDLE,
   type VolumeAction,
+  type VolumeAdded,
   type VolumeEvent,
   type VolumeNotice,
   volumeAction,
@@ -17,6 +18,7 @@ import {
   volumeIdle,
   volumeIdleId,
   volumeRemoved,
+  volumesUp,
 } from "../../domain/events.ts";
 import { taskId } from "../../domain/ids.ts";
 import { NOTIFICATION_STATE, notificationLine } from "../../domain/notifications.ts";
@@ -115,6 +117,11 @@ function storedEvents(db: Db): VolumeEvent[] {
   return eventsRepository
     .findByTypes(db, VOLUME_EVENT_NAMES)
     .map((row) => readVolumeEvent(row.body, `event ${row.id}`));
+}
+
+/** The task volumes that are up now, from the stored volume events. */
+function up(db: Db): VolumeAdded[] {
+  return volumesUp(storedEvents(db));
 }
 
 /** One price call for the new volumes of a poll; a failure is logged and the next poll asks again. */
@@ -265,4 +272,4 @@ function logFailure(error: unknown, what: string): void {
 }
 
 /** Volumes: the task PVCs of the cluster, each stored as it came and went, with its size and price; a closed task's volume deleted after its grace period, an idle open one noticed. */
-export const volumes = { poller };
+export const volumes = { poller, up };
