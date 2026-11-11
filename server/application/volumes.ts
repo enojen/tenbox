@@ -119,7 +119,6 @@ function storedEvents(db: Db): VolumeEvent[] {
     .map((row) => readVolumeEvent(row.body, `event ${row.id}`));
 }
 
-/** The task volumes that are up now, from the stored volume events. */
 function up(db: Db): VolumeAdded[] {
   return volumesUp(storedEvents(db));
 }

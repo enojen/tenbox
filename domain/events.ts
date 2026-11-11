@@ -404,7 +404,6 @@ export function volumeChanges(state: VolumeState): Changes<VolumeAdded, ListedVo
   });
 }
 
-/** The task volumes that are up: a `volume.added` whose PVC uid has no `volume.removed`. */
 export function volumesUp(stored: VolumeEvent[]): VolumeAdded[] {
   const removed = removedUids(stored);
   return stored.filter(isVolumeAdded).filter((event) => !removed.has(event.uid));

@@ -3,7 +3,6 @@ import { badFileError } from "./errors/index.ts";
 import type { JobFinished, NodeAdded, NodeEvent, VolumeEvent } from "./events.ts";
 
 const MS_PER_HOUR = 3_600_000;
-/** Hetzner bills a volume's monthly price per hour as 1/720 of it: 257 hours are 0.3569 months. */
 export const HOURS_PER_MONTH = 720n;
 const CENTS_PER_EUR = 100n;
 const DECIMAL_BASE = 10n;

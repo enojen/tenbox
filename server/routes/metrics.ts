@@ -6,7 +6,6 @@ export const METRICS_CONTENT_TYPE = "text/plain; version=0.0.4";
 const NODE_GAUGE = "tenbox_node_price_eur_hourly";
 const VOLUME_GAUGE = "tenbox_volume_price_eur_hourly";
 
-/** What is up now: the workers and the task volumes. */
 interface UpNow {
   workers: NodeAdded[];
   volumes: VolumeAdded[];
@@ -35,7 +34,6 @@ function nodeSeries(worker: NodeAdded): string {
   return series(NODE_GAUGE, labels, worker.price_hourly.net);
 }
 
-/** A volume's hourly price: its GB-month price times its size, over the hours of a month. */
 function volumeSeries(volume: VolumeAdded): string {
   const labels: [string, string][] = [
     ["volume", volume.volume],
