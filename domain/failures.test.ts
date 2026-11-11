@@ -21,6 +21,10 @@ describe("parseFailures", () => {
     const out = "(fail) boom [8.00ms]\n\n 1 pass\n 1 fail\nRan 2 tests across 1 file. [41.00ms]\n";
     expect(parseFailures(out, 1)).toEqual(lines("(fail) boom"));
   });
+  test("vitest: × lines without their duration", () => {
+    const out = "     × parses the answer 144ms\n     × waits for the reply 1.20s\n";
+    expect(parseFailures(out, 1)).toEqual(lines("× parses the answer", "× waits for the reply"));
+  });
   test("non-zero exit with no matching line becomes one synthetic failure with the last line", () => {
     expect(parseFailures("bun test\nerror: Cannot find package 'hono'\n\n", 1)).toEqual(
       lines("exit 1: error: Cannot find package 'hono'"),

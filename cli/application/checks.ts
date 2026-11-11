@@ -2,7 +2,7 @@ import { type CheckOutcome, type CheckResult, readCheckResult } from "../../doma
 import {
   compareWithBaseline,
   type FailureLine,
-  findFlaky,
+  judgeRerun,
   parseFailures,
 } from "../../domain/failures.ts";
 import type { Project } from "../../domain/projects.ts";
@@ -52,8 +52,9 @@ async function run(request: CheckRequest): Promise<CheckRunResult> {
   const exitCode = shell.exitCode(last);
   const durationMs = elapsedMs(started);
   const current = second ? parseFailures(second.output, exitCode, pattern) : firstFailures;
-  const { newFailures, fixed } = compareWithBaseline(hit?.lines ?? [], current);
-  const flaky = findFlaky(firstJudged.newFailures, newFailures);
+  const judged = compareWithBaseline(hit?.lines ?? [], current);
+  const fixed = judged.fixed;
+  const { newFailures, flaky } = judgeRerun(firstJudged.newFailures, judged.newFailures);
   log(
     `tenbox check: ${name}: ${current.length} failures, ${newFailures.length} new, ${flaky.length} flaky, ${fixed.length} fixed (${durationMs} ms)`,
   );
@@ -125,7 +126,7 @@ function describeNewFailures(outcome: CheckOutcome): string {
 
 function describeFlaky(outcome: CheckOutcome): string {
   const lines = outcome.flaky.map((line) => `  ${line}`).join("\n");
-  return `${outcome.name}: ${outcome.flaky.length} flaky (failed once, passed on the rerun)\n${lines}`;
+  return `${outcome.name}: ${outcome.flaky.length} flaky (failed in one of the two runs)\n${lines}`;
 }
 
 /** The check result in `file`; null when it is missing, `bad-file` when it is not valid. */
