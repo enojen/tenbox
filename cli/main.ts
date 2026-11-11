@@ -4,6 +4,7 @@ import { COMMAND, COMMAND_NAMES, type CommandName } from "../domain/commands.ts"
 import { errorMessage, TenboxError } from "../domain/errors/index.ts";
 import { usageError } from "../domain/errors/usage.ts";
 import { TASK_KINDS, type TaskKind } from "../domain/kinds.ts";
+import type { TaskPlace } from "../domain/tracker.ts";
 import { durations, strings } from "../domain/utils.ts";
 import {
   type ArgSpec,
@@ -86,7 +87,7 @@ const MACHINE_USAGE =
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
-const TASK_NEW_USAGE = `tenbox task new ${DRAFT_USAGE}`;
+const TASK_NEW_USAGE = `tenbox task new ${DRAFT_USAGE} [--list <id>] [--parent <id>]`;
 const REPORT_USAGE = `tenbox report ${DRAFT_USAGE} [--repo tenbox|tenyard]`;
 const DRAFT_OPTIONS: ParseArgsOptionsConfig = {
   title: { type: "string" },
@@ -355,12 +356,12 @@ const COMMANDS: Record<CommandName, Command> = {
   },
   [COMMAND.task]: {
     usage: TASK_NEW_USAGE,
-    options: DRAFT_OPTIONS,
+    options: { ...DRAFT_OPTIONS, list: { type: "string" }, parent: { type: "string" } },
     run: (positionals, values) => {
       if (positionals.length !== 1 || positionals[0] !== "new") {
         throw usageError(`usage: ${TASK_NEW_USAGE}`);
       }
-      return newTask(draftValues(values));
+      return newTask({ ...draftValues(values), place: placeValues(values) });
     },
   },
   [COMMAND.report]: {
@@ -447,6 +448,13 @@ function draftValues(values: Values): TaskDraftInput {
     done: stringValue(values, "done"),
     labels: stringListValue(values, "label"),
   };
+}
+
+/** `--list` and `--parent` of `tenbox task new`; a missing flag is a missing key. */
+function placeValues(values: Values): TaskPlace {
+  const list = stringValue(values, "list");
+  const parent = stringValue(values, "parent");
+  return { ...(list !== undefined && { list }), ...(parent !== undefined && { parent }) };
 }
 
 /** `--repo`: `tenbox` when missing. */

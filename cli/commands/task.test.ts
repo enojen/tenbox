@@ -119,3 +119,13 @@ test("in a task worktree the tracker comes from that worktree's tenbox.yaml, not
   const inWorktree = await tenbox(["task", "new", ...draft], worktree, gh.env);
   expect([inMain.json.code, inWorktree.json.created]).toEqual(["no-tracker", true]);
 });
+
+test("task new --list or --parent on GitHub Issues refuses with tracker-unsupported", async () => {
+  const gh = await installGh();
+  const list = await tenbox(["task", "new", ...draft, "--list", "7"], project.mainDir, gh.env);
+  const parent = await tenbox(["task", "new", ...draft, "--parent", "3"], project.mainDir, gh.env);
+  expect([list.code, list.json.code]).toEqual([1, "tracker-unsupported"]);
+  expect([parent.code, parent.json.code]).toEqual([1, "tracker-unsupported"]);
+  const issues = await gh.issues("own/repo");
+  expect(issues).toEqual([]);
+});

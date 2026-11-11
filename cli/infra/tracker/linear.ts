@@ -131,15 +131,23 @@ const LABEL_MUTATION = `
     issueLabelCreate(input: { name: $name, teamId: $teamId }) { issueLabel { id } }
   }`;
 
+/** `$parentId` is left out of the variables for an issue with no parent. */
 const CREATE_MUTATION = `
-  mutation($teamId: String!, $title: String!, $description: String!, $labelIds: [String!]!) {
+  mutation(
+    $teamId: String!, $title: String!, $description: String!, $labelIds: [String!]!,
+    $parentId: String
+  ) {
     issueCreate(input: {
-      teamId: $teamId, title: $title, description: $description, labelIds: $labelIds
+      teamId: $teamId, title: $title, description: $description, labelIds: $labelIds,
+      parentId: $parentId
     }) { issue { identifier url } }
   }`;
 
-/** Linear over its GraphQL API. The key comes from `tracker.api_key` or `LINEAR_API_KEY`. */
-export function linearTracker(config: TrackerConfig): Tracker {
+/**
+ * Linear over its GraphQL API. The key comes from `tracker.api_key` or `LINEAR_API_KEY`. With a
+ * `parent`, new issues are its sub-issues.
+ */
+export function linearTracker(config: TrackerConfig, parent?: string): Tracker {
   const endpoint = linearEndpoint(config);
   return {
     kind: TRACKER_KIND.linear,
@@ -148,7 +156,7 @@ export function linearTracker(config: TrackerConfig): Tracker {
     comment: (request) => commentOnIssue(endpoint, request),
     comments: (id) => fetchComments(endpoint, id),
     findOpen: (title) => findOpenIssue(endpoint, config, title),
-    create: (task) => createIssue(endpoint, config, task),
+    create: (task) => createIssue({ endpoint, config, parent }, task),
   };
 }
 
@@ -258,22 +266,43 @@ async function findOpenIssue(
   return found === undefined ? null : { id: found.identifier, url: found.url };
 }
 
-async function createIssue(
-  endpoint: Endpoint,
-  config: TrackerConfig,
-  task: NewTask,
-): Promise<TaskRef> {
+/** Where `create` writes: the team of the config, under the parent when there is one. */
+interface IssuePlace {
+  endpoint: Endpoint;
+  config: TrackerConfig;
+  parent: string | undefined;
+}
+
+async function createIssue(place: IssuePlace, task: NewTask): Promise<TaskRef> {
+  const { endpoint, config, parent } = place;
   const team = teamOf(endpoint, config);
   const teamId = await fetchTeamId(team);
   const labelIds = await Promise.all(task.labels.map((name) => ensureLabel(team, teamId, name)));
+  const parentId = await findParentId(endpoint, parent);
   const data = await graphqlQuery({
     endpoint: team.endpoint,
     query: CREATE_MUTATION,
-    variables: { teamId, title: task.title, description: task.body, labelIds },
+    variables: {
+      teamId,
+      title: task.title,
+      description: task.body,
+      labelIds,
+      ...(parentId && { parentId }),
+    },
     data: IssueCreatedDataSchema,
   });
   const issue = data.issueCreate.issue;
   return { id: issue.identifier, url: issue.url };
+}
+
+/** The id Linear takes as `parentId`: the issue's own, not its identifier `TEN-3`. */
+async function findParentId(
+  endpoint: Endpoint,
+  parent: string | undefined,
+): Promise<string | null> {
+  if (parent === undefined) return null;
+  const issue = await fetchIssue(endpoint, parent);
+  return issue.id;
 }
 
 async function fetchTeamId(team: Team): Promise<string> {

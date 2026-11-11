@@ -66,6 +66,8 @@ interface Connection {
   names: StatusNames;
   /** `tracker.list`: the list a new task goes to; undefined until a project sets it. */
   list: string | undefined;
+  /** `--parent`: a new task is a subtask of this task, in the parent's list. */
+  parent: string | undefined;
 }
 
 interface StatusChoice {
@@ -75,8 +77,11 @@ interface StatusChoice {
   listId: string;
 }
 
-/** ClickUp over REST API v2. The key comes from `tracker.api_key` or `CLICKUP_API_KEY`. */
-export function clickupTracker(config: TrackerConfig): Tracker {
+/**
+ * ClickUp over REST API v2. The key comes from `tracker.api_key` or `CLICKUP_API_KEY`. With a
+ * `parent`, new tasks are its subtasks.
+ */
+export function clickupTracker(config: TrackerConfig, parent?: string): Tracker {
   const apiKey = findApiKey(config);
   if (!apiKey) {
     const message = "ClickUp: set tracker.api_key in tenbox.local.yaml or CLICKUP_API_KEY";
@@ -86,6 +91,7 @@ export function clickupTracker(config: TrackerConfig): Tracker {
     headers: { Authorization: apiKey },
     names: config.statuses ?? {},
     list: config.list,
+    parent,
   };
   return {
     kind: TRACKER_KIND.clickup,
@@ -98,18 +104,31 @@ export function clickupTracker(config: TrackerConfig): Tracker {
   };
 }
 
-/** The list of a new task, from `tracker.list`; without it, nothing can be written. */
-function listPath(connection: Connection): string {
-  if (!connection.list) {
+/**
+ * The tasks path of the list of a new task: the parent's list, as ClickUp wants for a subtask,
+ * else `tracker.list`; without either, nothing can be written.
+ */
+async function listPath(connection: Connection): Promise<string> {
+  const list = await findListId(connection);
+  if (!list) {
     throw trackerError("ClickUp: set tracker.list to the id of the list, for example 901234567");
   }
-  return `/list/${encodeURIComponent(connection.list)}/task`;
+  return `/list/${encodeURIComponent(list)}/task`;
 }
 
+async function findListId(connection: Connection): Promise<string | undefined> {
+  if (!connection.parent) return connection.list;
+  const parent = await fetchTask(connection, connection.parent);
+  return parent.list.id;
+}
+
+/** The open tasks of the list; with a parent, its subtasks are in that list too. */
 async function findOpenTask(connection: Connection, title: string): Promise<TaskRef | null> {
   const wanted = title.trim().toLowerCase();
+  const tasksPath = await listPath(connection);
+  const query = connection.parent ? "?subtasks=true" : "";
   const list = await http.get({
-    endpoint: endpoint(connection, listPath(connection)),
+    endpoint: endpoint(connection, tasksPath + query),
     schema: ListTasksSchema,
   });
   const found = list.tasks.find((task) => task.name.trim().toLowerCase() === wanted);
@@ -118,9 +137,11 @@ async function findOpenTask(connection: Connection, title: string): Promise<Task
 
 /** ClickUp makes a tag on first use, so the labels need no step of their own. */
 async function createTask(connection: Connection, task: NewTask): Promise<TaskRef> {
+  const tasksPath = await listPath(connection);
+  const parent = connection.parent && { parent: connection.parent };
   return await http.post({
-    endpoint: endpoint(connection, listPath(connection)),
-    body: { name: task.title, markdown_description: task.body, tags: task.labels },
+    endpoint: endpoint(connection, tasksPath),
+    body: { name: task.title, markdown_description: task.body, tags: task.labels, ...parent },
     schema: TaskRefSchema,
   });
 }

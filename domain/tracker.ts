@@ -76,6 +76,15 @@ export interface NewTask {
   labels: string[];
 }
 
+/**
+ * Where `tenbox task new` opens a task instead of the tracker's default place: `list` is a
+ * ClickUp list id or a Linear team key; `parent` is the task the new one goes under.
+ */
+export interface TaskPlace {
+  list?: string;
+  parent?: string;
+}
+
 /** A task in the tracker, by its id and its page. */
 export const TaskRefSchema = z.object({ id: z.string(), url: z.string() });
 
