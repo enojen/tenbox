@@ -399,6 +399,17 @@ test("a volume line counts its GB-hours and EUR in the window", () => {
   ]);
 });
 
+test("a GB-month is 720 hours, as on the Hetzner bill", () => {
+  const month: CostWindow = { from: "2026-11-01T00:00:00Z", to: "2026-12-01T00:00:00Z" };
+  const volume: Volume = { task: "7", sizeGb: 10, net: "0.0730" };
+  const report = costReport({
+    window: month,
+    pods: [],
+    events: [volumeAdded(volume, "2026-11-01T00:00:00Z")],
+  });
+  expect(report.volumes.map((v) => [v.gb_hours, v.eur])).toEqual([[7200, "0.73"]]);
+});
+
 test("a volume cut by the window counts only its hours inside it", () => {
   const report = costReport({
     window: DAY,

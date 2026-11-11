@@ -6,6 +6,7 @@ import { events } from "../application/events.ts";
 import { machineRuns } from "../application/machineRuns.ts";
 import { nodes } from "../application/nodes.ts";
 import { type RunTokenWatch, runTokens } from "../application/runTokens.ts";
+import { volumes } from "../application/volumes.ts";
 import type { Db } from "../infra/db/index.ts";
 import { type AuthEnv, requireAdmin, requireInjector, requireToken } from "./auth.ts";
 import { costsRoute } from "./costs.ts";
@@ -58,7 +59,7 @@ export function createApp(
   }
   app.get("/metrics", (c) => {
     c.header("Content-Type", METRICS_CONTENT_TYPE);
-    return c.body(metricsText(nodes.up(db)));
+    return c.body(metricsText({ workers: nodes.up(db), volumes: volumes.up(db) }));
   });
   app.doc31(OPENAPI_PATH, {
     openapi: OPENAPI_VERSION,

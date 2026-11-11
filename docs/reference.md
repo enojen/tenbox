@@ -483,7 +483,9 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 format (`text/plain; version=0.0.4`) with one gauge series per worker that is up (a
                 `node.added` without a `node.removed`),
                 `tenbox_node_price_eur_hourly{node, server_type, location}`, valued at its
-                `price_hourly.net`; no series when no worker is up.
+                `price_hourly.net`, and one per task volume that is up (a `volume.added` without a
+                `volume.removed`), `tenbox_volume_price_eur_hourly{volume, task, size_gb}`, valued at
+                `price_per_gb_month.net` times `size_gb` over 720; no series when nothing is up.
                 `POST /events` takes a list of events (`EventSchema` in `domain/events.ts`) and
                 answers 200 `{ ok: true, stored, skipped }`. The list is all or nothing: one bad
                 event is a 400 and none is stored. The whole list goes in one transaction; an
@@ -510,7 +512,7 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
                 matched by PVC uid; its time runs from its `volume.added` `at` to its `volume.removed` `at`,
                 or to `to` when it is still there, cut to the window, and a volume with no time in the window
                 has no line. `gb_hours` is `size_gb` times those exact hours; `eur` is `gb_hours` times
-                `price_per_gb_month.net / 730`, computed exactly and rounded half up to cents. The PVC has no
+                `price_per_gb_month.net / 720` (Hetzner bills a volume's monthly price per hour as 1/720 of it), computed exactly and rounded half up to cents. The PVC has no
                 project label, so `project` is the `project` of the `job.finished` of the task id with the
                 newest `finished`, null without one. `total` is `{ paid_hours, gb_hours, eur }`: the paid hours of the
                 worker lines, the GB-hours of the volume lines and the `eur` of both.
