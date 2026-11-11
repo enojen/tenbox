@@ -30,32 +30,22 @@ interface BaselineRequest {
   baseSha: string;
   pattern: string;
   timeoutMs: number;
-}
-
-interface BaseRequest extends BaselineRequest {
   /** The manifest's `setup`, run in the temporary worktree first. */
   setup: string | undefined;
 }
 
-/** The stored baseline for the base commit, else the newest stored one, else one taken in main. */
-async function find(request: BaselineRequest): Promise<BaselineHit | null> {
+/** The stored baseline for the base commit, else the newest stored one, else the base commit's own. */
+async function find(request: BaselineRequest): Promise<BaselineHit> {
   const key = { project: request.project.name, check: request.check };
   const stored = await findStored(key, request.baseSha);
-  if (stored) return stored;
-  const canTake = await canTakeInMain(request);
-  if (!canTake) return null;
-  const { project, check, baseSha } = request;
-  log(
-    `tenbox check: ${check}: no baseline for ${shortSha(baseSha)}, taking one in ${project.mainDir}`,
-  );
-  return takeIn(project.mainDir, request, BASELINE_SOURCE.main);
+  return stored ?? takeAtBase(request);
 }
 
 /**
  * Runs the check at the base commit in a temporary worktree, after `setup`, and saves the result
  * as the baseline of that commit. The worktree is removed on every way out.
  */
-async function takeAtBase(request: BaseRequest): Promise<BaselineHit> {
+async function takeAtBase(request: BaselineRequest): Promise<BaselineHit> {
   const { project, check, baseSha, setup } = request;
   log(
     `tenbox check: ${check}: taking the baseline of ${shortSha(baseSha)} in a temporary worktree`,
@@ -76,14 +66,6 @@ async function findStored(key: BaselineKey, sha: string): Promise<BaselineHit | 
   if (exact) return { ...exact, source: BASELINE_SOURCE.exact };
   const newest = await baselineStore.findNewest(key);
   return newest ? { ...newest, source: BASELINE_SOURCE.newest } : null;
-}
-
-/** Main must sit at the base commit, and the check must not already run in main. */
-async function canTakeInMain(request: BaselineRequest): Promise<boolean> {
-  const { project, taskWorktree, baseSha } = request;
-  if (project.mainDir === taskWorktree) return false;
-  const mainHead = await git.findHead(project.mainDir);
-  return mainHead === baseSha;
 }
 
 async function takeIn(
