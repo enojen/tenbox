@@ -3,11 +3,12 @@ import { partNotCommittedError, unknownPartError } from "../../domain/errors/pla
 import type { TaskId } from "../../domain/ids.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
 import { groups } from "../application/groups.ts";
+import { parts } from "../application/parts.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
 import { worktrees } from "../application/worktrees/index.ts";
 import { git } from "../infra/git.ts";
-import type { PartDoneResult } from "./results.ts";
+import type { PartDoneResult, PartReopenResult } from "./results.ts";
 
 export interface PartDoneInput {
   id: TaskId;
@@ -94,4 +95,18 @@ async function isNotAfter(input: NotAfter): Promise<boolean> {
   const sinceSha = await git.findCommit(cwd, `${since}^{commit}`);
   if (sinceSha === null) return false;
   return git.isAncestor(cwd, commit, sinceSha);
+}
+
+export interface PartReopenInput {
+  id: TaskId;
+  part: string;
+  accept: string;
+}
+
+/** Sets a part back to `todo` with one more acceptance line, so the next build sends it. */
+export async function partReopen(input: PartReopenInput): Promise<PartReopenResult> {
+  const { id, part, accept } = input;
+  const taskWorktree = await worktrees.get(id);
+  const file = await parts.reopen({ dir: tenboxDir(taskWorktree), part, accept });
+  return { ok: true, task: id, part, file };
 }

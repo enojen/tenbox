@@ -6,6 +6,7 @@ import type { FailedState } from "../../domain/errors/index.ts";
 import type { Group } from "../../domain/groups.ts";
 import type { JobStatus } from "../../domain/machines.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
+import type { StalePart } from "../../domain/parts.ts";
 import type { PlanResult } from "../../domain/plans.ts";
 import type { StatsProof } from "../../domain/proofs.ts";
 import type { CiCheck, CiState, GroupPrState } from "../../domain/prs.ts";
@@ -251,6 +252,10 @@ export interface TaskFileResult {
   file: string;
 }
 
+export interface PlanDoneResult extends TaskFileResult {
+  stale_parts: StalePart[];
+}
+
 /** `tenbox plan show`: what `plan.json` holds for a person to read. */
 export interface PlanShowResult
   extends TaskFileResult,
@@ -370,4 +375,11 @@ export interface PartDoneResult {
   task: string;
   part: string;
   commit: string;
+}
+
+export interface PartReopenResult {
+  ok: true;
+  task: string;
+  part: string;
+  file: string;
 }
