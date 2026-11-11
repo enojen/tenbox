@@ -57,7 +57,11 @@ project's variables: `TENBOX_ENV` holds `machine.env` of `tenbox.yaml` as one JS
 key one variable; a key named like one of the box's loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
 that session works (its `status` in `claude agents --json` is `busy`) and ends once no session is
-left or the sessions have been idle for `IDLE_MINUTES` (1; a plan that waits for approval). A
+left or the sessions have been idle for `IDLE_MINUTES` (1; a plan that waits for approval). Only
+the sessions of this run count: before the command the box keeps the `id` + `pid` key of each
+session, and after it a session counts when its key is new or its status is `busy`. With no
+counted session the box logs `no session of this run` and ends at once, so a short command such as
+`tenbox status` does not wait for an old idle session on the volume. A
 session resumed by `tenbox answer` can keep `state: working` after its turn ended, so `state` does
 not count. Last it logs one line with what the
 container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s, pids peak <n>, oom_kill <n>`, from
