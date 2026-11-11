@@ -9,8 +9,10 @@
 # main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
 # one JSON object). The command may
 # leave a claude session behind (`tenbox start` and `tenbox build` do): the container then
-# lives while that session works and ends once no session is left or the sessions have been
-# idle for IDLE_MINUTES (a plan that waits for approval). Last it logs the peak RAM and the
+# lives while that session works and ends once none is left or the sessions have been idle for
+# IDLE_MINUTES (a plan that waits for approval). Only the sessions of this run count: the
+# `id` + `pid` keys of `claude agents --json` are kept before the command, and after it a session
+# counts when its key is new or it is busy; with none the box ends at once. Last it logs the peak RAM and the
 # CPU time of the container. Exits with the command's exit code. The output is also in
 # /var/log/tenbox-run.log.
 set -euo pipefail
@@ -111,15 +113,21 @@ read_project_env() {
   wait $!
 }
 
-# 7. After the command: stay while a claude session works: its status is busy. A resumed session
-#    can keep state working after its turn ended, so state does not count.
+# 7. After the command: stay while a claude session of this run works: its status is busy. A
+#    resumed session can keep state working after its turn ended, so state does not count. A
+#    session counts when its id + pid key was not there before the command, or when it is busy;
+#    an old idle session on the volume does not.
 sessions_json() { clean_env claude agents --json 2> /dev/null || echo "[]"; }
+session_keys() { jq -c '[.[] | "\(.id):\(.pid)"]' <<< "$1"; }
+sessions_of_run() {
+  jq -c --argjson before "$1" '[.[] | select(.status == "busy" or (("\(.id):\(.pid)") as $key | $before | any(. == $key) | not))]' <<< "$2"
+}
 wait_for_sessions() {
   local idle=0 sessions working
   while :; do
-    sessions="$(sessions_json)"
+    sessions="$(sessions_of_run "$keys_before" "$(sessions_json)")"
     if [ "$(printf '%s' "$sessions" | jq length)" -eq 0 ]; then
-      log "no session left"
+      log "no session of this run"
       return
     fi
     working="$(printf '%s' "$sessions" | jq '[.[] | select(.status == "busy")] | length')"
@@ -163,6 +171,7 @@ unset GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
 log "ready at $(date -u +%FT%TZ)"
 
 : > /var/log/tenbox-run.log
+keys_before="$(session_keys "$(sessions_json)")"
 set +e
 env -i "${project_env[@]}" "${box_env[@]}" bash -c "cd '$main' && $TENBOX_CMD" 2>&1 < /dev/null | tee -a /var/log/tenbox-run.log
 status="${PIPESTATUS[0]}"
