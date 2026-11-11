@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type ClickupStatus, clickupTracker, pickStatus } from "./clickup.ts";
+import { makeTracker } from "./index.ts";
 
 const LIST_ID = "901";
 const statuses: ClickupStatus[] = [
@@ -241,5 +242,53 @@ describe("clickup new tasks", () => {
     await expect(tracker.create({ title: "T", body: "b", labels: [] })).rejects.toThrow(
       "ClickUp: set tracker.list to the id of the list, for example 901234567",
     );
+  });
+
+  test("--list writes to that list instead of tracker.list", async () => {
+    const { calls } = answerEach([
+      { tasks: [] },
+      { id: "a4", url: "https://app.clickup.com/t/a4" },
+    ]);
+    const tracker = makeTracker({ kind: "clickup", api_key: "k", list: "901" }, { list: "777" });
+    const found = await tracker.findOpen("T");
+    await tracker.create({ title: "T", body: "b", labels: [] });
+    expect(found).toBeNull();
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.clickup.com/api/v2/list/777/task",
+      "https://api.clickup.com/api/v2/list/777/task",
+    ]);
+  });
+
+  test("--parent writes a subtask in the list of the parent and looks among its subtasks", async () => {
+    const parent = {
+      id: "p1",
+      name: "Parent",
+      markdown_description: null,
+      url: "https://app.clickup.com/t/p1",
+      status: { status: "open" },
+      list: { id: "555" },
+    };
+    const { calls } = answerEach([
+      parent,
+      { tasks: [] },
+      parent,
+      { id: "a5", url: "https://app.clickup.com/t/a5" },
+    ]);
+    const tracker = makeTracker({ kind: "clickup", api_key: "k", list: "901" }, { parent: "p1" });
+    await tracker.findOpen("T");
+    const made = await tracker.create({ title: "T", body: "b", labels: [] });
+    expect(made).toEqual({ id: "a5", url: "https://app.clickup.com/t/a5" });
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.clickup.com/api/v2/task/p1?include_markdown_description=true",
+      "https://api.clickup.com/api/v2/list/555/task?subtasks=true",
+      "https://api.clickup.com/api/v2/task/p1?include_markdown_description=true",
+      "https://api.clickup.com/api/v2/list/555/task",
+    ]);
+    expect(calls[3]?.body).toEqual({
+      name: "T",
+      markdown_description: "b",
+      tags: [],
+      parent: "p1",
+    });
   });
 });

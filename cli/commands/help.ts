@@ -257,6 +257,8 @@ Example:
   task: `task new writes a task to the tracker of the project.
 
 ${TASK_DRAFT_HELP}
+  --list <id>     another place: a ClickUp list id or a Linear team key
+  --parent <id>   a subtask of that task (ClickUp, Linear); GitHub refuses both
 
 Output: { ok, task, url, created }
   created is false when an open task with the same title exists.

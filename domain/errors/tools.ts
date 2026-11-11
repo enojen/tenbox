@@ -33,6 +33,14 @@ export function trackerError(message: string): TenboxError {
   return new TenboxError(message, "tracker");
 }
 
+/** The tracker has no lists or parent tasks for `tenbox task new --list` or `--parent`. */
+export function trackerUnsupportedError(tracker: string): TenboxError {
+  return new TenboxError(
+    `${tracker} has no list or parent for a new task; run tenbox task new without --list and --parent`,
+    "tracker-unsupported",
+  );
+}
+
 export function trackerAuthError(message: string): TenboxError {
   return new TenboxError(message, "tracker-auth");
 }

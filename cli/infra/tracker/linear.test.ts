@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { makeTracker } from "./index.ts";
 import { linearTracker } from "./linear.ts";
 
 describe("linear comments", () => {
@@ -113,5 +114,39 @@ describe("linear new tasks", () => {
     const message = "Linear: set tracker.team to the key of the team, for example TEN";
     await expect(tracker.create({ title: "T", body: "b", labels: [] })).rejects.toThrow(message);
     await expect(tracker.findOpen("T")).rejects.toThrow(message);
+  });
+
+  test("--list is the key of the team the issue goes to", async () => {
+    const { requests } = answerEach([{ issues: { nodes: [] } }]);
+    const tracker = makeTracker({ kind: "linear", api_key: "k", team: "TEN" }, { list: "OPS" });
+    await tracker.findOpen("T");
+    expect(requests[0]?.variables).toEqual({ team: "OPS", title: "T" });
+  });
+
+  test("--parent writes a sub-issue: the parent's id goes to parentId", async () => {
+    const parent = {
+      id: "uuid-parent",
+      identifier: "TEN-3",
+      title: "Parent",
+      description: null,
+      url: "https://linear.app/t/issue/TEN-3",
+      state: { name: "Todo", type: "unstarted" },
+      team: { id: "team-1", states: { nodes: [] } },
+    };
+    const { requests } = answerEach([
+      { teams: { nodes: [{ id: "team-1" }] } },
+      { issue: parent },
+      { issueCreate: { issue: { identifier: "TEN-9", url: "https://linear.app/t/issue/TEN-9" } } },
+    ]);
+    const tracker = makeTracker({ kind: "linear", api_key: "k", team: "TEN" }, { parent: "TEN-3" });
+    await tracker.create({ title: "T", body: "b", labels: [] });
+    expect(requests[1]?.variables).toEqual({ id: "TEN-3" });
+    expect(requests[2]?.variables).toEqual({
+      teamId: "team-1",
+      title: "T",
+      description: "b",
+      labelIds: [],
+      parentId: "uuid-parent",
+    });
   });
 });

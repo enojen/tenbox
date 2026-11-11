@@ -3,6 +3,7 @@ import {
   newTaskOf,
   parseTaskDraft,
   type TaskDraft,
+  type TaskPlace,
   type Tracker,
   taskDraftOf,
 } from "../../domain/tracker.ts";
@@ -24,9 +25,14 @@ export interface TaskDraftInput {
   labels: string[];
 }
 
+/** `tenbox task new`: the draft and, with `--list` or `--parent`, where the task goes. */
+export interface NewTaskInput extends TaskDraftInput {
+  place: TaskPlace;
+}
+
 /** Writes the draft to the project's tracker, or returns the open task that has its title already. */
-export async function newTask(input: TaskDraftInput): Promise<TaskNewResult> {
-  const tracker = await trackerHere(env().cwd);
+export async function newTask(input: NewTaskInput): Promise<TaskNewResult> {
+  const tracker = await trackerHere(env().cwd, input.place);
   const task = await tasks.ensure(tracker, newTaskOf(draftOf(input)));
   const verb = task.created ? "opened" : "exists already as";
   log(`${verb} ${task.id} · ${task.url}`);
@@ -41,11 +47,11 @@ export function draftOf(input: TaskDraftInput): TaskDraft {
 }
 
 /** The tracker of the checkout the command runs in: a task worktree's own `tenbox.yaml` wins, as for `tenbox check`. */
-async function trackerHere(cwd: string): Promise<Tracker> {
+async function trackerHere(cwd: string, place: TaskPlace): Promise<Tracker> {
   const { project } = await projects.get(cwd);
   const checkout = await git.findTopLevel(cwd);
   const manifest = await manifests.get(project.mainDir, checkout ?? project.mainDir);
-  return makeTracker(manifest.tracker);
+  return makeTracker(manifest.tracker, place);
 }
 
 function flagsOf(input: TaskDraftInput): Record<string, unknown> {
