@@ -5,6 +5,7 @@ import {
   partIdOf,
   readPartFiles,
   readPartStatus,
+  reopenDecision,
   reopenPart,
 } from "./parts.ts";
 
@@ -78,4 +79,11 @@ test("findStaleParts names files that differ, parts with no file and files not i
     { part: "02", file: null, reason: "no part file" },
     { part: "03", file: "03-old.md", reason: "not in the plan" },
   ]);
+});
+
+test("reopenDecision says the new acceptance line of the part is final", () => {
+  const decision = reopenDecision({ part: "01", accept: "x is checked" });
+  expect(decision.answer).toStartWith(
+    "Part 01 was reopened with the acceptance line `x is checked`. This line is final",
+  );
 });

@@ -131,6 +131,15 @@ describe("tenbox part reopen", () => {
     );
   });
 
+  test("part reopen records the new acceptance line as a final decision", async () => {
+    await files.write(partFile(), DONE_PART);
+    await reopen("--part", "01", "--accept", "x is checked");
+    const text = await files.read(path.join(worktree, ".tenbox", "decisions.md"));
+    expect(text).toBe(
+      "- Part 01 was reopened with the acceptance line `x is checked`. This line is final: build it and return no decision card, also when plan.md and plan.json do not name it.\n",
+    );
+  });
+
   test("part reopen of an unknown part is unknown-part", async () => {
     await files.write(partFile(), DONE_PART);
     const run = await reopen("--part", "99", "--accept", "a");

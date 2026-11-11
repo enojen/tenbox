@@ -110,6 +110,7 @@ Example:
 
   part: `part done checks the last commit of one part: it exists, is on HEAD, is new and touches the part's files.
 part reopen sets a part back to todo with one more acceptance line; its old result lines become history lines.
+It also adds a decision to .tenbox/decisions.md: the new line is final, so the worker builds it without a decision card.
 
 Input: the action done or reopen, then the task id.
 Flags:

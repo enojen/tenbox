@@ -1,3 +1,4 @@
+import type { Decision } from "./decisions.ts";
 import type { PlanPart } from "./plans.ts";
 
 const PART_ID = /^[^-.]+/;
@@ -45,6 +46,19 @@ export function countParts(statuses: PartStatus[]): PartCounts {
 export interface PartReopen {
   text: string;
   accept: string;
+}
+
+export interface PartAcceptance {
+  part: string;
+  accept: string;
+}
+
+/** The note that keeps a worker from asking whether a reopened part's new line is in scope. */
+export function reopenDecision(reopened: PartAcceptance): Decision {
+  const line = `Part ${reopened.part} was reopened with the acceptance line \`${reopened.accept}\`.`;
+  const rule =
+    "This line is final: build it and return no decision card, also when plan.md and plan.json do not name it.";
+  return { answer: `${line} ${rule}` };
 }
 
 const ACCEPTANCE_HEADER = "acceptance:";

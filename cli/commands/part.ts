@@ -1,7 +1,9 @@
 import { noBaseError } from "../../domain/errors/index.ts";
 import { partNotCommittedError, unknownPartError } from "../../domain/errors/plans.ts";
 import type { TaskId } from "../../domain/ids.ts";
+import { reopenDecision } from "../../domain/parts.ts";
 import { tenboxDir } from "../../domain/taskDirs.ts";
+import { decisions } from "../application/decisions.ts";
 import { groups } from "../application/groups.ts";
 import { parts } from "../application/parts.ts";
 import { plans } from "../application/plans.ts";
@@ -103,10 +105,11 @@ export interface PartReopenInput {
   accept: string;
 }
 
-/** Sets a part back to `todo` with one more acceptance line, so the next build sends it. */
+/** Sets a part back to `todo` with one more acceptance line, recorded as a decision, so the next build sends it. */
 export async function partReopen(input: PartReopenInput): Promise<PartReopenResult> {
   const { id, part, accept } = input;
   const taskWorktree = await worktrees.get(id);
   const file = await parts.reopen({ dir: tenboxDir(taskWorktree), part, accept });
+  await decisions.save(taskWorktree, [reopenDecision({ part, accept })]);
   return { ok: true, task: id, part, file };
 }
