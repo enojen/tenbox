@@ -53,6 +53,8 @@ Always:
 - Do not run a refused command again in another form. Give the command to the user; they run
   it with `!`.
 - The merge is the user's. When they say "merge", use the merge command of the project file.
+- Wait for a plan or a build with `tenbox wait <id> --for plan|build` (on the cluster, the
+  `--wait` of `tenbox machine run`), never with a hand-written loop.
 
 ## Three checks before a plan approval
 
@@ -88,6 +90,8 @@ without the user.
 - The shared log of the project, when it has one, is append-only.
 - Update the row of the task and "Next step" at once on each change of state: plan ready,
   build started, PR open, proof result, merge, close.
+- Append one line to the Log of the lane file at each change of state: the UTC date and time,
+  the task, what happened.
 - No personal data in a lane file: no customer name, phone number or message text.
 
 ## Lessons
