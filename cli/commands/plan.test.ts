@@ -260,7 +260,7 @@ describe("tenbox plan show", () => {
         groups: null,
         examples: valid.examples,
         decisions: valid.decisions,
-        questions: valid.questions,
+        questions: [],
       },
     ]);
     const lines = run.err.split("\n");
@@ -274,8 +274,25 @@ describe("tenbox plan show", () => {
         "  Where the list lives",
         "      1. in memory",
         "    * 2. in sqlite (taken)",
-        "  [product] (blocking) Sorted by date?",
+        "Questions",
+        "  none",
       ]),
+    );
+  });
+
+  test("plan show prints the questions of questions.md with numbers", async () => {
+    await planDone(...withJson({}));
+    const questionsMd = path.join(path.dirname(planJson), "questions.md");
+    const text = "Sorted by date, newest first?";
+    await files.write(questionsMd, `## product\n- [ ] (blocking) ${text}\n- [x] Paged?\n`);
+    const run = await show("T-1");
+    expect(run.json.questions).toEqual([
+      { number: 1, kind: "product", blocking: true, open: true, text },
+      { number: 2, kind: "product", blocking: false, open: false, text: "Paged?" },
+    ]);
+    const lines = run.err.split("\n");
+    expect(lines).toEqual(
+      expect.arrayContaining([`  1. [product] (blocking) ${text}`, "  2. [x] [product] Paged?"]),
     );
   });
 

@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
+import { z } from "zod";
 import { hashes } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { type FakeClaude, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 const USAGE_EXIT = 2;
+const ShownQuestions = z.array(z.object({ number: z.number(), text: z.string() }));
 const QUESTIONS = "## product\n- [ ] (blocking) Can a shipped order be cancelled?\n- [ ] Other?\n";
 const ANSWER = [{ question: "Can a shipped order be cancelled?", answer: "No" }];
 
@@ -96,6 +98,57 @@ describe("tenbox decide", () => {
     const written = await files.exists(decisionsFile);
     const questions = await files.read(questionsFile);
     expect([written, questions]).toEqual([false, QUESTIONS]);
+  });
+
+  test("a question number ticks that line", async () => {
+    const run = await withJson([{ question: 1, answer: "No" }]);
+    expect(run.json).toEqual({ ok: true, task: "T-1", file: decisionsFile, added: 1, ticked: 1 });
+    const decisions = await files.read(decisionsFile);
+    expect(decisions).toBe("- Can a shipped order be cancelled?\n  Answer: No\n");
+    const questions = await files.read(questionsFile);
+    expect(questions).toBe(QUESTIONS.replace("- [ ] (blocking)", "- [x] (blocking)"));
+  });
+
+  test("a question number past the last line is unknown-question", async () => {
+    const run = await withJson([{ answer: "fine" }, { question: 3, answer: "x" }]);
+    expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "unknown-question"]);
+    expect(run.json.error).toContain("1. Can a shipped order be cancelled?\n2. Other?");
+    expect(run.json.details).toEqual([
+      { number: 1, text: "Can a shipped order be cancelled?" },
+      { number: 2, text: "Other?" },
+    ]);
+    const written = await files.exists(decisionsFile);
+    const questions = await files.read(questionsFile);
+    expect([written, questions]).toEqual([false, QUESTIONS]);
+  });
+
+  test.each([
+    ["0", 0],
+    ["1.5", 1.5],
+  ])("a question number %s is bad-input", async (_name, question) => {
+    const run = await withJson([{ question, answer: "x" }]);
+    expect([run.code, run.json.code]).toEqual([1, "bad-input"]);
+  });
+
+  test("a question copied from plan show is accepted by decide", async () => {
+    const threeQuestions = `${QUESTIONS}- [ ] Third one?\n`;
+    await files.write(questionsFile, threeQuestions);
+    await writePlan();
+    const shown = await tenbox(["plan", "show", "T-1"], project.mainDir, fake.env);
+    const questions = ShownQuestions.parse(shown.json.questions);
+    const line = shown.err.split("\n").find((text) => text.includes("Other?")) ?? "";
+    const fromErr = line.replace(/^ *2\. \[product\] /, "");
+    const byErrText = await withJson([{ question: fromErr, answer: "yes" }]);
+    const byNumber = await withJson([{ question: questions[0]?.number, answer: "No" }]);
+    const byJsonText = await withJson([{ question: questions[2]?.text, answer: "maybe" }]);
+    const runs = [byErrText, byNumber, byJsonText].map((run) => [run.json.ok, run.json.ticked]);
+    expect(runs).toEqual([
+      [true, 1],
+      [true, 1],
+      [true, 1],
+    ]);
+    const after = await files.read(questionsFile);
+    expect(after).toBe(threeQuestions.replaceAll("- [ ] ", "- [x] "));
   });
 
   test("a question that fits two lines is unknown-question", async () => {

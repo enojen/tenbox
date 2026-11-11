@@ -3,6 +3,8 @@ import {
   type DecideItem,
   type Decision,
   isDecisionTaken,
+  type NumberedQuestion,
+  numberedQuestions,
   type OptionsTaken,
   takeOptions,
 } from "../../domain/decisions.ts";
@@ -15,7 +17,7 @@ import { plans } from "./plans.ts";
  * Decisions: the answers in `.tenbox/decisions.md`, the ticks in `.tenbox/questions.md` and the
  * options taken on the plan decisions of `plan.json`.
  */
-export const decisions = { save };
+export const decisions = { save, listQuestions };
 
 export interface DecisionsSaved {
   /** The path of `decisions.md`. */
@@ -54,6 +56,12 @@ async function takePlanOptions(dir: string, items: DecideItem[]): Promise<Option
   if (takenItems.length === 0) return null;
   const plan = await plans.get(dir);
   return takeOptions(plan, takenItems);
+}
+
+/** The numbered questions of `questions.md` in the `.tenbox/` folder `dir`; none when it is missing. */
+async function listQuestions(dir: string): Promise<NumberedQuestion[]> {
+  const text = await readText(questionsFile(dir));
+  return numberedQuestions(text);
 }
 
 async function readText(file: string): Promise<string> {

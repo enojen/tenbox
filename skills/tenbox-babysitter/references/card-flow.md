@@ -11,9 +11,9 @@ a command.
    parts, groups, examples, decisions and questions.
 3. Checks before the approval: the three checks of `SKILL.md`, and the rule for a bug task.
 4. Questions: answer with
-   `tenbox decide <id> --no-build --json '[{"question": "...", "answer": "..."}]'`.
-   Temporary, until #159 and #249: `answer` is one line, and `question` must match one line of
-   `questions.md`, so copy a short piece of that line. Read `ok: true` in the output before the
+   `tenbox decide <id> --no-build --json '[{"question": 1, "answer": "..."}]'`, with `question`
+   the number that `tenbox plan show` gives the question (its text works too).
+   Temporary, until #249: `answer` is one line. Read `ok: true` in the output before the
    approval. Temporary, until #160: `approve` and `build` do not stop on an open question, so
    look at the question list yourself.
 5. A decision that holds for every task of the project belongs in `decisions:` of

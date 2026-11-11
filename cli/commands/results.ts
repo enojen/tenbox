@@ -2,6 +2,7 @@ import type { AUTO_ANSWER_STATE } from "../../domain/answers.ts";
 import type { Approval } from "../../domain/approvals.ts";
 import type { DecisionCard } from "../../domain/cards.ts";
 import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
+import type { NumberedQuestion } from "../../domain/decisions.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
 import type { Group } from "../../domain/groups.ts";
 import type { JobStatus } from "../../domain/machines.ts";
@@ -256,12 +257,14 @@ export interface PlanDoneResult extends TaskFileResult {
   stale_parts: StalePart[];
 }
 
-/** `tenbox plan show`: what `plan.json` holds for a person to read. */
+/** `tenbox plan show`: what `plan.json` holds for a person to read, with the questions of `questions.md`. */
 export interface PlanShowResult
   extends TaskFileResult,
-    Pick<PlanResult, "estimated_lines" | "parts" | "examples" | "decisions" | "questions"> {
+    Pick<PlanResult, "estimated_lines" | "parts" | "examples" | "decisions"> {
   /** The plan's groups; null for a plan without groups, which is one PR. */
   groups: Group[] | null;
+  /** The question lines of `questions.md`, numbered as `tenbox decide` takes them; none when it is missing. */
+  questions: NumberedQuestion[];
 }
 
 /** `tenbox wait --for round`: the status of the round that changed. */

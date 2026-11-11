@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { NumberedQuestion } from "./decisions.ts";
 import { badFileError, badInputError } from "./errors/index.ts";
 import { noPlanError } from "./errors/plans.ts";
 import { type Group, GroupSchema, groupIssues } from "./groups.ts";
@@ -132,8 +133,8 @@ function lineCount(content: string): number {
 const INDENT = "  ";
 const TAKEN_MARK = "* ";
 
-/** The plan as text lines: size, parts, groups, examples, decisions with the taken option, questions. */
-export function planLines(plan: PlanResult): string[] {
+/** The plan as text lines: size, parts, groups, examples, decisions with the taken option, and the numbered questions. */
+export function planLines(plan: PlanResult, questions: NumberedQuestion[]): string[] {
   return [
     `Estimated lines: ${plan.estimated_lines}`,
     ...section(
@@ -143,12 +144,11 @@ export function planLines(plan: PlanResult): string[] {
     ...section("Groups", (plan.groups ?? []).map(groupLines)),
     ...section("Examples", plan.examples.map(exampleLines)),
     ...section("Decisions", plan.decisions.map(decisionLines)),
-    ...section("Questions", plan.questions.map(questionLines)),
+    ...section("Questions", questions.map(questionLines)),
   ];
 }
 
 type Example = z.infer<typeof ExampleSchema>;
-export type Question = z.infer<typeof QuestionSchema>;
 
 /** A heading, then each entry indented; `none` for no entry. */
 function section(heading: string, entries: string[][]): string[] {
@@ -184,9 +184,11 @@ function decisionLines(decision: PlanDecision): string[] {
   return [decision.title, ...options, `${INDENT}reason: ${decision.reason}`];
 }
 
-function questionLines(question: Question): string[] {
+function questionLines(question: NumberedQuestion): string[] {
+  const ticked = question.open ? "" : "[x] ";
+  const kind = question.kind === null ? "" : `[${question.kind}] `;
   const blocking = question.blocking ? "(blocking) " : "";
-  return [`[${question.kind}] ${blocking}${question.text}`];
+  return [`${question.number}. ${ticked}${kind}${blocking}${question.text}`];
 }
 
 /** The part id and file name of the one part of a `docs` task. */

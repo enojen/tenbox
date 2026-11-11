@@ -8,8 +8,12 @@ const filled = z.string().refine(strings.isNotBlank, "must not be blank");
 /** One line: a newline would break the `- ` entry and the check for an entry already there. */
 const oneLine = filled.refine((text) => !text.includes("\n"), "must be one line");
 
+/** A question line of `questions.md`: a piece of its text, or its number counted from 1. */
+const QuestionRefSchema = z.union([oneLine, z.number().int().min(1)]);
+type QuestionRef = z.infer<typeof QuestionRefSchema>;
+
 /** An answer to a question of `questions.md`; without `question` it is a note. */
-const DecisionSchema = z.object({ question: oneLine.optional(), answer: oneLine });
+const DecisionSchema = z.object({ question: QuestionRefSchema.optional(), answer: oneLine });
 export type Decision = z.infer<typeof DecisionSchema>;
 
 /** The option, counted from 1, to take on the one plan decision whose title contains `decision`. */
@@ -81,6 +85,46 @@ const QUESTION_LINE = /^- \[[ x]\] /;
 const OPEN_BOX = "- [ ] ";
 const TICKED_BOX = "- [x] ";
 const BLOCKING = /^\(blocking\) /;
+const KIND_HEADING = /^## (.+)$/;
+
+/** One question line of `questions.md`; `number` counts every question line from 1. */
+export interface NumberedQuestion {
+  number: number;
+  /** The last `## <kind>` heading above the line; null without one. */
+  kind: string | null;
+  blocking: boolean;
+  open: boolean;
+  /** The line without its checkbox and `(blocking) `. */
+  text: string;
+}
+
+/** The questions of the text of `questions.md`, in file order; ticked lines count too. */
+export function numberedQuestions(questionsMd: string): NumberedQuestion[] {
+  const lines = questionsMd.split("\n");
+  return questionLineIndexes(lines).map((index, position) => {
+    const line = lines[index] ?? "";
+    const unboxed = line.replace(QUESTION_LINE, "");
+    return {
+      number: position + 1,
+      kind: kindAbove(lines, index),
+      blocking: BLOCKING.test(unboxed),
+      open: line.startsWith(OPEN_BOX),
+      text: questionText(line),
+    };
+  });
+}
+
+function questionLineIndexes(lines: string[]): number[] {
+  return lines.flatMap((line, index) => (QUESTION_LINE.test(line) ? [index] : []));
+}
+
+function kindAbove(lines: string[], index: number): string | null {
+  const heading = lines
+    .slice(0, index)
+    .findLast((line) => KIND_HEADING.test(line))
+    ?.match(KIND_HEADING);
+  return heading?.[1]?.trim() ?? null;
+}
 
 /**
  * Appends each decision that is not yet in `decisions.md` and ticks its question line.
@@ -117,7 +161,7 @@ interface BuiltEntry {
 function buildEntry(item: Decision, questionLines: string[]): BuiltEntry {
   const answer = item.answer.trim();
   if (item.question === undefined) return { entry: [`- ${answer}`], ticked: false };
-  const index = findQuestionLine(questionLines, item.question.trim());
+  const index = findQuestionLine(questionLines, item.question);
   const line = questionLines[index] ?? "";
   const entry = [`- ${questionText(line)}`, `  Answer: ${answer}`];
   if (!line.startsWith(OPEN_BOX)) return { entry, ticked: false };
@@ -125,13 +169,17 @@ function buildEntry(item: Decision, questionLines: string[]): BuiltEntry {
   return { entry, ticked: true };
 }
 
-function findQuestionLine(lines: string[], question: string): number {
-  const found = lines.flatMap((line, index) =>
-    QUESTION_LINE.test(line) && line.includes(question) ? [index] : [],
-  );
+/** The index of the one question line `question` names; `unknown-question` otherwise. */
+function findQuestionLine(lines: string[], question: QuestionRef): number {
+  const indexes = questionLineIndexes(lines);
+  const found =
+    typeof question === "number"
+      ? indexes.slice(question - 1, question)
+      : indexes.filter((index) => lines[index]?.includes(question.trim()));
   const [only] = found;
-  if (found.length !== 1 || only === undefined) throw unknownQuestionError(question, found.length);
-  return only;
+  if (found.length === 1 && only !== undefined) return only;
+  const open = numberedQuestions(lines.join("\n")).filter((line) => line.open);
+  throw unknownQuestionError({ question, count: found.length, open });
 }
 
 /** The line without its checkbox and `(blocking) `. */
