@@ -134,6 +134,15 @@ interface FakeApi {
   pods: unknown[];
   /** When set, the items of the pod lists after the next one: the pod starts between two polls. */
   nextPods: unknown[] | null;
+  /** When set, the items of the Job lists after the next one: a Job ends between two polls. */
+  nextJobs: unknown[] | null;
+  /**
+   * When set, a posted Job joins the Job lists with these statuses, one per list (the last one
+   * stays); when null, a posted Job is never listed.
+   */
+  runStatuses: Record<string, number>[] | null;
+  /** The Job the fake lists for the last POST of a Job. */
+  posted: object | null;
   /** The body and the status of every pod log answer. */
   log: string;
   logStatus: number;
@@ -150,6 +159,9 @@ function startFakeApi(): FakeApi {
     jobs: [],
     pods: [],
     nextPods: null,
+    nextJobs: null,
+    runStatuses: null,
+    posted: null,
     log: "",
     logStatus: HTTP_OK,
     stop: () => {},
@@ -166,19 +178,30 @@ function startFakeApi(): FakeApi {
         return new Response(api.log, { status: api.logStatus });
       }
       if (url.pathname.endsWith("/pods")) return podList(api);
-      if (request.method === "GET") return Response.json({ items: api.jobs });
+      if (request.method === "GET") return jobList(api);
       if (request.method === "DELETE" && url.pathname.startsWith(JOBS_PATH)) {
         return removeJob(api, url.pathname);
       }
       if (request.method === "DELETE") return Response.json({}, { status: api.deleteStatus });
-      if (url.pathname === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
-      if (url.pathname === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
-      return Response.json(body, { status: HTTP_CREATED });
+      return created(api, { path: url.pathname, body });
     },
   });
   api.url = `http://127.0.0.1:${server.port}`;
   api.stop = () => server.stop(true);
   return api;
+}
+
+interface Creation {
+  path: string;
+  body: unknown;
+}
+
+function created(api: FakeApi, creation: Creation): Response {
+  const { path: apiPath, body } = creation;
+  if (apiPath === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
+  if (apiPath === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
+  if (apiPath === JOBS_PATH) listPostedJob(api, body);
+  return Response.json(body, { status: HTTP_CREATED });
 }
 
 const readBody = (request: Request): Promise<unknown> =>
@@ -191,6 +214,31 @@ function podList(api: FakeApi): Response {
     api.nextPods = null;
   }
   return Response.json({ items });
+}
+
+function jobList(api: FakeApi): Response {
+  const items = api.jobs.map((job) => (job === api.posted ? postedWithNextStatus(api) : job));
+  if (api.nextJobs !== null) {
+    api.jobs = api.nextJobs;
+    api.nextJobs = null;
+  }
+  return Response.json({ items });
+}
+
+const PostedJobSchema = z.looseObject({ metadata: z.looseObject({ name: z.string() }) });
+
+/** The posted Job as the API lists it: with a creationTimestamp and a status. */
+function listPostedJob(api: FakeApi, body: unknown): void {
+  if (api.runStatuses === null) return;
+  const job = PostedJobSchema.parse(body);
+  api.posted = { ...job, metadata: { ...job.metadata, creationTimestamp: CREATED }, status: {} };
+  api.jobs = [...api.jobs, api.posted];
+}
+
+function postedWithNextStatus(api: FakeApi): object {
+  const [status = {}, ...rest] = api.runStatuses ?? [];
+  if (rest.length > 0) api.runStatuses = rest;
+  return { ...api.posted, status };
 }
 
 /** A deleted Job is gone from the next list, as with propagationPolicy=Background. */
@@ -1062,6 +1110,131 @@ describe("machine", () => {
     expect(api.calls.map((c) => [c.method, c.query])).toEqual([
       ["GET", "?labelSelector=task%3DTEN-1"],
     ]);
+  });
+
+  describe("machine run --wait", () => {
+    const OLD_JOB = "task-ten-1-1021-100000";
+    const APPROVE_OUTPUT = { ok: true, task: "TEN-1", approved: true };
+    const BOOT_LINES = `tenbox-boot: cloning\n${BOOT_ENDED}\ntenbox-boot: oom_kill 0`;
+
+    const waitRun = (words: string[], flags: string[] = []) =>
+      machine(["run", "TEN-1", "--wait", ...flags, "--", "tenbox", ...words, "TEN-1"]);
+
+    const postedJob = () => jobBody(posts().find((c) => c.path === JOBS_PATH)).metadata.name;
+
+    test("run --wait prints the command output after the Job succeeded", async () => {
+      api.runStatuses = [{ active: 1 }, { succeeded: 1 }];
+      api.pods = [fakePod("pod-1", "Succeeded")];
+      api.log = `tenbox-boot: cloning\n${JSON.stringify(APPROVE_OUTPUT, null, 2)}\n${BOOT_LINES}\n`;
+      const run = await waitRun(["approve"]);
+      expect(run.code).toBe(0);
+      const job = postedJob();
+      expect(job).toMatch(JOB_NAME);
+      expect(run.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        cmd: "approve",
+        job,
+        status: "success",
+        reason: null,
+        output: APPROVE_OUTPUT,
+        log: api.log.trimEnd(),
+      });
+      const log = api.calls.find((c) => c.path.endsWith("/log"));
+      expect(log?.query).toBe("");
+    });
+
+    test("run --wait on a failed Job is machine-failed", async () => {
+      api.runStatuses = [{ failed: 1 }];
+      api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
+      api.log = `${BOOT_LINES}\n`;
+      const run = await waitRun(["build"]);
+      expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "machine-failed"]);
+      expect(run.json.details).toEqual({
+        task: "TEN-1",
+        cmd: "build",
+        job: postedJob(),
+        status: "failure",
+        reason: "OOMKilled",
+        output: null,
+        log: BOOT_LINES,
+      });
+    });
+
+    test("run --wait waits for the active Job of the task instead of machine-busy", async () => {
+      api.jobs = [fakeJob({ name: OLD_JOB, status: { active: 1 } })];
+      api.nextJobs = [fakeJob({ name: OLD_JOB, status: { succeeded: 1 } })];
+      api.runStatuses = [{ succeeded: 1 }];
+      api.pods = [fakePod("pod-1", "Succeeded")];
+      const run = await waitRun(["status"]);
+      expect(run.code).toBe(0);
+      expect(run.json).toMatchObject({ ok: true, cmd: "status", status: "success" });
+      expect(postedJob()).not.toBe(OLD_JOB);
+    });
+
+    test("run --wait past the timeout is machine-timeout", async () => {
+      api.runStatuses = [{ active: 1 }];
+      const run = await waitRun(["build"], ["--timeout", "0"]);
+      expect([run.code, run.json.code]).toEqual([1, "machine-timeout"]);
+      expect(String(run.json.error)).toContain(postedJob());
+      expect(api.calls.filter((c) => c.method === "DELETE")).toEqual([]);
+    });
+
+    test("run --wait past the timeout for the active Job posts nothing", async () => {
+      api.jobs = [fakeJob({ name: OLD_JOB, status: { active: 1 } })];
+      const run = await waitRun(["build"], ["--timeout", "0"]);
+      expect([run.code, run.json.code]).toEqual([1, "machine-timeout"]);
+      expect(String(run.json.error)).toContain(OLD_JOB);
+      expect(posts()).toEqual([]);
+    });
+
+    test("output is null when the log has no JSON object", async () => {
+      api.runStatuses = [{ succeeded: 1 }];
+      api.pods = [fakePod("pod-1", "Succeeded")];
+      api.log = `${BOOT_LINES}\n`;
+      const run = await waitRun(["approve"]);
+      expect(run.code).toBe(0);
+      expect(run.json).toMatchObject({ status: "success", output: null, log: BOOT_LINES });
+    });
+
+    test("a Job that disappears during the wait is machine-failed with no log", async () => {
+      api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
+      api.log = `${BOOT_LINES}\n`;
+      const run = await waitRun(["build"]);
+      expect([run.code, run.json.code]).toEqual([1, "machine-failed"]);
+      expect(run.json.details).toMatchObject({
+        job: postedJob(),
+        status: "failure",
+        reason: null,
+        output: null,
+        log: "",
+      });
+    });
+
+    test("pr --wait after -- reaches the box and the run does not wait", async () => {
+      const run = await machine(["run", "TEN-1", "--", "tenbox", "pr", "TEN-1", "--wait"]);
+      expect(run.code).toBe(0);
+      expect(Object.keys(run.json)).toEqual(["ok", "task", "cmd", "url"]);
+    });
+
+    test.each([
+      [
+        "--timeout without --wait",
+        ["run", "TEN-1", "--timeout", "5", "--", "tenbox", "build", "TEN-1"],
+      ],
+      [
+        "--timeout that is not a number",
+        ["run", "TEN-1", "--wait", "--timeout", "x", "--", "tenbox", "build", "TEN-1"],
+      ],
+      ["ls --wait", ["ls", "--wait"]],
+      ["logs --wait", ["logs", "TEN-1", "--wait"]],
+      ["stop --wait", ["stop", "TEN-1", "--wait"]],
+      ["rm --timeout", ["rm", "TEN-1", "--wait", "--timeout", "5"]],
+    ])("%s is usage", async (_name, args) => {
+      const run = await machine(args);
+      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+      expect(api.calls).toEqual([]);
+    });
   });
 
   test("machine stop deletes the active Job of the task with its pods", async () => {

@@ -3,6 +3,8 @@ import { COMMAND, type CommandName } from "../../domain/commands.ts";
 import {
   loginExpiredError,
   machineBusyError,
+  machineFailedError,
+  machineTimeoutError,
   noLoginError,
   noMachineRunError,
   noProjectIdError,
@@ -11,9 +13,11 @@ import {
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import {
+  commandOutput,
   gitAuthor,
   JOB_STATUS,
   type JobStatus,
+  logTail,
   OOM_KILLED,
   oomKilledInLog,
   RESOURCE_CLASS,
@@ -79,6 +83,8 @@ interface MachineRunInput {
   id: TaskId;
   /** The words after `--`. */
   words: string[];
+  /** With `--wait`: when the wait for an active Job of the task gives up; null refuses at once. */
+  deadlineMs: number | null;
 }
 
 interface MachineRunResult {
@@ -100,7 +106,26 @@ export interface MachineRunRow {
 }
 
 /** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, list, stop, remove, logs };
+export const machines = { run, wait, list, stop, remove, logs };
+
+interface MachineWaitInput {
+  id: TaskId;
+  cmd: MachineCommand;
+  /** The API URL of the Job, as `run` returns it. */
+  url: string;
+  deadlineMs: number;
+}
+
+export interface MachineRunEnd {
+  task: TaskId;
+  cmd: MachineCommand;
+  job: string;
+  status: RunConclusion;
+  reason: string | null;
+  /** The last top-level JSON object of the pod log, null without one. */
+  output: Record<string, unknown> | null;
+  log: string;
+}
 
 /** The task's newest Job log: where each text chunk goes, and whether to follow. */
 interface MachineLogsInput {
@@ -116,7 +141,7 @@ interface MachineLogsResult {
   reason: string | null;
 }
 
-const POD_POLL_MS = 2000;
+const POLL_MS = 2000;
 /** How much of the end of a log `logs` keeps to find the last boot line. */
 const LOG_TAIL_CHARS = 4096;
 /** The volume of a task and what `remove` did to it. */
@@ -133,6 +158,7 @@ interface CommandRun {
   project: Project;
   projectId: ProjectId;
   manifest: Manifest;
+  deadlineMs: number | null;
 }
 
 /**
@@ -140,13 +166,13 @@ interface CommandRun {
  * project has no id.
  */
 async function run(input: MachineRunInput): Promise<MachineRunResult> {
-  const { id, words } = input;
+  const { id, words, deadlineMs } = input;
   const cmd = parseCommand(input);
   await ensureLogin();
   const { project, manifest } = await projects.get(env().cwd);
   const projectId = manifest.id;
   if (projectId === undefined) throw noProjectIdError(project.mainDir);
-  const url = await runJob({ id, cmd, words, project, projectId, manifest });
+  const url = await runJob({ id, cmd, words, project, projectId, manifest, deadlineMs });
   return { task: id, cmd, url };
 }
 
@@ -197,9 +223,77 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   const after = await kubernetes.listJobs(cluster, `task=${id}`);
   const job = after.find((j) => j.name === newest.name) ?? newest;
   const pod = await kubernetes.findPod(cluster, newest.name);
-  const reason =
-    pod?.reason === OOM_KILLED || oomKilledInLog(tail) ? OOM_KILLED : (pod?.reason ?? null);
+  const reason = boxReason({ podReason: pod?.reason ?? null, log: tail });
   return { task: id, job: newest.name, status: jobStatus(job), reason };
+}
+
+interface BoxEnd {
+  podReason: string | null;
+  log: string;
+}
+
+function boxReason(end: BoxEnd): string | null {
+  if (end.podReason === OOM_KILLED || oomKilledInLog(end.log)) return OOM_KILLED;
+  return end.podReason;
+}
+
+/**
+ * Polls until the Job ended, then reads its pod log once. A failed Job is `machine-failed` with
+ * the result in its details; past the deadline `machine-timeout`, and the Job keeps running.
+ */
+async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
+  const { id, cmd, url, deadlineMs } = input;
+  const job = url.slice(url.lastIndexOf("/") + 1);
+  const cluster = await kubernetes.readCluster(env().kubeconfig);
+  const check = () => jobEnd({ cluster, id, job });
+  const ended = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
+  if (ended === null) throw machineTimeoutError(id, [job]);
+  let box: BoxEnd = { podReason: null, log: "" };
+  if (ended.found) box = await readBox({ cluster, job });
+  const result = {
+    task: id,
+    cmd,
+    job,
+    status: ended.status,
+    reason: boxReason(box),
+    output: commandOutput(box.log),
+    log: logTail(box.log),
+  };
+  if (result.status === JOB_STATUS.failure) throw machineFailedError(job, result);
+  return result;
+}
+
+interface JobRef {
+  cluster: Cluster;
+  id: TaskId;
+  job: string;
+}
+
+/** An ended Job; `found` is false for a Job gone from the list, which counts as failed. */
+interface EndedJob {
+  status: RunConclusion;
+  found: boolean;
+}
+
+/** Null while the Job runs. */
+async function jobEnd(ref: JobRef): Promise<EndedJob | null> {
+  const jobs = await kubernetes.listJobs(ref.cluster, `task=${ref.id}`);
+  const job = jobs.find((j) => j.name === ref.job);
+  if (job === undefined) return { status: JOB_STATUS.failure, found: false };
+  const status = jobStatus(job);
+  return status === JOB_STATUS.inProgress ? null : { status, found: true };
+}
+
+interface JobInCluster {
+  cluster: Cluster;
+  job: string;
+}
+
+async function readBox(input: JobInCluster): Promise<BoxEnd> {
+  const pod = await kubernetes.findPod(input.cluster, input.job);
+  if (pod === null) return { podReason: null, log: "" };
+  const log = await readLog({ cluster: input.cluster, pod: pod.name });
+  return { podReason: pod.reason, log };
 }
 
 function jobStatus(job: Job): JobStatus {
@@ -223,7 +317,7 @@ async function waitForPod(input: PodWait): Promise<string> {
     return pod !== null && (pod.started || !follow) ? pod.name : null;
   };
   const deadlineMs = follow ? Number.POSITIVE_INFINITY : Date.now();
-  const found = await pollUntil({ check, deadlineMs, intervalMs: POD_POLL_MS });
+  const found = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
   if (found === null) throw serviceError("kubernetes", "kubernetes", `Job ${job} has no pod yet`);
   return found;
 }
@@ -234,10 +328,16 @@ interface RowInput {
   job: Job;
 }
 
-/** The last log line of a pod; empty when the log is gone, so one Job never stops the listing. */
-async function lastLogLine(input: { cluster: Cluster; pod: string }): Promise<string> {
+interface LogRead {
+  cluster: Cluster;
+  pod: string;
+  tailLines?: number;
+}
+
+/** The log of a pod; empty when the log is gone, so one Job never stops the listing. */
+async function readLog(input: LogRead): Promise<string> {
   try {
-    const chunks = await kubernetes.streamLog({ ...input, follow: false, tailLines: 1 });
+    const chunks = await kubernetes.streamLog({ ...input, follow: false });
     let text = "";
     for await (const chunk of chunks) text += chunk;
     return text;
@@ -252,7 +352,7 @@ async function endReason(input: RowInput): Promise<string | null> {
   const pod = await kubernetes.findPod(cluster, job.name);
   if (pod === null) return null;
   if (pod.reason === OOM_KILLED) return pod.reason;
-  const text = await lastLogLine({ cluster, pod: pod.name });
+  const text = await readLog({ cluster, pod: pod.name, tailLines: 1 });
   return oomKilledInLog(text) ? OOM_KILLED : pod.reason;
 }
 
@@ -313,7 +413,7 @@ async function ensureLogin(): Promise<void> {
 
 /** Every Job gets the project and its origin: the box clones the project on a new volume. */
 async function runJob(command: CommandRun): Promise<string> {
-  const { id, manifest, projectId } = command;
+  const { id, manifest, projectId, deadlineMs } = command;
   const values = projectSecretValues(manifest);
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   const dir = homePath(manifest.machine.template);
@@ -327,6 +427,7 @@ async function runJob(command: CommandRun): Promise<string> {
   const file = path.join(dir, "job.yaml");
   const template = await kubernetes.readTemplate({ file, fields });
   const job = kubernetes.addServices({ file, job: template, services });
+  if (deadlineMs !== null) await waitIdle({ cluster, id, deadlineMs });
   await ensureIdle(cluster, id);
   await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
   await kubernetes.ensureVolume({ cluster, object: volume });
@@ -405,6 +506,23 @@ function serviceNames(command: CommandRun): string[] {
 async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
   const active = await activeJobs(cluster, id);
   if (active.length > 0) throw machineBusyError(id, active);
+}
+
+interface IdleWait {
+  cluster: Cluster;
+  id: TaskId;
+  deadlineMs: number;
+}
+
+async function waitIdle(input: IdleWait): Promise<void> {
+  const { cluster, id, deadlineMs } = input;
+  let active: string[] = [];
+  const check = async () => {
+    active = await activeJobs(cluster, id);
+    return active.length === 0 ? active : null;
+  };
+  const idle = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
+  if (idle === null) throw machineTimeoutError(id, active);
 }
 
 /** `MMDD-HHMMSS` in UTC: the run part of a Job name. */

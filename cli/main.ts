@@ -83,7 +83,7 @@ const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id>";
 const MACHINE_USAGE =
-  "tenbox machine run <id> -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
+  "tenbox machine run <id> [--wait [--timeout 600]] -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
@@ -335,10 +335,16 @@ const COMMANDS: Record<CommandName, Command> = {
   },
   [COMMAND.machine]: {
     usage: MACHINE_USAGE,
-    options: { follow: { type: "boolean", default: false } },
+    options: {
+      follow: { type: "boolean", default: false },
+      wait: { type: "boolean", default: false },
+      timeout: { type: "string" },
+    },
     run: (positionals, values, argv) => {
       const [action, ...rest] = positionals;
       const follow = flagValue(values, "follow");
+      const waitSeconds = machineWaitValue(values);
+      if (action !== "run" && waitSeconds !== null) throw usageError(`usage: ${MACHINE_USAGE}`);
       if (action === "logs") {
         if (rest.length > 1) throw usageError(`usage: ${MACHINE_USAGE}`);
         return showMachineLogs({ id: idArg(rest, MACHINE_USAGE), follow });
@@ -351,7 +357,8 @@ const COMMANDS: Record<CommandName, Command> = {
       }
       if (action !== "run" || !argv.includes("--")) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
-      return runOnMachine({ id: idArg(rest, MACHINE_USAGE), words, usage: MACHINE_USAGE });
+      const id = idArg(rest, MACHINE_USAGE);
+      return runOnMachine({ id, words, usage: MACHINE_USAGE, waitSeconds });
     },
   },
   [COMMAND.task]: {
@@ -463,6 +470,13 @@ function repoValue(values: Values): ReportRepo {
   const repo = REPORT_REPOS.find((candidate) => candidate === value);
   if (repo === undefined) throw usageError(`--repo must be ${REPORT_REPOS.join(" or ")}`);
   return repo;
+}
+
+function machineWaitValue(values: Values): number | null {
+  const timeout = intValue(values, "timeout");
+  if (flagValue(values, "wait")) return timeout ?? DEFAULT_TIMEOUT_SECONDS;
+  if (timeout !== undefined) throw usageError(`usage: ${MACHINE_USAGE}`);
+  return null;
 }
 
 /** `--kind`: undefined when missing. */
