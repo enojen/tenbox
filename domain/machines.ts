@@ -1,3 +1,5 @@
+import { jsons, objects } from "./utils.ts";
+
 /** The resource classes of tenyard `task/classes.yaml` that a machine run takes. */
 export const RESOURCE_CLASS = { plan: "plan", build: "build", heavy: "heavy" } as const;
 
@@ -33,6 +35,28 @@ export function oomKilledInLog(text: string): boolean {
   const last = text.trimEnd().split("\n").pop() ?? "";
   const count = /oom_kill (\d+)\s*$/.exec(last)?.[1];
   return count !== undefined && Number(count) > 0;
+}
+
+/** The lines of the end of a box log that `tenbox machine run --wait` prints as `log`. */
+export const LOG_TAIL_LINES = 40;
+
+/** A command's JSON object, as `emit` prints it: `{` and `}` at column 0. */
+type CommandOutput = Record<string, unknown>;
+
+/** The last top-level JSON object of a box log; null when there is none. */
+export function commandOutput(log: string): CommandOutput | null {
+  const lines = log.split("\n");
+  const end = lines.lastIndexOf("}");
+  const start = lines.slice(0, end).lastIndexOf("{");
+  if (start < 0 || end < 0) return null;
+  const value = jsons.parse(lines.slice(start, end + 1).join("\n"));
+  return objects.isRecord(value) ? value : null;
+}
+
+export function logTail(log: string): string {
+  const text = log.trimEnd();
+  if (text === "") return "";
+  return text.split("\n").slice(-LOG_TAIL_LINES).join("\n");
 }
 
 export interface GitHubUser {

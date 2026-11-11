@@ -1,5 +1,6 @@
 import { usageError } from "../../domain/errors/usage.ts";
 import type { TaskId } from "../../domain/ids.ts";
+import { durations } from "../../domain/utils.ts";
 import { machines } from "../application/machines.ts";
 import type {
   MachineLogsResultJson,
@@ -7,6 +8,7 @@ import type {
   MachineRmResult,
   MachineRunResultJson,
   MachineStopResult,
+  MachineWaitResultJson,
 } from "./results.ts";
 
 export interface MachineRunArgs {
@@ -14,13 +16,22 @@ export interface MachineRunArgs {
   /** The words after `--`. */
   words: string[];
   usage: string;
+  /** `--timeout` of `--wait`, in seconds; null without `--wait`. */
+  waitSeconds: number | null;
 }
 
-/** Starts one tenbox command of the task as a Job on the cluster. */
-export async function runOnMachine(args: MachineRunArgs): Promise<MachineRunResultJson> {
-  if (args.words.length === 0) throw usageError(`usage: ${args.usage}`);
-  const { task, cmd, url } = await machines.run({ id: args.id, words: args.words });
-  return { ok: true, task, cmd, url };
+/** Starts one tenbox command of the task as a Job on the cluster; with `--wait`, until it ends. */
+export async function runOnMachine(
+  args: MachineRunArgs,
+): Promise<MachineRunResultJson | MachineWaitResultJson> {
+  const { id, words, usage, waitSeconds } = args;
+  if (words.length === 0) throw usageError(`usage: ${usage}`);
+  const deadlineMs =
+    waitSeconds === null ? null : Date.now() + waitSeconds * durations.MS_PER_SECOND;
+  const { task, cmd, url } = await machines.run({ id, words, deadlineMs });
+  if (deadlineMs === null) return { ok: true, task, cmd, url };
+  const end = await machines.wait({ id, cmd, url, deadlineMs });
+  return { ok: true, ...end };
 }
 
 export async function listMachineRuns(): Promise<MachineLsResult> {

@@ -251,15 +251,20 @@ Example:
 Input: run takes the command after --: tenbox start, build or close.
 Flags:
   --follow   with logs: keep the stream open
+  --wait     with run, before --: wait for an active Job of the task, then for the new Job's end
+  --timeout S   with --wait: the seconds both waits may take (default 600); then machine-timeout
   --title X, --force   passed to the command after --
 
 machine.plan_class (plan, build or heavy; default plan) is the resource class of start;
 machine.class is the one of the commands that run tests.
 
-Output: run { ok, task, cmd, url }; stop { ok, task, stopped }; rm { ok, task, volume }; ls { ok, runs } with a reason such as OOMKilled; logs { ok, task, job, status, reason }
+Output: run { ok, task, cmd, url }; run --wait { ok, task, cmd, job, status, reason, output, log }
+with output the command's JSON and log the last 40 log lines; a failed Job is machine-failed
+with them in details; stop { ok, task, stopped }; rm { ok, task, volume }; ls { ok, runs } with a reason such as OOMKilled; logs { ok, task, job, status, reason }
 
 Example:
-  tenbox machine run TEN-301 -- tenbox build TEN-301`,
+  tenbox machine run TEN-301 -- tenbox build TEN-301
+  tenbox machine run TEN-301 --wait -- tenbox approve TEN-301`,
 
   task: `task new writes a task to the tracker of the project.
 

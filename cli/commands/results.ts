@@ -15,7 +15,7 @@ import type { TaskStats } from "../../domain/stats.ts";
 import type { ListedReport, StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
-import type { MachineRunRow, MachineVolume } from "../application/machines.ts";
+import type { MachineRunEnd, MachineRunRow, MachineVolume } from "../application/machines.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
@@ -337,6 +337,11 @@ export interface MachineRunResultJson {
   cmd: string;
   /** The API URL of the Job. */
   url: string;
+}
+
+/** `tenbox machine run --wait`: how the Job ended; a failed one is `machine-failed` instead. */
+export interface MachineWaitResultJson extends MachineRunEnd {
+  ok: true;
 }
 
 export interface MachineLogsResultJson {

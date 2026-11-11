@@ -109,3 +109,15 @@ export function machineBusyError(task: string, jobs: string[]): TenboxError {
     "machine-busy",
   );
 }
+
+/** `details` is the result of the run: the Job, its status, reason, output and log. */
+export function machineFailedError(job: string, details: unknown): TenboxError {
+  return new TenboxError(`Job ${job} failed on the cluster`, "machine-failed", details);
+}
+
+export function machineTimeoutError(task: string, jobs: string[]): TenboxError {
+  return new TenboxError(
+    `task ${task} still runs on the cluster after the timeout: ${jobs.join(", ")}; it keeps running`,
+    "machine-timeout",
+  );
+}
