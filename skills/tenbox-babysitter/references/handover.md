@@ -5,7 +5,7 @@
 - Before a handover, write into "Next step": the open spoken decisions, the running Jobs, and
   the last raw error text when a step failed.
 - A handover cannot carry what the session learned by reading code. Put the two or three facts
-  the next session needs into the card notes: the file, the line, the rule.
+  the next session needs into the task notes: the file, the line, the rule.
 - The next session starts with `/tenbox-babysitter <name>` and nothing else. After the start it
   asks the cluster again (`tenbox machine ls`, `tenbox status`) and does not trust a Job name in
   the file alone.

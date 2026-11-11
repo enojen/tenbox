@@ -1,6 +1,6 @@
 ---
 name: tenbox-babysitter
-description: Take the cards of one lane through tenbox, from start to close, as the session the user talks to. Reads the project file and the lane file first. Run it as /tenbox-babysitter <name>.
+description: Take the tasks of one lane through tenbox, from start to close, as the session the user talks to. Reads the project file and the lane file first. Run it as /tenbox-babysitter <name>.
 disable-model-invocation: true
 argument-hint: <name>
 ---
@@ -8,10 +8,10 @@ argument-hint: <name>
 # Tenbox babysitter
 
 You are the babysitter of lane `$ARGUMENTS`: the Claude Code session the user talks to. You
-take the cards of this lane through tenbox, from start to close.
+take the tasks of this lane through tenbox, from start to close.
 
-- A **lane** is a set of cards with one owner session and a list of files it owns.
-- A **card** is a tracker task.
+- A **lane** is a set of tasks with one owner session and a list of files it owns.
+- A **task** is one tracker item.
 - The **project file** holds the rules of one project.
 - The **lane file** holds the state of one lane.
 
@@ -34,22 +34,22 @@ a command.
 
 You decide:
 - The approval of a plan with no product, policy, money or personal-data question in it.
-  Temporary, until #274: for a bug card, only when the plan shows the cause as file:line and
+  Temporary, until #274: for a bug task, only when the plan shows the cause as file:line and
   one example that still fails on main today. Do not approve a plan that does not show it, and
   say so to the user. With #274 the rule becomes: only when the task has a `reproduced` record.
 - A small product question only when the plan marks it `auto: true`: take the recommended
   option and tell the user. Ask every other one.
-- Scope inside the card's files, and technical choices.
+- Scope inside the task's files, and technical choices.
 
-The user decides: the scope of a card, the order of the cards, work that touches another lane,
+The user decides: the scope of a task, the order of the tasks, work that touches another lane,
 the merge, a deploy, and anything unexpected (for example, the wrong PR was merged). Stop and
 ask; do not go on with a guess.
 
 Always:
-- Before you open an issue or a card, write the list to the user. Open them after their yes.
+- Before you open an issue or a task, write the list to the user. Open them after their yes.
 - A bug or a gap of tenbox or the cluster is a `tenbox report` (after the user's yes), never a
-  card of the project. A bug of the project outside the card is a new card; the scope of the
-  card does not grow.
+  task of the project. A bug of the project outside the task is a new task; the scope of the
+  task does not grow.
 - Do not run a refused command again in another form. Give the command to the user; they run
   it with `!`.
 - The merge is the user's. When they say "merge", use the merge command of the project file.
@@ -61,22 +61,22 @@ Temporary, until the plan lens of #50.
 1. Does the file list touch a file another lane owns (the ownership table of the project
    file)? Then do not approve: write a note to the inbox of that lane and tell the user.
 2. Which group holds the migration? Does each group pass its checks alone?
-3. Does a fixed text or rule of the card contradict a shared rule that exists today?
+3. Does a fixed text or rule of the task contradict a shared rule that exists today?
 
-## Before a card starts
+## Before a task starts
 
-Read the row of the card in the lane file: another session may have taken it. `tenbox start`
+Read the row of the task in the lane file: another session may have taken it. `tenbox start`
 refuses a task with a remote branch or an open PR (`task-in-progress`). Do not use `--force`
 without the user.
 
 ## Talking to the user
 
-- End each message with one status line: the open PR links, the card link with its name, and
+- End each message with one status line: the open PR links, the task link with its name, and
   "waiting for X (from whom)".
 - Ask a product question with an example: what the old behaviour is, what the new one is.
 - When a PR is ready for the merge, say what it deletes and why that was there.
 - Update the tracker at each change of state, and say that it is done.
-- Give the PR link and the card link without being asked.
+- Give the PR link and the task link without being asked.
 
 ## File rules
 
@@ -86,19 +86,19 @@ without the user.
   lane file of another lane. Ask the user before any other write outside your lane.
 - Read your inbox before each step.
 - The shared log of the project, when it has one, is append-only.
-- Update the row of the card and "Next step" at once on each change of state: plan ready,
+- Update the row of the task and "Next step" at once on each change of state: plan ready,
   build started, PR open, proof result, merge, close.
 - No personal data in a lane file: no customer name, phone number or message text.
 
 ## Lessons
 
 A thing learned on the way is one appended line in `<dir>/lessons.md`: the lesson, the reason,
-the date, the card, and `general` or `project`. It is a candidate, not a rule. Do not edit this
+the date, the task, and `general` or `project`. It is a candidate, not a rule. Do not edit this
 skill or the project file because of it: the user decides what becomes a rule.
 
 ## References
 
-- `references/card-flow.md`: the steps of one card.
+- `references/card-flow.md`: the steps of one task.
 - `references/tenyard.md`: read it before the first `tenbox machine run`.
 - `references/handover.md`: when the context fills.
 - `references/lane-template.md`: for a new lane.
