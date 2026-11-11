@@ -377,6 +377,44 @@ test("a rebase conflict gives the group conflict with the files and pushes nothi
   expect(pushed.includes("feat/T-1-2")).toBe(false);
 });
 
+/** Main moves on origin with its own change of `a.txt`. */
+async function moveMain(text: string): Promise<void> {
+  await files.write(path.join(project.mainDir, "a.txt"), text);
+  await git.run(["commit", "-q", "-am", "main moves"], project.mainDir);
+  await git.run(["push", "-q", "origin", "main"], project.mainDir);
+}
+
+test("an open PR whose branch conflicts with the moved base gives conflict with the files", async () => {
+  await files.write(path.join(taskWorktree, "a.txt"), "task\n");
+  await git.run(["commit", "-q", "-am", "task edit"], taskWorktree);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  await moveMain("main\n");
+  await commit(taskWorktree, "b.txt");
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  const pushed = await git.run(["log", "--format=%s", "-1", "feat/T-1"], origin);
+  expect([run.code, run.json.ok]).toEqual([0, true]);
+  expect(run.json.groups).toEqual([
+    {
+      group: 1,
+      branch: "feat/T-1",
+      state: "conflict",
+      pr: { number: 1, url: "https://example.com/pull/1", draft: true },
+      files: ["a.txt"],
+    },
+  ]);
+  expect(pushed).toBe("task edit");
+});
+
+test("a branch that merges cleanly into the moved base is updated", async () => {
+  await commit(taskWorktree, "b.txt");
+  const gh = await installGh();
+  await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  await moveMain("main\n");
+  const run = await tenbox(["pr", "T-1", "--force"], project.mainDir, gh.env);
+  expect(states(run)).toEqual([[1, "updated"]]);
+});
+
 test("tenbox pr never merges a PR", async () => {
   await makeStackedGroups();
   const gh = await installGh();

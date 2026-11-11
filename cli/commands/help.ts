@@ -100,6 +100,9 @@ Flags:
 
 Output: { ok, task, groups: [{ group, branch, state, pr, files?, ci? }] }
   pr is { number, url, draft } or null for a group that waits.
+  state conflict: the branch conflicts with the base; files names the files and nothing is
+  pushed. Next: merge origin/<base> into the branch with a merge commit (no force push),
+  run tenbox check, then tenbox pr again.
 
 Example:
   tenbox pr TEN-301 --ready`,
