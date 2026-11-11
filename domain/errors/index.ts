@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { NumberedQuestion } from "../decisions.ts";
 
 /** Every failure the CLI reports. `code` is a short machine-readable slug. */
 export class TenboxError extends Error {
@@ -39,3 +40,18 @@ export const issueLines = (error: z.ZodError): string[] =>
 export type FailedState = `failed: ${string}`;
 
 export const failedState = (e: unknown): FailedState => `failed: ${errorMessage(e)}`;
+
+export interface QuestionLines {
+  /** The open questions as the `details` of an error. */
+  details: Array<{ number: number; text: string }>;
+  /** One `\n<number>. <text>` per question. */
+  text: string;
+}
+
+export function questionLines(questions: NumberedQuestion[]): QuestionLines {
+  const details = questions.map((question) => ({ number: question.number, text: question.text }));
+  return {
+    details,
+    text: details.map((question) => `\n${question.number}. ${question.text}`).join(""),
+  };
+}

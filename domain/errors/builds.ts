@@ -1,5 +1,6 @@
+import type { NumberedQuestion } from "../decisions.ts";
 import type { Lens, TaskKind } from "../kinds.ts";
-import { TenboxError } from "./index.ts";
+import { questionLines, TenboxError } from "./index.ts";
 
 /* Errors of a build: groups, checks, the kind's limits, decision cards. */
 
@@ -15,6 +16,15 @@ export function nothingToBuildError(id: string): TenboxError {
   return new TenboxError(
     `every part of ${id} says status: done, so no build would run; set status: todo in the part file that must change, then run tenbox build ${id}`,
     "nothing-to-build",
+  );
+}
+
+export function openQuestionsError(id: string, questions: NumberedQuestion[]): TenboxError {
+  const open = questionLines(questions);
+  return new TenboxError(
+    `${id} has open questions:${open.text}\nAnswer them with tenbox decide, or run tenbox build ${id} --defaults`,
+    "open-questions",
+    open.details,
   );
 }
 

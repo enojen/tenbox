@@ -10,7 +10,11 @@ import {
   parseBuild,
 } from "../../domain/builds.ts";
 import { type DiffFile, mergeDiffs } from "../../domain/diffs.ts";
-import { checkFailedError, nothingToBuildError } from "../../domain/errors/builds.ts";
+import {
+  checkFailedError,
+  nothingToBuildError,
+  openQuestionsError,
+} from "../../domain/errors/builds.ts";
 import { errorMessage } from "../../domain/errors/index.ts";
 import { groupBranch, groupWorktreeDir } from "../../domain/groups.ts";
 import type { TaskId } from "../../domain/ids.ts";
@@ -32,6 +36,7 @@ import { sessionName, taskBranch } from "../../domain/worktrees.ts";
 import { approvals } from "../application/approvals.ts";
 import { autoAnswers } from "../application/autoAnswers.ts";
 import { builds } from "../application/builds.ts";
+import { decisions } from "../application/decisions.ts";
 import { manifests } from "../application/manifests.ts";
 import { notifications, type TaskNotification } from "../application/notifications.ts";
 import { parts } from "../application/parts.ts";
@@ -48,12 +53,34 @@ import { runChecks } from "./check.ts";
 import { assertChecked, findLatestChecks, openPr } from "./pr.ts";
 import type { PrError, PrResult, SendBuildResult, TaskFileResult, TrackerInfo } from "./results.ts";
 
+export interface SendBuildInput {
+  id: TaskId;
+  /** Start with open questions that are not blocking, as their defaults stand. */
+  defaults: boolean;
+}
+
+interface QuestionCheck {
+  id: TaskId;
+  taskDir: string;
+  defaults: boolean;
+}
+
+/** `open-questions` for an open question; with `defaults` only a blocking one, which has no default. */
+async function assertQuestionsAnswered(check: QuestionCheck): Promise<void> {
+  const { id, taskDir, defaults } = check;
+  const questions = await decisions.listQuestions(taskDir);
+  const open = questions.filter((question) => question.open && (!defaults || question.blocking));
+  if (open.length > 0) throw openQuestionsError(id, open);
+}
+
 /**
  * Checks the approval, then starts `claude --bg` in the task worktree with `/tenbox-build` and
  * the build args of `plan.json`: its kind applied to the lenses and group recipes. Refuses
- * with `nothing-to-build` when every part is done.
+ * with `nothing-to-build` when every part is done, and with `open-questions` while a question
+ * of `questions.md` is open.
  */
-export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
+export async function sendBuild(input: SendBuildInput): Promise<SendBuildResult> {
+  const { id, defaults } = input;
   const taskWorktree = await worktrees.get(id);
   await approvals.get(taskWorktree, id);
   const { manifest } = await projects.get(taskWorktree);
@@ -62,6 +89,7 @@ export async function sendBuild(id: TaskId): Promise<SendBuildResult> {
   const done = await parts.readDone(taskDir);
   const args = buildArgs({ task: id, plan, done });
   if (args.parts.length === 0) throw nothingToBuildError(id);
+  await assertQuestionsAnswered({ id, taskDir, defaults });
   const sent = `/tenbox-build ${JSON.stringify(args)}`;
   const start = {
     id,
