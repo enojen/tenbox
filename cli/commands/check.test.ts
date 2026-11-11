@@ -69,10 +69,11 @@ afterEach(async () => {
   process.chdir(startCwd);
   await project.remove();
 });
-describe("runChecks", () => {
-  beforeEach(() => setup({ "tenbox.yaml": manifest() }));
-
-  test("no baseline yet: takes one in main, old failures are not new", async () => {
+describe("runChecks first baseline", () => {
+  test("no baseline yet: takes the base commit's own after setup, old failures are not new", async () => {
+    const check = `test -f deps || { echo WARN deps missing; exit 1; }; cat out.txt; echo "$PWD" >> '../../../calls.txt'; exit 1`;
+    await setup({ "tenbox.yaml": manifest({ setup: "touch deps", checks: { unit: check } }) });
+    await files.write(path.join(taskWorktree, "deps"), "");
     const baseSha = await baseShaOf();
     const r = await runChecks(input());
     expect(r.ok).toBe(true);
@@ -81,10 +82,10 @@ describe("runChecks", () => {
       name: "unit",
       failures: 1,
       new_failures: [],
-      baseline: { sha: baseSha, source: "main", failures: 1 },
+      baseline: { sha: baseSha, source: "base", failures: 1 },
     });
     const ran = await calls();
-    const expectedDirs = await realDirs(taskWorktree, project.mainDir);
+    const expectedDirs = await realDirs(taskWorktree);
     const saved = await files.read(
       path.join(env().baselinesRoot, "demo", "unit", `${baseSha}.txt`),
     );
@@ -94,6 +95,10 @@ describe("runChecks", () => {
     expect(written).toContain('"ok": true');
     expect(r.file).toBe(path.join(".tenbox", "rounds", "1", "checks.json"));
   });
+});
+
+describe("runChecks", () => {
+  beforeEach(() => setup({ "tenbox.yaml": manifest() }));
 
   test("exact baseline present: a new line fails, round continues", async () => {
     const baseSha = await baseShaOf();
@@ -261,7 +266,7 @@ describe("runChecks manifest", () => {
     expect(r.checks[0]).toMatchObject({
       failures: 1,
       new_failures: [],
-      baseline: { source: "main", failures: 1 },
+      baseline: { source: "base", failures: 1 },
     });
     await writeOut("FooTest > baz() FAILED\n");
     const second = await runChecks(input());

@@ -98,13 +98,13 @@ The base is the manifest `base`, `main` by default; `--base` overrides it for `s
 **New failures only.** A check fails only on failure lines that the base commit does not
 already have. The failure lines of the base (the baseline) are kept per project, check and
 commit under `~/wt/.baselines/`. `tenbox check` uses the baseline of the base commit, else
-the newest one it has. With none at all, it runs the check once in the main checkout when
-that sits at the base commit, and saves the result. An older baseline lacks the failures main
-gained since: when a check has new failures against one (or against none), it takes the base
-commit's own baseline first, in a temporary detached worktree at that commit (`setup`, then the
-check, then the worktree is removed), saves it, and judges again. Each check result names its
-baseline: `{ sha, source, failures }`, `source` one of `exact`, `newest`, `main`, `base` (taken in
-the temporary worktree) or `none`.
+the newest one it has. The base commit's own baseline is taken in a temporary detached worktree
+at that commit (`setup`, then the check, then the worktree is removed) and saved; the check never
+runs in the main checkout for a baseline. It is taken when there is no stored baseline at all,
+and when a check has new failures against an older one, which lacks the failures main gained
+since; the check is then judged again. A failed `setup` there stops the check with `setup`. Each
+check result names its baseline: `{ sha, source, failures }`, `source` one of `exact`, `newest` or
+`base` (taken in the temporary worktree); `main` and `none` only appear in older check results.
 
 **Flaky.** A check with a new failure runs once more. A new failure is then a line that both runs
 have, or the crash line (`exit N: ...`) of the second run. A new failure line that only one of the

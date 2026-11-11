@@ -78,13 +78,13 @@ describe("tenbox start", () => {
 });
 
 describe("tenbox check", () => {
-  test("round 1: baseline from main, old failure is not new", async () => {
+  test("round 1: baseline of the base commit after setup, old failure is not new", async () => {
     const dir = path.join(wt, "demo", "T-1");
     const r = await tenbox(["check", "T-1"], dir);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ ok: true, round: 1 });
     const unit = unitCheck(r.json);
-    expect(unit).toMatchObject({ failures: 1, new_failures: [], baseline: { source: "main" } });
+    expect(unit).toMatchObject({ failures: 1, new_failures: [], baseline: { source: "base" } });
     const written = await Bun.file(
       path.join(dir, ".tenbox", "rounds", "1", "checks.json"),
     ).exists();
