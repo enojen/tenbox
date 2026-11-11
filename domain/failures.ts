@@ -4,8 +4,9 @@ import { lists, strings } from "./utils.ts";
 /** vitest/jest `FAIL × ✕ ✗`, bun `(fail)`, tsc `error TS1234`: the devbox `wtbase` default. */
 export const DEFAULT_FAILURE_PATTERN = "(^|\\s)(FAIL|\\(fail\\)|×|✕|✗)(\\s|$)|error TS[0-9]+";
 
-/** `[8.00ms]` (bun), `in 3s` (gradle), `144ms` (vitest): durations differ on every run. */
-const TRAILING_DURATION = /(\s*\[\d+(\.\d+)?m?s\]|\s+(in\s+)?\d+(\.\d+)?m?s)$/;
+/** `[8.00ms]` (bun), `(12 ms)` (jest), `in 3s` (gradle), `144ms` (vitest): durations differ on every run. */
+const TRAILING_DURATION =
+  /(\s*\[\d+(\.\d+)?m?s\]|\s*\(\d+(\.\d+)?\s?m?s\)|\s+(in\s+)?\d+(\.\d+)?m?s)$/;
 
 /** The line `parseFailures` makes for a failing exit with no matching line. */
 const CRASH_LINE = /^exit \d+(:|$)/;

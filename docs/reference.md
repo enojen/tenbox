@@ -109,7 +109,7 @@ the temporary worktree) or `none`.
 have, or the crash line (`exit N: ...`) of the second run. A new failure line that only one of the
 two runs has is flaky: it failed once and passed once, so it does not fail the check, and it is
 listed in `flaky` in the result and in `summary`. A failure line is compared without its colours,
-its outer spaces and a trailing duration (`[8.00ms]`, `in 3s`, `144ms`), so one test that fails in
+its outer spaces and a trailing duration (`[8.00ms]`, `(12 ms)`, `in 3s`, `144ms`), so one test that fails in
 both runs is one new failure and not flaky. A check with no new failure runs once.
 The check log holds both outputs. The CI workflow runs `bun test` itself, not `tenbox check`, so
 it has no rerun.
