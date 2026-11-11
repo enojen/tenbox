@@ -6,8 +6,9 @@ command, so you need no wait loop and no search in the logs. Run `tenbox help <c
 a command.
 
 1. Start: `tenbox start <id>`. The tracker goes to in progress and the plan starts.
-2. Plan: wait for it, then `tenbox plan show <id>`. It shows parts, groups, examples, decisions
-   and questions.
+2. Plan: wait for it with `tenbox wait <id> --for plan` (on the cluster, the `--wait` of
+   `tenbox machine run`), never with a hand-written loop. Then `tenbox plan show <id>`. It shows
+   parts, groups, examples, decisions and questions.
 3. Checks before the approval: the three checks of `SKILL.md`, and the rule for a bug task.
 4. Questions: answer with
    `tenbox decide <id> --no-build --json '[{"question": "...", "answer": "..."}]'`.
@@ -18,8 +19,10 @@ a command.
 5. A decision that holds for every task of the project belongs in `decisions:` of
    `tenbox.yaml`, not in a note typed on each task.
 6. `tenbox approve <id>`, then `tenbox build <id>`.
-7. Build ended: `tenbox status <id>`. A failed build has its cause in `reason`. A decision card:
-   the user answers, unless it is `auto: true`; then `tenbox answer <id> <n>`.
+7. Build: wait for its end with `tenbox wait <id> --for build` (on the cluster, the `--wait` of
+   `tenbox machine run`), never with a hand-written loop. Then `tenbox status <id>`. A failed
+   build has its cause in `reason`. A decision card: the user answers, unless it is
+   `auto: true`; then `tenbox answer <id> <n>`.
 8. A part that is `done` but needs one more thing:
    `tenbox part reopen <id> --part NN --accept "..."`, then `tenbox build <id>`. Never edit a
    part file by hand. Temporary, until #283: this command does not run on the cluster yet, so
