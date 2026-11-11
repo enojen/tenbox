@@ -158,6 +158,8 @@ const ManifestSchema = z.object({
   machine: MachineSchema.prefault({}),
   /** Decisions that hold for every task of the project; the agents read them as `decisions.md` lines. */
   decisions: z.array(z.string().min(1)).default([]),
+  /** The project file of the `tenbox-babysitter` skill; only the skill reads it. */
+  babysitter: z.string().min(1).default("tenbox-babysitter.md"),
 });
 
 export type CheckTier = (typeof CHECK_TIER)[keyof typeof CHECK_TIER];

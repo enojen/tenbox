@@ -55,6 +55,15 @@ describe("mergeManifest", () => {
     const bad = [{ file: "tenbox.yaml", value: { decisions: [""] } }];
     expect(() => mergeManifest(bad)).toThrow(/decisions\.0/);
   });
+  test("babysitter is the path of the project file; default tenbox-babysitter.md; a value that is not text is an error", () => {
+    const m = mergeManifest([{ file: "tenbox.yaml", value: { babysitter: "notes/lanes.md" } }]);
+    expect(m.babysitter).toBe("notes/lanes.md");
+    expect(mergeManifest([]).babysitter).toBe("tenbox-babysitter.md");
+    const number = [{ file: "tenbox.yaml", value: { babysitter: 3 } }];
+    expect(() => mergeManifest(number)).toThrow(/babysitter/);
+    const empty = [{ file: "tenbox.yaml", value: { babysitter: "" } }];
+    expect(() => mergeManifest(empty)).toThrow(/babysitter/);
+  });
   test("empty gives defaults", () => {
     const m = mergeManifest([]);
     expect(m.checks).toEqual({ fast: {}, full: {} });
