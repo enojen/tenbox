@@ -404,6 +404,28 @@ test("a reused group branch keeps only its own commits after its need is squash 
   expect(own).toBe("two.txt");
 });
 
+test("a rebased group is checked again at its new head, so pr --ready needs no tenbox check", async () => {
+  await makeStackedGroups();
+  await runChecks();
+  const second = await tenbox(["check", "T-1", "--group", "2"], project.mainDir);
+  expect(second.json.ok).toBe(true);
+  const gh = await installGh();
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  await squashGroupOne("one.txt\n");
+  await gh.setState("feat/T-1", GH_STATE.merged);
+  await tenbox(["pr", "T-1"], project.mainDir, gh.env);
+  const ready = await tenbox(["pr", "T-1", "--ready"], project.mainDir, gh.env);
+  expect([ready.code, ready.json.code]).toEqual([0, undefined]);
+  expect(ready.json.groups).toEqual([
+    expect.objectContaining({ group: 1, state: "merged" }),
+    expect.objectContaining({
+      group: 2,
+      state: "updated",
+      pr: expect.objectContaining({ draft: false }),
+    }),
+  ]);
+});
+
 /** Runs `tenbox check` with one passing check, so the round has a checks.json. */
 async function runChecks() {
   const override = path.join(taskWorktree, ".tenbox", "override.yaml");
