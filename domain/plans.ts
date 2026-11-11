@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { badFileError, badInputError } from "./errors/index.ts";
 import { noPlanError } from "./errors/plans.ts";
-import { GroupSchema, groupIssues } from "./groups.ts";
+import { type Group, GroupSchema, groupIssues } from "./groups.ts";
 import { DEFAULT_KIND, LensSchema, TaskKindSchema } from "./kinds.ts";
 import { planMdFile } from "./taskDirs.ts";
 import type { Task } from "./tasks.ts";
@@ -132,13 +132,15 @@ function lineCount(content: string): number {
 const INDENT = "  ";
 const TAKEN_MARK = "* ";
 
-/** The plan as text lines: parts, examples, decisions with the taken option, questions. */
+/** The plan as text lines: size, parts, groups, examples, decisions with the taken option, questions. */
 export function planLines(plan: PlanResult): string[] {
   return [
+    `Estimated lines: ${plan.estimated_lines}`,
     ...section(
       "Parts",
       plan.parts.map((part) => [`${part.id} (${part.difficulty})`]),
     ),
+    ...section("Groups", (plan.groups ?? []).map(groupLines)),
     ...section("Examples", plan.examples.map(exampleLines)),
     ...section("Decisions", plan.decisions.map(decisionLines)),
     ...section("Questions", plan.questions.map(questionLines)),
@@ -152,6 +154,11 @@ export type Question = z.infer<typeof QuestionSchema>;
 function section(heading: string, entries: string[][]): string[] {
   const lines = entries.length === 0 ? ["none"] : entries.flat();
   return [heading, ...lines.map((line) => INDENT + line)];
+}
+
+function groupLines(group: Group): string[] {
+  const needs = group.needs.length === 0 ? [] : [`needs ${group.needs.join(", ")}`];
+  return [[group.id, group.name, `parts ${group.parts.join(", ")}`, ...needs].join(" · ")];
 }
 
 function exampleLines(example: Example): string[] {

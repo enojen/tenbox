@@ -153,7 +153,8 @@ Example:
 Input (plan done, --json, required): the plan result
   { kind, summary, estimated lines, parts, examples, decisions, lenses, questions, groups }
 
-Output: plan done { ok, task, file }; plan show { ok, task, file, parts, examples, decisions, questions }
+Output: plan done { ok, task, file };
+  plan show { ok, task, file, estimated_lines, parts, groups, examples, decisions, questions }
 
 Example:
   tenbox plan show TEN-301`,
