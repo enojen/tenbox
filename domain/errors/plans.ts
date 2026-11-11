@@ -1,5 +1,5 @@
 import type { NumberedQuestion } from "../decisions.ts";
-import { TenboxError } from "./index.ts";
+import { questionLines, TenboxError } from "./index.ts";
 
 /* Errors of the plan: plan files, approval, decisions, questions, parts. */
 
@@ -40,13 +40,13 @@ export interface QuestionMiss {
 export function unknownQuestionError(miss: QuestionMiss): TenboxError {
   const found = miss.count === 0 ? "no line" : `${miss.count} lines`;
   const named = typeof miss.question === "number" ? miss.question : `"${miss.question}"`;
-  const open = miss.open.map((question) => ({ number: question.number, text: question.text }));
-  const list = open.map((question) => `\n${question.number}. ${question.text}`).join("");
-  const openText = open.length === 0 ? " No question is open." : ` Open questions:${list}`;
+  const open = questionLines(miss.open);
+  const openText =
+    open.details.length === 0 ? " No question is open." : ` Open questions:${open.text}`;
   return new TenboxError(
     `${named} fits ${found} of questions.md; it must fit exactly one.${openText}`,
     "unknown-question",
-    open,
+    open.details,
   );
 }
 

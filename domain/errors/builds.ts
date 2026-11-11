@@ -1,5 +1,6 @@
+import type { NumberedQuestion } from "../decisions.ts";
 import type { Lens, TaskKind } from "../kinds.ts";
-import { TenboxError } from "./index.ts";
+import { questionLines, TenboxError } from "./index.ts";
 
 /* Errors of a build: groups, checks, the kind's limits, decision cards. */
 
@@ -18,18 +19,12 @@ export function nothingToBuildError(id: string): TenboxError {
   );
 }
 
-/** An open question of `questions.md`, as `tenbox decide` numbers it. */
-interface OpenQuestion {
-  number: number;
-  text: string;
-}
-
-export function openQuestionsError(id: string, open: OpenQuestion[]): TenboxError {
-  const list = open.map((question) => `\n${question.number}. ${question.text}`).join("");
+export function openQuestionsError(id: string, questions: NumberedQuestion[]): TenboxError {
+  const open = questionLines(questions);
   return new TenboxError(
-    `${id} has open questions:${list}\nAnswer them with tenbox decide, or run tenbox build ${id} --defaults`,
+    `${id} has open questions:${open.text}\nAnswer them with tenbox decide, or run tenbox build ${id} --defaults`,
     "open-questions",
-    open.map((question) => ({ number: question.number, text: question.text })),
+    open.details,
   );
 }
 
