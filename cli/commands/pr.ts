@@ -172,7 +172,7 @@ async function openGroupPr(input: OpenGroupInput): Promise<GroupPrResult> {
     await assertChecked({ id, group: group.id, dir, taskWorktree: run.taskWorktree });
   const conflicted = await pushGroup({ run, group, dir, own });
   if (conflicted.length > 0) {
-    return { ...result(group, GROUP_PR_STATE.conflict, null), files: conflicted };
+    return { ...result(group, GROUP_PR_STATE.conflict, own), files: conflicted };
   }
   const text = await readPrText(run, group);
   const state = await createOrUpdate({ run, group, dir, text, own });
@@ -189,12 +189,15 @@ interface PushInput {
 
 /**
  * A group with needs and no PR yet waited for them: it is rebased onto the base first, so only
- * its own commits stay. Returns the conflicted files of that rebase; nothing is pushed then.
+ * its own commits stay. Any other group is merged with `origin/<base>` in memory first. Returns
+ * the conflicted files of that rebase or merge; nothing is pushed then.
  */
 async function pushGroup(input: PushInput): Promise<string[]> {
   const { run, group, dir, own } = input;
   const waited = own === null && group.needs.length > 0;
   if (!waited) {
+    const conflicted = await listBaseConflicts(dir, group.branch, run.baseBranch);
+    if (conflicted.length > 0) return conflicted;
     await git.push(dir, group.branch);
     return [];
   }
@@ -203,6 +206,15 @@ async function pushGroup(input: PushInput): Promise<string[]> {
   if (conflicted.length > 0) return conflicted;
   await git.forcePush(dir, group.branch);
   return [];
+}
+
+/** The files that conflict when the branch is merged into `origin/<base>`; none without it. */
+async function listBaseConflicts(dir: string, branch: string, base: string): Promise<string[]> {
+  await git.fetch(dir);
+  const onto = `origin/${base}`;
+  const found = await git.refExists(dir, onto);
+  if (!found) return [];
+  return git.listMergeConflicts(dir, onto, branch);
 }
 
 async function needsMerged(input: OpenGroupInput): Promise<boolean> {
