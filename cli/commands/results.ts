@@ -3,6 +3,7 @@ import type { Approval } from "../../domain/approvals.ts";
 import type { DecisionCard } from "../../domain/cards.ts";
 import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
+import type { Group } from "../../domain/groups.ts";
 import type { JobStatus } from "../../domain/machines.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
 import type { PlanResult } from "../../domain/plans.ts";
@@ -253,7 +254,10 @@ export interface TaskFileResult {
 /** `tenbox plan show`: what `plan.json` holds for a person to read. */
 export interface PlanShowResult
   extends TaskFileResult,
-    Pick<PlanResult, "parts" | "examples" | "decisions" | "questions"> {}
+    Pick<PlanResult, "estimated_lines" | "parts" | "examples" | "decisions" | "questions"> {
+  /** The plan's groups; null for a plan without groups, which is one PR. */
+  groups: Group[] | null;
+}
 
 /** `tenbox wait --for round`: the status of the round that changed. */
 export interface WaitRoundResult {

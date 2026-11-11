@@ -221,7 +221,9 @@ describe("tenbox plan show", () => {
         ok: true,
         task: "T-1",
         file: planJson,
+        estimated_lines: 120,
         parts: valid.parts,
+        groups: null,
         examples: valid.examples,
         decisions: valid.decisions,
         questions: valid.questions,
@@ -239,6 +241,25 @@ describe("tenbox plan show", () => {
         "      1. in memory",
         "    * 2. in sqlite (taken)",
         "  [product] (blocking) Sorted by date?",
+      ]),
+    );
+  });
+
+  test("a plan with two groups shows both groups and their parts", async () => {
+    const recipe = { model: "sonnet", effort: "low", lenses: [], tier: "fast" };
+    const groups = [
+      { id: 1, name: "feat: a", parts: ["01"], needs: [], recipe },
+      { id: 2, name: "feat: b", parts: ["02"], needs: [1], recipe },
+    ];
+    await planDone(...withJson({ groups }));
+    const run = await show("T-1");
+    expect([run.code, run.json.groups]).toEqual([0, groups]);
+    expect(run.err.split("\n")).toEqual(
+      expect.arrayContaining([
+        "Estimated lines: 120",
+        "Groups",
+        "  1 · feat: a · parts 01",
+        "  2 · feat: b · parts 02 · needs 1",
       ]),
     );
   });

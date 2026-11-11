@@ -35,6 +35,8 @@ export async function planShow(id: TaskId): Promise<PlanShowResult> {
   const dir = tenboxDir(taskWorktree);
   const plan = await plans.get(dir);
   log(planLines(plan).join("\n"));
-  const { parts, examples, decisions, questions } = plan;
-  return { ok: true, task: id, file: planFile(dir), parts, examples, decisions, questions };
+  const { estimated_lines, parts, groups, examples, decisions, questions } = plan;
+  const file = planFile(dir);
+  const shown = { estimated_lines, parts, groups: groups ?? null, examples, decisions, questions };
+  return { ok: true, task: id, file, ...shown };
 }

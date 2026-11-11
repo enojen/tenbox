@@ -120,9 +120,12 @@ test("planLines lists the parts, the examples, the decisions with the taken opti
   const question: Question = { kind: "risk", text: "q?", blocking: true };
   const plan = { ...valid, questions: [question] };
   expect(planLines(plan)).toEqual([
+    "Estimated lines: 120",
     "Parts",
     "  01 (easy)",
     "  02 (hard)",
+    "Groups",
+    "  none",
     "Examples",
     "  01 · lists the tasks",
     "    before: GET /tasks",
@@ -137,6 +140,15 @@ test("planLines lists the parts, the examples, the decisions with the taken opti
   ]);
 });
 
+test("planLines lists each group with its parts and needs", () => {
+  const plan = { ...valid, groups: twoGroups };
+  expect(planLines(plan).slice(4, 7)).toEqual([
+    "Groups",
+    "  1 · feat: group 1 · parts 01",
+    "  2 · feat: group 2 · parts 02 · needs 1",
+  ]);
+});
+
 test("planLines indents every line of a before or after with more lines", () => {
   const plan = { ...valid, examples: [{ ...example, after: "200\n[]" }] };
   expect(planLines(plan)).toContain("           []");
@@ -145,7 +157,7 @@ test("planLines indents every line of a before or after with more lines", () => 
 
 test("planLines says none for an empty list", () => {
   const plan = { ...valid, examples: [], decisions: [], questions: [] };
-  expect(planLines(plan).slice(3)).toEqual([
+  expect(planLines(plan).slice(6)).toEqual([
     "Examples",
     "  none",
     "Decisions",
