@@ -40,6 +40,8 @@ const BuildResultSchema = z.looseObject({
   nice_to_have: z.array(z.string()),
   unproven: z.array(UnprovenSchema),
   findings: z.array(FindingSchema).default([]),
+  /** Why a `failed` build stopped: the last round's feedback. */
+  feedback: z.string().optional(),
   /** The part of the blocked worker, with `needs-you`. */
   part: z.string().optional(),
   decision: DecisionCardSchema.optional(),

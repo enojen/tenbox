@@ -3,11 +3,12 @@ import { TenboxError } from "../../domain/errors/index.ts";
 import { isSafeName, type TaskId, taskId } from "../../domain/ids.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import { roundNumbers } from "../../domain/rounds.ts";
-import type {
-  ListedReport,
-  ReportChecks,
-  ReportPr,
-  StatusReport,
+import {
+  type ListedReport,
+  type ReportChecks,
+  type ReportPr,
+  type StatusReport,
+  stopReason,
 } from "../../domain/statusReports.ts";
 import { approvedFile, checksFile, roundDir, roundsDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { taskBranch, taskWorktreeDir, taskWorktreeNames } from "../../domain/worktrees.ts";
@@ -44,16 +45,20 @@ async function report(source: TargetState): Promise<StatusReport> {
   const task = await tasks.find(dir);
   const partCounts = await parts.get(dir);
   const checks = await findChecks(dir, rounds);
+  const status = task?.status ?? null;
+  const notDone = await parts.readNotDone(dir);
+  const reason = stopReason({ status, build, parts: notDone });
   return {
     task: id,
     title: task?.title ?? null,
-    status: task?.status ?? null,
+    status,
     round: rounds.at(-1) ?? build?.round ?? null,
     approved,
     parts: partCounts,
     session: { state },
     pr,
     checks,
+    reason,
   };
 }
 

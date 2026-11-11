@@ -27,6 +27,13 @@ export function readPartStatus(text: string): PartStatus {
   return PART_STATUSES.find((status) => status === word) ?? PART_STATUS.todo;
 }
 
+const RESULT_LINE = /^result:[ \t]*(.*\S)/m;
+
+/** The `result:` line of a part file; null when it is missing or empty. */
+export function readPartResult(text: string): string | null {
+  return RESULT_LINE.exec(text)?.[1] ?? null;
+}
+
 export function countParts(statuses: PartStatus[]): PartCounts {
   const counts: PartCounts = { todo: 0, doing: 0, done: 0, blocked: 0 };
   for (const status of statuses) counts[status] += 1;
