@@ -48,6 +48,13 @@ describe("mergeManifest", () => {
       /tracker\.statuses\.done/,
     );
   });
+  test("decisions are the project's lines for every task; a line that is not text is an error", () => {
+    const decisions = ["The box runs no real eval: plans and workers leave it out."];
+    const m = mergeManifest([{ file: "tenbox.yaml", value: { decisions } }]);
+    expect([m.decisions, mergeManifest([]).decisions]).toEqual([decisions, []]);
+    const bad = [{ file: "tenbox.yaml", value: { decisions: [""] } }];
+    expect(() => mergeManifest(bad)).toThrow(/decisions\.0/);
+  });
   test("empty gives defaults", () => {
     const m = mergeManifest([]);
     expect(m.checks).toEqual({ fast: {}, full: {} });

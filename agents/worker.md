@@ -14,7 +14,9 @@ it: Bash goes back to the session directory after each call.
 
 ## Read first, in this order
 
-1. `.tenbox/decisions.md` if it exists. Every decision there is final.
+1. `.tenbox/decisions.md` if it exists, and each line under `decisions:` of `tenbox.yaml`:
+   the project's decisions, read like lines of `decisions.md`. Every decision there is final;
+   do not run or add a step one of them rules out, even when the plan names it.
 2. `.tenbox/plan.md`: the why of the plan. The examples of your part are in `.tenbox/plan.json`.
 3. Your part file in `.tenbox/parts/`: its `files:` and `acceptance:` lines.
 4. The round feedback in your prompt, if any. It comes from checks, reviewers or the

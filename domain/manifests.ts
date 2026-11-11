@@ -156,6 +156,8 @@ const ManifestSchema = z.object({
   names: NamesSchema.prefault({}),
   notify: NotifySchema.prefault({}),
   machine: MachineSchema.prefault({}),
+  /** Decisions that hold for every task of the project; the agents read them as `decisions.md` lines. */
+  decisions: z.array(z.string().min(1)).default([]),
 });
 
 export type CheckTier = (typeof CHECK_TIER)[keyof typeof CHECK_TIER];
