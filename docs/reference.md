@@ -296,6 +296,22 @@ the links and the skill all come from it. So the main checkout stays on one bran
 and work happens only in task worktrees: half-done code there never reaches another project.
 A merge plus `git pull` in the main checkout is the release; the commit is the version.
 
+## The babysitter skill: `skills/tenbox-babysitter/`
+
+`tenbox install` links it to `~/.claude/skills/tenbox-babysitter` like every folder of
+`skills/`. A person runs it as `/tenbox-babysitter <name>`: the session takes the cards of lane
+`<name>` through tenbox, from start to close. Claude never loads it alone
+(`disable-model-invocation: true`). `SKILL.md` holds the steps and who decides what;
+`references/` holds the card flow, the box notes, the lane file template and the handover.
+It lists no commands: it uses the `tenbox` skill and `tenbox help`.
+
+It first reads the project file: the path under `babysitter:` of `tenbox.yaml`, default
+`tenbox-babysitter.md`. The project file holds the rules of one project and names the lane
+directory, outside git, with `<name>.md` (the lane file), `inbox-<name>.md` and `lessons.md`.
+When the project file, its lane directory or the lane file is missing, the skill answers one
+line that names what is missing and stops. No tenbox code reads `babysitter:`; the manifest
+schema only checks that it is non-empty text (else `manifest`).
+
 ## Task files: `.tenbox/`
 
 The files live in the task dir `~/.tenbox/<project id>/<id>/`. The task worktree has `.tenbox`, a
@@ -360,6 +376,7 @@ machine: { template: ~/tenyard/task }   # optional; the default; the directory o
 # machine: { services: [postgres] }   # optional; sidecars of a build in the box, files of tenyard's services/; a start or close gets none; tenbox check on your computer starts none
 decisions:                       # optional; decisions that hold for every task, non-empty text lines; default none
   - "Boxes run no real eval: no plan step or worker runs it; the person runs it on their computer."
+babysitter: tenbox-babysitter.md # optional; the project file of the tenbox-babysitter skill, a path from the project root; non-empty text; default tenbox-babysitter.md
 ```
 
 **Project decisions.** The planner, the worker and the reviewer read each line under
@@ -682,7 +699,8 @@ server/       the HTTP server (Hono); entry server/main.ts (`bun run server/main
     repositories/ data access per table, no rules: `find...`, `insert`
 agents/       planner.md, worker.md, reviewer.md, runner.md
 workflows/    tenbox-plan.js, tenbox-build.js, tenbox-close.js
-skills/       tenbox/SKILL.md, the skill for a session in any project
+skills/       tenbox/SKILL.md, the skill for a session in any project; tenbox-babysitter/,
+              the skill of one lane (SKILL.md, references/)
 machines/     the box image (k8s/), the login sync (login/) and the server image (server/); see machines/README.md
 docs/         design.md (the target design), reference.md, the icon
 ```
