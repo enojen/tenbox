@@ -1,20 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { deepMerge, mergeManifest, type TrackerConfig } from "./manifests.ts";
-import { jsons, objects } from "./utils.ts";
+import { mergeManifest, type TrackerConfig } from "./manifests.ts";
+import { jsons } from "./utils.ts";
 
-test("deepMerge: a __proto__ key does not change the prototype of the result", () => {
-  const layer = jsons.parse(`{"__proto__": {"polluted": true}}`);
-  if (!objects.isRecord(layer)) throw new Error("the layer is not an object");
-  const merged = deepMerge({}, layer);
+test("deepMerge: a __proto__ key does not change the prototype (through mergeManifest)", () => {
+  const layer = jsons.parse(`{"__proto__": {"model": "polluted"}}`);
+  const merged = mergeManifest([{ file: "tenbox.yaml", value: layer }]);
   expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
-  expect("polluted" in merged).toBe(false);
+  expect(merged.model).toBe("sonnet");
 });
 
-test("deepMerge: objects merge, arrays replace", () => {
-  expect(deepMerge({ a: { x: 1, y: 2 }, l: [1] }, { a: { y: 3 }, l: [2] })).toEqual({
-    a: { x: 1, y: 3 },
-    l: [2],
-  });
+test("deepMerge: objects merge, arrays replace (through mergeManifest)", () => {
+  const merged = mergeManifest([
+    { file: "tenbox.yaml", value: { tracker: { kind: "linear" }, machine: { services: ["pg"] } } },
+    {
+      file: "tenbox.local.yaml",
+      value: { tracker: { api_key: "k" }, machine: { services: ["redis"] } },
+    },
+  ]);
+  expect(merged.tracker).toEqual({ kind: "linear", api_key: "k" });
+  expect(merged.machine.services).toEqual(["redis"]);
 });
 
 describe("mergeManifest", () => {

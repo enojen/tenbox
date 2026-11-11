@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
-import { CARD_KIND } from "../../domain/cards.ts";
+import { DecisionCardSchema } from "../../domain/cards.ts";
 import type { Group } from "../../domain/groups.ts";
 import type { PlanPart } from "../../domain/plans.ts";
 
@@ -307,15 +307,16 @@ const round1Reply: ReviewReply = {
   findings: [FINDING],
 };
 
-test("the worker schema and the worker role name the card kinds of CARD_KIND", async () => {
+test("the worker schema and the worker role name the card kinds of the decision card schema", async () => {
   const script = await Bun.file(WORKFLOW).text();
   const kinds = script
     .match(KIND_ENUM)?.[1]
     ?.split(",")
     .map((kind) => kind.trim().slice(1, -1));
-  expect(kinds).toEqual([...CARD_KIND]);
+  const cardKinds = DecisionCardSchema.shape.kind.options;
+  expect(kinds).toEqual([...cardKinds]);
   const role = await Bun.file(WORKER_ROLE).text();
-  for (const kind of CARD_KIND) expect(role).toContain(`\`${kind}\``);
+  for (const kind of cardKinds) expect(role).toContain(`\`${kind}\``);
 });
 
 test("the reviewer schema caps nice_to_have at 3 items", async () => {

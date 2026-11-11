@@ -19,7 +19,7 @@ interface CreatePrInput extends PrText {
 
 export const GH_STATE = { open: "OPEN", closed: "CLOSED", merged: "MERGED" } as const;
 
-export type GhPrState = (typeof GH_STATE)[keyof typeof GH_STATE];
+type GhPrState = (typeof GH_STATE)[keyof typeof GH_STATE];
 
 export interface GroupPr {
   number: number;

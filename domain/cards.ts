@@ -11,7 +11,7 @@ const oneLine = z
   .refine((text) => !text.includes("\n"), "must be one line");
 
 /** What a card is about; the worker picks the closest kind. */
-export const CARD_KIND = [
+const CARD_KIND = [
   "migration",
   "data-delete",
   "feature-delete",
@@ -22,7 +22,7 @@ export const CARD_KIND = [
   "other",
 ] as const;
 
-export type CardKind = (typeof CARD_KIND)[number];
+type CardKind = (typeof CARD_KIND)[number];
 
 /** What a blocked worker asks; `recommended` is the 1-based number of one of the options. */
 export const DecisionCardSchema = z

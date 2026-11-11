@@ -174,7 +174,7 @@ export interface ManifestLayer {
 const PROTO_KEY = "__proto__";
 
 /** Merge b over a: objects key by key, arrays and scalars replaced; `__proto__` is skipped. */
-export function deepMerge(
+function deepMerge(
   a: Record<string, unknown>,
   b: Record<string, unknown>,
 ): Record<string, unknown> {

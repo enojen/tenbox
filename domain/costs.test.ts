@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
-import { type CostWindow, costReport, type StoredEvent } from "./costs.ts";
-import type { JobFinished } from "./events.ts";
+import { type CostWindow, costReport } from "./costs.ts";
+import type { JobFinished, NodeEvent, VolumeEvent } from "./events.ts";
+
+/** The `{ event, at }` row of one stored event, in the shape `costReport` reads. */
+function stored(event: NodeEvent | VolumeEvent, at: string) {
+  return { event, at };
+}
 
 const WINDOW: CostWindow = { from: "2026-11-02T00:00:00Z", to: "2026-11-09T00:00:00Z" };
 const PRICE = { net: "0.0076", gross: "0.0090" };
@@ -11,11 +16,10 @@ interface Worker {
   price?: string;
 }
 
-function added(worker: Worker, at: string): StoredEvent {
+function added(worker: Worker, at: string) {
   const net = worker.price ?? PRICE.net;
-  return {
-    at,
-    event: {
+  return stored(
+    {
       event: "node.added",
       node: worker.node,
       server_id: worker.serverId,
@@ -23,13 +27,13 @@ function added(worker: Worker, at: string): StoredEvent {
       location: "fsn1",
       price_hourly: { net, gross: PRICE.gross },
     },
-  };
+    at,
+  );
 }
 
-function removed(worker: Worker, at: string): StoredEvent {
-  return {
-    at,
-    event: {
+function removed(worker: Worker, at: string) {
+  return stored(
+    {
       event: "node.removed",
       node: worker.node,
       server_id: worker.serverId,
@@ -37,7 +41,8 @@ function removed(worker: Worker, at: string): StoredEvent {
       location: "fsn1",
       late: false,
     },
-  };
+    at,
+  );
 }
 
 const ONE: Worker = { node: "worker-1", serverId: 1 };
@@ -355,10 +360,9 @@ interface Volume {
 
 const VOLUME_187: Volume = { task: "187", sizeGb: 10, net: "4.4000" };
 
-function volumeAdded(volume: Volume, at: string): StoredEvent {
-  return {
-    at,
-    event: {
+function volumeAdded(volume: Volume, at: string) {
+  return stored(
+    {
       event: "volume.added",
       volume: `task-${volume.task}`,
       uid: `uid-${volume.task}`,
@@ -366,13 +370,13 @@ function volumeAdded(volume: Volume, at: string): StoredEvent {
       size_gb: volume.sizeGb,
       price_per_gb_month: { net: volume.net, gross: volume.net },
     },
-  };
+    at,
+  );
 }
 
-function volumeRemoved(volume: Volume, at: string): StoredEvent {
-  return {
-    at,
-    event: {
+function volumeRemoved(volume: Volume, at: string) {
+  return stored(
+    {
       event: "volume.removed",
       volume: `task-${volume.task}`,
       uid: `uid-${volume.task}`,
@@ -380,7 +384,8 @@ function volumeRemoved(volume: Volume, at: string): StoredEvent {
       size_gb: volume.sizeGb,
       late: false,
     },
-  };
+    at,
+  );
 }
 
 const DAY: CostWindow = { from: "2026-11-05T00:00:00Z", to: "2026-11-06T00:00:00Z" };

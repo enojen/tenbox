@@ -1,14 +1,12 @@
 import { expect, test } from "bun:test";
-import type { Recipe } from "./groups.ts";
+import type { Group } from "./groups.ts";
 import { taskId } from "./ids.ts";
 import {
   checkPlanMd,
   docsPlanOf,
-  PLAN_MD_MAX_LINES,
   type PlanResult,
   parsePlan,
   planLines,
-  type Question,
   readPlan,
   renderDocsPart,
   renderDocsPlanMd,
@@ -92,14 +90,14 @@ test("a word that only contains grep is allowed", () => {
 });
 
 const planMd = (lines: number): string => "line\n".repeat(lines);
+const PLAN_MD_LIMIT = 60;
 
 test("checkPlanMd accepts a plan.md at the limit", () => {
-  expect(PLAN_MD_MAX_LINES).toBe(60);
-  expect(() => checkPlanMd({ dir: "/t/.tenbox", planMd: planMd(PLAN_MD_MAX_LINES) })).not.toThrow();
+  expect(() => checkPlanMd({ dir: "/t/.tenbox", planMd: planMd(PLAN_MD_LIMIT) })).not.toThrow();
 });
 
 test("checkPlanMd refuses a plan.md over the limit with bad-file naming plan.md and the limit", () => {
-  const texts = { dir: "/t/.tenbox", planMd: planMd(PLAN_MD_MAX_LINES + 1) };
+  const texts = { dir: "/t/.tenbox", planMd: planMd(PLAN_MD_LIMIT + 1) };
   expect(() => checkPlanMd(texts)).toThrow(expect.objectContaining({ code: "bad-file" }));
   expect(() => checkPlanMd(texts)).toThrow(
     "/t/.tenbox/plan.md is not valid: 61 lines; the limit is 60",
@@ -107,7 +105,7 @@ test("checkPlanMd refuses a plan.md over the limit with bad-file naming plan.md 
 });
 
 test("checkPlanMd counts a last line without a newline", () => {
-  const texts = { dir: "/t/.tenbox", planMd: `${planMd(60)}last` };
+  const texts = { dir: "/t/.tenbox", planMd: `${planMd(PLAN_MD_LIMIT)}last` };
   expect(() => checkPlanMd(texts)).toThrow("61 lines");
 });
 
@@ -117,8 +115,7 @@ test("checkPlanMd refuses a missing plan.md with no-plan", () => {
 });
 
 test("planLines lists the parts, the examples, the decisions with the taken option and the questions", () => {
-  const question: Question = { kind: "risk", text: "q?", blocking: true };
-  const plan = { ...valid, questions: [question] };
+  const plan: PlanResult = { ...valid, questions: [{ kind: "risk", text: "q?", blocking: true }] };
   expect(planLines(plan)).toEqual([
     "Parts",
     "  01 (easy)",
@@ -154,18 +151,20 @@ test("planLines says none for an empty list", () => {
     "  none",
   ]);
 });
-const recipe: Recipe = {
-  model: "sonnet",
-  effort: "medium",
-  lenses: [],
-  tier: "fast",
+const GROUP_1: Group = {
+  id: 1,
+  name: "feat: group 1",
+  parts: ["01"],
+  needs: [],
+  recipe: { model: "sonnet", effort: "medium", lenses: [], tier: "fast" },
 };
-const group = (id: number, parts: string[], needs: number[]) => ({
+const recipe = GROUP_1.recipe;
+const group = (id: number, parts: string[], needs: number[]): Group => ({
+  ...GROUP_1,
   id,
   name: `feat: group ${id}`,
   parts,
   needs,
-  recipe,
 });
 const twoGroups = [group(1, ["01"], []), group(2, ["02"], [1])];
 

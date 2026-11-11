@@ -93,7 +93,7 @@ type TaskCost = z.infer<typeof TaskCostSchema>;
 export type CostReport = z.infer<typeof CostReportSchema>;
 
 /** A node or volume event and the `at` of its row. */
-export interface StoredEvent {
+interface StoredEvent {
   event: NodeEvent | VolumeEvent;
   at: string;
 }

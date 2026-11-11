@@ -41,8 +41,6 @@ const EVENT_NAME = {
   taskClosed: "task.closed",
 } as const;
 
-export type EventName = (typeof EVENT_NAME)[keyof typeof EVENT_NAME];
-
 const text = z.string().min(1);
 const count = z.number().int().nonnegative();
 const nullableText = text.nullable();

@@ -1,64 +1,94 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type ClickupStatus, clickupTracker, pickStatus } from "./clickup.ts";
+import type { StatusNames } from "../../../domain/manifests.ts";
+import type { TaskStatus } from "../../../domain/tracker.ts";
+import { clickupTracker } from "./clickup.ts";
+
+interface ListStatus {
+  status: string;
+  type: string;
+  orderindex: number;
+}
+
+interface StatusSet {
+  statuses: ListStatus[];
+  status: TaskStatus;
+  names: StatusNames;
+}
 
 const LIST_ID = "901";
-const statuses: ClickupStatus[] = [
+const statuses: ListStatus[] = [
   { status: "Complete", type: "closed", orderindex: 4 },
   { status: "In Progress", type: "custom", orderindex: 2 },
   { status: "In Review", type: "custom", orderindex: 3 },
   { status: "Open", type: "open", orderindex: 0 },
 ];
 
-describe("pickStatus", () => {
-  test("in progress is the status named in progress, not the first custom one", () => {
-    const todoFirst: ClickupStatus[] = [
+describe("clickup status choice", () => {
+  const saved = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = saved;
+  });
+
+  /** `updateStatus` on a task of list 901 whose list has `statuses`. */
+  function setStatus(input: StatusSet): Promise<string> {
+    globalThis.fetch = Object.assign(
+      async (url: string | URL | Request) => {
+        if (String(url).includes("/list/")) return Response.json({ statuses: input.statuses });
+        if (!String(url).includes("?")) return Response.json({});
+        return Response.json({
+          id: "abc",
+          name: "t",
+          markdown_description: null,
+          url: "u",
+          status: { status: "Open" },
+          list: { id: LIST_ID },
+        });
+      },
+      { preconnect: saved.preconnect },
+    );
+    const tracker = clickupTracker({ kind: "clickup", api_key: "k", statuses: input.names });
+    return tracker.updateStatus("abc", input.status);
+  }
+
+  test("in progress is the status named in progress, not the first custom one", async () => {
+    const todoFirst: ListStatus[] = [
       { status: "to do", type: "custom", orderindex: 1 },
       ...statuses,
     ];
-    expect(
-      pickStatus({ statuses: todoFirst, status: "in_progress", names: {}, listId: LIST_ID }),
-    ).toBe("In Progress");
+    await expect(
+      setStatus({ statuses: todoFirst, status: "in_progress", names: {} }),
+    ).resolves.toBe("In Progress");
   });
-  test("done is the status named done, ignoring case", () => {
-    const withDone: ClickupStatus[] = [
-      ...statuses,
-      { status: "DONE", type: "closed", orderindex: 5 },
-    ];
-    expect(pickStatus({ statuses: withDone, status: "done", names: {}, listId: LIST_ID })).toBe(
+  test("done is the status named done, ignoring case", async () => {
+    const withDone: ListStatus[] = [...statuses, { status: "DONE", type: "closed", orderindex: 5 }];
+    await expect(setStatus({ statuses: withDone, status: "done", names: {} })).resolves.toBe(
       "DONE",
     );
   });
-  test("without a matching name it lists the statuses and shows the setting", () => {
-    const pick = () => pickStatus({ statuses, status: "done", names: {}, listId: LIST_ID });
-    expect(pick).toThrow(
+  test("without a matching name it lists the statuses and shows the setting", async () => {
+    await expect(setStatus({ statuses, status: "done", names: {} })).rejects.toThrow(
       'ClickUp: no status "done" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { done: "<status name>" }',
     );
   });
-  test("a configured name wins over the default name, ignoring case", () => {
+  test("a configured name wins over the default name, ignoring case", async () => {
     const names = { in_progress: "In Review" };
-    expect(pickStatus({ statuses, status: "in_progress", names, listId: LIST_ID })).toBe(
-      "In Review",
-    );
+    await expect(setStatus({ statuses, status: "in_progress", names })).resolves.toBe("In Review");
   });
-  test("an unknown configured name lists the statuses of the list", () => {
+  test("an unknown configured name lists the statuses of the list", async () => {
     const names = { done: "doing" };
-    const pick = () => pickStatus({ statuses, status: "done", names, listId: LIST_ID });
-    expect(pick).toThrow(
+    await expect(setStatus({ statuses, status: "done", names })).rejects.toThrow(
       'ClickUp: no status "doing" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { done: "<status name>" }',
     );
   });
-  test("review is the status named in review", () => {
-    expect(pickStatus({ statuses, status: "review", names: {}, listId: LIST_ID })).toBe(
-      "In Review",
-    );
+  test("review is the status named in review", async () => {
+    await expect(setStatus({ statuses, status: "review", names: {} })).resolves.toBe("In Review");
   });
-  test("an optional status the list lacks and the project does not name gives null", () => {
-    expect(pickStatus({ statuses, status: "queued", names: {}, listId: LIST_ID })).toBeNull();
+  test("an optional status the list lacks and the project does not name is skipped", async () => {
+    await expect(setStatus({ statuses, status: "queued", names: {} })).resolves.toBe("skipped");
   });
-  test("an optional status the project names but the list lacks is an error", () => {
+  test("an optional status the project names but the list lacks is an error", async () => {
     const names = { queued: "waiting" };
-    const pick = () => pickStatus({ statuses, status: "queued", names, listId: LIST_ID });
-    expect(pick).toThrow(
+    await expect(setStatus({ statuses, status: "queued", names })).rejects.toThrow(
       'ClickUp: no status "waiting" in list 901; it has: Open, In Progress, In Review, Complete; set tracker.statuses, for example { queued: "<status name>" }',
     );
   });

@@ -9,7 +9,7 @@ import {
   readBuild,
 } from "./builds.ts";
 import type { DiffFile } from "./diffs.ts";
-import type { Group, Recipe } from "./groups.ts";
+import type { Group } from "./groups.ts";
 import type { TaskKind } from "./kinds.ts";
 import type { PlanPart, PlanResult } from "./plans.ts";
 
@@ -71,14 +71,16 @@ test("an answered card whose time is not an ISO date-time is bad-input", () => {
   );
 });
 
-const RECIPE: Recipe = {
-  model: "opus",
-  effort: "high",
-  lenses: ["contract"],
-  tier: "full",
+const GROUP: Group = {
+  id: 1,
+  name: "feat: a",
+  parts: ["01"],
+  needs: [],
+  recipe: { model: "opus", effort: "high", lenses: ["contract"], tier: "full" },
 };
-const FAST: Recipe = { ...RECIPE, tier: "fast" };
-const GROUP: Group = { id: 1, name: "feat: a", parts: ["01"], needs: [], recipe: RECIPE };
+const FAST_GROUP: Group = { ...GROUP, id: 2, recipe: { ...GROUP.recipe, tier: "fast" } };
+const RECIPE = GROUP.recipe;
+const FAST = FAST_GROUP.recipe;
 
 const plan = (kind: TaskKind, groups?: Group[]): PlanResult => ({
   summary: "s",

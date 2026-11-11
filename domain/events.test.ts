@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   closeOutput,
-  type EventName,
+  type Event,
   EventSchema,
   eventSubject,
   type JobFinished,
@@ -28,6 +28,8 @@ const TASK = "k7f3qa/TEN-301";
 const ROUND = "k7f3qa/TEN-301/r2";
 /** A SHA-256 of `plan.md`, in hex. */
 const PLAN_SHA = "a".repeat(64);
+
+type EventName = Event extends { event: infer Name } ? Name : never;
 
 /** The fields of one event after the common ones. */
 type EventFields = Record<string, unknown>;

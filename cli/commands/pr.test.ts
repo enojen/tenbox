@@ -5,7 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { taskId } from "../../domain/ids.ts";
 import { files } from "../infra/files.ts";
-import { GH_STATE, type GhPrState } from "../infra/gh.ts";
+import { GH_STATE } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import { type CliRun, tenbox } from "../test/cli.ts";
 import { type FakeAnswer, type FakeTool, fakeTool } from "../test/fakeTools.ts";
@@ -147,7 +147,7 @@ async function installGh() {
       const log = await files.read(path.join(state, "calls.log"));
       return log ?? "";
     },
-    setState: async (branch: string, next: GhPrState) => {
+    setState: async (branch: string, next: string) => {
       const prs = await read();
       for (const pr of prs) if (pr.headRefName === branch) pr.state = next;
       await files.write(db, JSON.stringify(prs));

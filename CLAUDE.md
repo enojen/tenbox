@@ -82,7 +82,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | group | One or more parts that become one PR; has a name, `needs` (smaller group ids) and a recipe (`Group`). |
 | group worktree | The worktree of a group above 1, `~/wt/<project>/<id>-<N>` on `<task branch>-<N>`; group 1 is the task worktree (`groupWorktreeDir`). |
 | PR | The GitHub pull request of one group; its body starts with the group line `tenbox: <id> group <N>` (`groupLine`, `GroupPr`). |
-| recipe | How a group is built: worker model and effort, review lenses, check tier (`Recipe`). |
+| recipe | How a group is built: worker model and effort, review lenses, check tier (`RecipeSchema`). |
 | role | A Tenbox subagent: planner, worker, reviewer, runner. |
 | stats | The record `tenbox close` writes to `<task dir>/stats.json`: numbers, labels, proofs (test file, test name, failure text), points per part and the findings of one task (`TaskStats`). |
 | build result | What `/tenbox-build` returns and `tenbox build done` saves as `build.json`: status, round, proofs, attention, nice-to-have, unproven (`BuildResult`). |
@@ -195,12 +195,12 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
                 graphql, kubernetes (the cluster API: Jobs and volumes); claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
-  test/         tempProject.ts, cli.ts (runs the CLI in the test process, inProcess.ts, or as a process for stdin, bundle.ts), hermetic.ts (no real claude, gh or docker in PATH), fakeTools.ts (gh answered in the test process), the end-to-end test and the
-                layers test
+  test/         tempProject.ts, cli.ts (runs the CLI in the test process, inProcess.ts, or as a process for stdin, bundle.ts), hermetic.ts (no real claude, gh or docker in PATH), fakeTools.ts (gh answered in the test process), the end-to-end test, the
+                layers test and the dead exports test (no export or module object member only tests use)
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
-            nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch; runTokens, the run token watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
+            watchers, the watch loop; nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch; runTokens, the run token watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
             infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line, the task PVCs,
             hetzner: one server and the volume price, github: the App's installation token, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);

@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { type CardKind, type DecisionCard, getOption, isAutoAllowed } from "./cards.ts";
+import type { z } from "zod";
+import { type DecisionCard, type DecisionCardSchema, getOption, isAutoAllowed } from "./cards.ts";
+
+type CardKind = z.infer<typeof DecisionCardSchema.shape.kind>;
 
 const card = (auto: boolean, kind: CardKind = "scope"): DecisionCard => ({
   title: "Which store?",
