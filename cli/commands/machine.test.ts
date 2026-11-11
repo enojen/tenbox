@@ -737,6 +737,13 @@ describe("machine", () => {
     expect(jobEnv(job).TENBOX_CMD).toBe("tenbox close TEN-1 --force");
   });
 
+  test("start --force reaches TENBOX_CMD", async () => {
+    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1", "--force"]);
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(jobEnv(job).TENBOX_CMD).toBe("tenbox start TEN-1 --force");
+  });
+
   /** The Job one `machine run` posted: the box command and the class label. */
   async function runWords(words: string[]) {
     const run = await machine(["run", "TEN-1", "--", "tenbox", ...words]);

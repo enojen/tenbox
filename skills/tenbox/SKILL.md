@@ -31,6 +31,9 @@ For the flow of a task, the files of a task and `tenbox.yaml`, read the
 - One task: `tenbox start`, then the plan (`tenbox plan show`), `tenbox approve`,
   `tenbox build`, `tenbox pr`, the merge on GitHub, `tenbox close`. `tenbox wait`,
   `tenbox status` and `tenbox list` tell you where a task stands.
+- `tenbox start` stops with `task-in-progress` when the task branch is already on origin
+  (another run, maybe with an open PR): show the user the branch and the PR, and add
+  `--force` only when they say so.
 - Tasks that wait for a free slot: run `tenbox queue <id>` for each, so the tracker shows them
   as queued and not as untouched; `tenbox start` moves them on when a slot is free.
 - Every command prints JSON on stdout: read `ok`, and on a failure `code` and `error`.

@@ -31,3 +31,13 @@ export function noRunError(id: string): TenboxError {
     "no-run",
   );
 }
+
+/** Another run works on the task: its branch is on `origin`, maybe with an open PR. */
+export function taskInProgressError(id: string, branch: string, pr: string | null): TenboxError {
+  const prText = pr === null ? "" : ` and the open PR ${pr}`;
+  return new TenboxError(
+    `${id} is in progress elsewhere: origin has the branch ${branch}${prText}; run: tenbox start ${id} --force to start anyway`,
+    "task-in-progress",
+    { branch, pr },
+  );
+}

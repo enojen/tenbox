@@ -53,7 +53,7 @@ interface CommandShape {
 const NO_FLAGS: CommandShape = { valueFlags: [], boolFlags: [], positionals: 0, tests: false };
 
 const MACHINE_COMMANDS = {
-  [COMMAND.start]: { ...NO_FLAGS, valueFlags: ["--title"] },
+  [COMMAND.start]: { ...NO_FLAGS, valueFlags: ["--title"], boolFlags: ["--force"] },
   [COMMAND.build]: { ...NO_FLAGS, tests: true },
   [COMMAND.close]: { ...NO_FLAGS, boolFlags: ["--force"] },
   [COMMAND.approve]: NO_FLAGS,
