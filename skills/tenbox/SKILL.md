@@ -39,6 +39,8 @@ For the flow of a task, the files of a task and `tenbox.yaml`, read the
 - Every command prints JSON on stdout: read `ok`, and on a failure `code` and `error`.
   Human text goes to stderr.
 - Change a task only with tenbox commands, never by editing its `.tenbox/` files.
+- One more round on a done part: `tenbox part reopen <id> --part NN --accept "..."`, then
+  `tenbox build <id>`; the approval stays.
 - A fact that holds for every task of the project (for example "boxes run no real eval")
   goes once under `decisions:` of `tenbox.yaml`, not in a `tenbox decide` note per task.
 - The approval of a plan, the answer to a question or a decision card, and the merge

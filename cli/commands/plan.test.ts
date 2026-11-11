@@ -55,9 +55,43 @@ const [decision] = valid.decisions;
 describe("tenbox plan done", () => {
   test("a valid result is written to plan.json", async () => {
     const run = await planDone(...withJson({}));
-    expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", file: planJson }]);
+    expect([run.code, run.json.ok, run.json.task, run.json.file]).toEqual([
+      0,
+      true,
+      "T-1",
+      planJson,
+    ]);
     const text = await files.read(planJson);
     expect(JSON.parse(text ?? "null")).toEqual(valid);
+  });
+
+  test("plan done names the part files that hold the old plan", async () => {
+    const partsDir = path.join(path.dirname(planJson), "parts");
+    await files.write(path.join(partsDir, "01-a.md"), "# 01 · a\nstatus: todo\nfiles: a.txt\n");
+    await files.write(path.join(partsDir, "03-old.md"), "# 03 · old\nstatus: todo\n");
+    const parts = [
+      { id: "01", difficulty: "easy", files: ["b.txt"] },
+      { id: "02", difficulty: "hard" },
+    ];
+    const run = await planDone(...withJson({ parts }));
+    expect(run.code).toBe(0);
+    expect(run.json.stale_parts).toEqual([
+      { part: "01", file: "01-a.md", reason: "files differ" },
+      { part: "02", file: null, reason: "no part file" },
+      { part: "03", file: "03-old.md", reason: "not in the plan" },
+    ]);
+    expect(run.err).toContain("03-old.md");
+    const text = await files.read(planJson);
+    expect(JSON.parse(text ?? "null").parts).toEqual(parts);
+  });
+
+  test("plan done with matching part files has no stale parts", async () => {
+    const partsDir = path.join(path.dirname(planJson), "parts");
+    await files.write(path.join(partsDir, "01-a.md"), "# 01 · a\nstatus: todo\n");
+    await files.write(path.join(partsDir, "02-b.md"), "# 02 · b\nstatus: todo\nfiles:\n");
+    const run = await planDone(...withJson({}));
+    const shown = { ok: true, task: "T-1", file: planJson, stale_parts: [] };
+    expect([run.code, run.json]).toEqual([0, shown]);
   });
 
   test("a valid result sets the status plan-ready, a bad one leaves it", async () => {

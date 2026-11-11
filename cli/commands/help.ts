@@ -108,19 +108,23 @@ Output: { ok, task, groups: [{ group, branch, state, pr, files?, ci? }] }
 Example:
   tenbox pr TEN-301 --ready`,
 
-  part: `Checks and records the last commit of one part: it exists, is on HEAD, is new and touches the part's files.
+  part: `part done checks the last commit of one part: it exists, is on HEAD, is new and touches the part's files.
+part reopen sets a part back to todo with one more acceptance line; its old result lines become history lines.
+It also adds a decision to .tenbox/decisions.md: the new line is final, so the worker builds it without a decision card.
 
-Input: the action done, then the task id.
+Input: the action done or reopen, then the task id.
 Flags:
   --part NN     the part id; required
-  --commit <sha>  the last commit of the part
-  --since <sha>   the commit the part started after
-  --group N     the group of the part
+  --commit <sha>  part done: the last commit of the part
+  --since <sha>   part done: the commit the part started after
+  --group N     part done: the group of the part
+  --accept X    part reopen: the new acceptance line; required
 
-Output: { ok, task, part, commit }
+Output: part done { ok, task, part, commit }; part reopen { ok, task, part, file }
 
 Example:
-  tenbox part done TEN-301 --part 01 --commit abc1234`,
+  tenbox part done TEN-301 --part 01 --commit abc1234
+  tenbox part reopen TEN-301 --part 01 --accept "an empty list gives 200"`,
 
   proof: `Records one proof by hand: the test that failed before the code.
 
@@ -154,7 +158,9 @@ Example:
 Input (plan done, --json, required): the plan result
   { kind, summary, estimated lines, parts, examples, decisions, lenses, questions, groups }
 
-Output: plan done { ok, task, file };
+Output: plan done { ok, task, file, stale_parts };
+  stale_parts: [{ part, file, reason }], the part files that do not match the result;
+  reason is "not in the plan", "no part file" (file null) or "files differ"
   plan show { ok, task, file, estimated_lines, parts, groups, examples, decisions, questions }
 
 Example:

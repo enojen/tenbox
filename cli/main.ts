@@ -37,7 +37,7 @@ import {
   stopMachine,
 } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
-import { partDone } from "./commands/part.ts";
+import { partDone, partReopen } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
 import { openPr } from "./commands/pr.ts";
 import { recordProof } from "./commands/proof.ts";
@@ -68,6 +68,7 @@ const MERGE_CHECK_USAGE = "tenbox merge-check [--base <branch>]";
 const CLOSE_USAGE = "tenbox close <id> [--force]";
 const PR_USAGE = "tenbox pr <id> [--ready] [--force] [--wait]";
 const PART_USAGE = "tenbox part done <id> --part NN [--commit <sha>] [--since <sha>] [--group N]";
+const PART_REOPEN_USAGE = 'tenbox part reopen <id> --part NN --accept "..."';
 const PROOF_USAGE = "tenbox proof <id> --part NN --file F --test T --failure X";
 const DECIDE_USAGE =
   "tenbox decide <id> --json '[{ question?, answer } | { decision, taken }]' [--no-build]";
@@ -197,17 +198,24 @@ const COMMANDS: Record<CommandName, Command> = {
       }),
   },
   [COMMAND.part]: {
-    usage: PART_USAGE,
+    usage: `${PART_USAGE} | ${PART_REOPEN_USAGE}`,
     options: {
       part: { type: "string" },
       commit: { type: "string" },
       since: { type: "string" },
       group: { type: "string" },
+      accept: { type: "string" },
     },
     run: (positionals, values) => {
       const [action, ...rest] = positionals;
       const part = stringValue(values, "part");
-      if (action !== "done" || !part) throw usageError(`usage: ${PART_USAGE}`);
+      if (action === "reopen") {
+        const accept = stringValue(values, "accept");
+        if (!part || !accept) throw usageError(`usage: ${PART_REOPEN_USAGE}`);
+        return partReopen({ id: idArg(rest, PART_REOPEN_USAGE), part, accept });
+      }
+      if (action !== "done" || !part)
+        throw usageError(`usage: ${PART_USAGE} | ${PART_REOPEN_USAGE}`);
       return partDone({
         id: idArg(rest, PART_USAGE),
         part,

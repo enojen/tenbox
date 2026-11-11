@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
-import { tenbox } from "../test/cli.ts";
+import { makeFakeClaude, tenbox } from "../test/cli.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 
 let project: TempProject;
@@ -109,5 +109,74 @@ describe("tenbox part done", () => {
   test("a part not in plan.json is unknown-part", async () => {
     const run = await done("--part", "99");
     expect([run.code, run.json.code]).toEqual([1, "unknown-part"]);
+  });
+});
+
+const USAGE_EXIT = 2;
+const DONE_PART =
+  "# 01 · x\nstatus: done\nfiles: a.txt\nacceptance:\n- a is built\nresult: built x; commit abc\n";
+
+const partFile = (): string => path.join(worktree, ".tenbox", "parts", "01-x.md");
+const reopen = (...flags: string[]) => tenbox(["part", "reopen", "T-1", ...flags], project.mainDir);
+
+describe("tenbox part reopen", () => {
+  test("part reopen sets a done part to todo with a new acceptance line and keeps the old result as history", async () => {
+    await files.write(partFile(), DONE_PART);
+    const run = await reopen("--part", "01", "--accept", "x is checked");
+    const file = partFile();
+    expect([run.code, run.json]).toEqual([0, { ok: true, task: "T-1", part: "01", file }]);
+    const text = await files.read(partFile());
+    expect(text).toBe(
+      "# 01 · x\nstatus: todo\nfiles: a.txt\nacceptance:\n- a is built\n- x is checked\nhistory: built x; commit abc\nresult:\n",
+    );
+  });
+
+  test("part reopen records the new acceptance line as a final decision", async () => {
+    await files.write(partFile(), DONE_PART);
+    await reopen("--part", "01", "--accept", "x is checked");
+    const text = await files.read(path.join(worktree, ".tenbox", "decisions.md"));
+    expect(text).toBe(
+      "- Part 01 was reopened with the acceptance line `x is checked`. This line is final: build it and return no decision card, also when plan.md and plan.json do not name it.\n",
+    );
+  });
+
+  test("part reopen of an unknown part is unknown-part", async () => {
+    await files.write(partFile(), DONE_PART);
+    const run = await reopen("--part", "99", "--accept", "a");
+    expect([run.code, run.json.code]).toEqual([1, "unknown-part"]);
+    const text = await files.read(partFile());
+    expect(text).toBe(DONE_PART);
+  });
+
+  test("part reopen without --accept is usage", async () => {
+    const run = await reopen("--part", "01");
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+    expect(run.json.error).toContain('tenbox part reopen <id> --part NN --accept "..."');
+  });
+
+  test("part reopen without --part is usage", async () => {
+    const run = await reopen("--accept", "a");
+    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
+  });
+});
+
+describe("tenbox part reopen and build", () => {
+  test("a reopened part is sent by the next build without a new approval", async () => {
+    const fake = await makeFakeClaude(project.root);
+    const run = (...args: string[]) => tenbox(args, project.mainDir, fake.env);
+    await files.write(path.join(worktree, ".tenbox", "plan.md"), "# plan\n");
+    await run("approve", "T-1");
+    await files.write(partFile(), DONE_PART);
+    await files.write(path.join(worktree, ".tenbox", "parts", "02-y.md"), "status: done\n");
+    await files.write(path.join(worktree, ".tenbox", "parts", "03-z.md"), "status: done\n");
+    const before = await run("build", "T-1");
+    await reopen("--part", "01", "--accept", "a");
+    const approved = await run("approved", "T-1");
+    const built = await run("build", "T-1");
+    expect([before.code, before.json.code]).toEqual([1, "nothing-to-build"]);
+    expect(approved.code).toBe(0);
+    expect(built.code).toBe(0);
+    const sent = String(built.json.sent).replace("/tenbox-build ", "");
+    expect(JSON.parse(sent).parts).toEqual([{ id: "01", difficulty: "easy", files: ["a.txt"] }]);
   });
 });
