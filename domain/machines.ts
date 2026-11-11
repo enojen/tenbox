@@ -37,7 +37,6 @@ export function oomKilledInLog(text: string): boolean {
   return count !== undefined && Number(count) > 0;
 }
 
-/** The lines of the end of a box log that `tenbox machine run --wait` prints as `log`. */
 export const LOG_TAIL_LINES = 40;
 
 /** A command's JSON object, as `emit` prints it: `{` and `}` at column 0. */

@@ -191,7 +191,6 @@ function startFakeApi(): FakeApi {
   return api;
 }
 
-/** One object a request creates. */
 interface Creation {
   path: string;
   body: unknown;
@@ -236,7 +235,6 @@ function listPostedJob(api: FakeApi, body: unknown): void {
   api.jobs = [...api.jobs, api.posted];
 }
 
-/** The posted Job with the next of its statuses. */
 function postedWithNextStatus(api: FakeApi): object {
   const [status = {}, ...rest] = api.runStatuses ?? [];
   if (rest.length > 0) api.runStatuses = rest;

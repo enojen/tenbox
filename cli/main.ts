@@ -472,7 +472,6 @@ function repoValue(values: Values): ReportRepo {
   return repo;
 }
 
-/** `--wait [--timeout S]` of `tenbox machine run`: the seconds to wait, null without `--wait`. */
 function machineWaitValue(values: Values): number | null {
   const timeout = intValue(values, "timeout");
   if (flagValue(values, "wait")) return timeout ?? DEFAULT_TIMEOUT_SECONDS;

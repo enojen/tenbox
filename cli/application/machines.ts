@@ -108,7 +108,6 @@ export interface MachineRunRow {
 /** Tenbox commands run as a Job on the cluster. */
 export const machines = { run, wait, list, stop, remove, logs };
 
-/** A posted Job of the task to wait for, until the deadline. */
 interface MachineWaitInput {
   id: TaskId;
   cmd: MachineCommand;
@@ -117,7 +116,6 @@ interface MachineWaitInput {
   deadlineMs: number;
 }
 
-/** How a waited-for Job ended, and what its command printed. */
 export interface MachineRunEnd {
   task: TaskId;
   cmd: MachineCommand;
@@ -126,7 +124,6 @@ export interface MachineRunEnd {
   reason: string | null;
   /** The last top-level JSON object of the pod log, null without one. */
   output: Record<string, unknown> | null;
-  /** The last lines of the pod log. */
   log: string;
 }
 
@@ -144,7 +141,6 @@ interface MachineLogsResult {
   reason: string | null;
 }
 
-/** The wait between two polls of a pod or a Job. */
 const POLL_MS = 2000;
 /** How much of the end of a log `logs` keeps to find the last boot line. */
 const LOG_TAIL_CHARS = 4096;
@@ -231,13 +227,11 @@ async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   return { task: id, job: newest.name, status: jobStatus(job), reason };
 }
 
-/** The terminated reason of the box container, and the log of its pod. */
 interface BoxEnd {
   podReason: string | null;
   log: string;
 }
 
-/** `OOMKilled` from the pod or the last boot line, else the pod's own reason. */
 function boxReason(end: BoxEnd): string | null {
   if (end.podReason === OOM_KILLED || oomKilledInLog(end.log)) return OOM_KILLED;
   return end.podReason;
@@ -269,7 +263,6 @@ async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
   return result;
 }
 
-/** One Job of the task, by name. */
 interface JobRef {
   cluster: Cluster;
   id: TaskId;
@@ -291,13 +284,11 @@ async function jobEnd(ref: JobRef): Promise<EndedJob | null> {
   return status === JOB_STATUS.inProgress ? null : { status, found: true };
 }
 
-/** One Job by name. */
 interface JobInCluster {
   cluster: Cluster;
   job: string;
 }
 
-/** The newest pod of the Job and its whole log; empty without a pod. */
 async function readBox(input: JobInCluster): Promise<BoxEnd> {
   const pod = await kubernetes.findPod(input.cluster, input.job);
   if (pod === null) return { podReason: null, log: "" };
@@ -337,7 +328,6 @@ interface RowInput {
   job: Job;
 }
 
-/** One pod's log, or only its last lines. */
 interface LogRead {
   cluster: Cluster;
   pod: string;
@@ -518,14 +508,12 @@ async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
   if (active.length > 0) throw machineBusyError(id, active);
 }
 
-/** The task's Jobs, and when to stop waiting for them. */
 interface IdleWait {
   cluster: Cluster;
   id: TaskId;
   deadlineMs: number;
 }
 
-/** Polls until no Job of the task is active; past the deadline `machine-timeout`. */
 async function waitIdle(input: IdleWait): Promise<void> {
   const { cluster, id, deadlineMs } = input;
   let active: string[] = [];
