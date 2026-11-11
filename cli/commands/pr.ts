@@ -22,7 +22,13 @@ import {
   prBody,
   prTitle,
 } from "../../domain/prs.ts";
-import { groupRoot, planMdFile, tenboxDir } from "../../domain/taskDirs.ts";
+import {
+  checksFullFile,
+  groupRoot,
+  planMdFile,
+  roundDir,
+  tenboxDir,
+} from "../../domain/taskDirs.ts";
 import { durations } from "../../domain/utils.ts";
 import { taskBranch } from "../../domain/worktrees.ts";
 import { checks } from "../application/checks.ts";
@@ -270,12 +276,20 @@ async function readPrText(run: PrRun, group: PrGroup): Promise<PrText> {
   const dir = tenboxDir(run.taskWorktree);
   const task = await tasks.find(dir);
   const planText = await files.read(planMdFile(dir));
-  const latest = await findLatestChecks(run.taskWorktree, group.id);
-  const summary = latest?.summary ?? null;
+  const tiers = await listRoundChecks(run.taskWorktree, group.id);
   return {
     title: prTitle(id, group.name ?? task?.title ?? null),
-    body: prBody(groupLine(id, group.id), planText, summary),
+    body: prBody(groupLine(id, group.id), planText, tiers),
   };
+}
+
+/** The newest round's fast checks, then its full checks when that tier ran in the round. */
+async function listRoundChecks(taskWorktree: string, group: number): Promise<CheckResult[]> {
+  const latest = await findLatestChecks(taskWorktree, group);
+  if (latest === null) return [];
+  const round = roundDir(groupRoot(taskWorktree, group), latest.round);
+  const full = await checks.find(checksFullFile(round));
+  return full === null ? [latest] : [latest, full];
 }
 
 export function findLatestChecks(taskWorktree: string, group: number): Promise<CheckResult | null> {
