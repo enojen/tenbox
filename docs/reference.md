@@ -299,10 +299,10 @@ A merge plus `git pull` in the main checkout is the release; the commit is the v
 ## The babysitter skill: `skills/tenbox-babysitter/`
 
 `tenbox install` links it to `~/.claude/skills/tenbox-babysitter` like every folder of
-`skills/`. A person runs it as `/tenbox-babysitter <name>`: the session takes the cards of lane
+`skills/`. A person runs it as `/tenbox-babysitter <name>`: the session takes the tasks of lane
 `<name>` through tenbox, from start to close. Claude never loads it alone
 (`disable-model-invocation: true`). `SKILL.md` holds the steps and who decides what;
-`references/` holds the card flow, the box notes, the lane file template and the handover.
+`references/` holds the task flow, the box notes, the lane file template and the handover.
 It lists no commands: it uses the `tenbox` skill and `tenbox help`.
 
 It first reads the project file: the path under `babysitter:` of `tenbox.yaml`, default

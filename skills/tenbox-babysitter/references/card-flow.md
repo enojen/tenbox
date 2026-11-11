@@ -1,4 +1,4 @@
-# The steps of one card
+# The steps of one task
 
 On the cluster each command is `tenbox machine run <id> --wait -- tenbox <command> <id> ...`; on
 this computer it is the same command without the prefix. `--wait` returns the result JSON of the
@@ -8,15 +8,15 @@ a command.
 1. Start: `tenbox start <id>`. The tracker goes to in progress and the plan starts.
 2. Plan: wait for it, then `tenbox plan show <id>`. It shows parts, groups, examples, decisions
    and questions.
-3. Checks before the approval: the three checks of `SKILL.md`, and the rule for a bug card.
+3. Checks before the approval: the three checks of `SKILL.md`, and the rule for a bug task.
 4. Questions: answer with
    `tenbox decide <id> --no-build --json '[{"question": "...", "answer": "..."}]'`.
    Temporary, until #159 and #249: `answer` is one line, and `question` must match one line of
    `questions.md`, so copy a short piece of that line. Read `ok: true` in the output before the
    approval. Temporary, until #160: `approve` and `build` do not stop on an open question, so
    look at the question list yourself.
-5. A decision that holds for every card of the project belongs in `decisions:` of
-   `tenbox.yaml`, not in a note typed on each card.
+5. A decision that holds for every task of the project belongs in `decisions:` of
+   `tenbox.yaml`, not in a note typed on each task.
 6. `tenbox approve <id>`, then `tenbox build <id>`.
 7. Build ended: `tenbox status <id>`. A failed build has its cause in `reason`. A decision card:
    the user answers, unless it is `auto: true`; then `tenbox answer <id> <n>`.
@@ -37,7 +37,7 @@ a command.
     merge.
 13. After the merge: `tenbox close <id>`. On the cluster, when the close Job has ended,
     `tenbox machine rm <id>`; it deletes the task volume and cannot be undone. Then write the
-    work log on the card: what changed, the PR, the proof result, how to try it. Temporary,
+    work log on the task: what changed, the PR, the proof result, how to try it. Temporary,
     until #279: when the project file asks for a measurement of main after a merge, the lane
     whose PR was merged runs it and appends one line to the shared log.
 14. Update the lane file.

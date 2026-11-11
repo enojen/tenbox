@@ -12,7 +12,7 @@ account is at its limit, no node comes and the pod stays `Pending`.
   (`kubectl -n tenbox describe pod <pod>`). The signs are `FailedScheduling`,
   `NotTriggerScaleUp`, a max node group size, or a limit error of the cloud.
 - Then start no new Job, do not try again, stop no other Job, and change no class and no node
-  pool. Set the card to `waiting: cluster capacity` in the lane file, show the user the pod name
+  pool. Set the task to `waiting: cluster capacity` in the lane file, show the user the pod name
   and the event line, and wait for their word.
 - When a pod of another lane is `Pending` for the same reason, start no Job either.
 
@@ -28,7 +28,7 @@ account is at its limit, no node comes and the pod stays `Pending`.
   all the work in one command: the box closes after 1 minute.
 - The auto mode can refuse a command (a PR to ready, a close, a read of production). A refusal
   means stop: give the command to the user.
-- Before the first card, `tenbox machine ls` must answer. A start that stops for the GitHub App
+- Before the first task, `tenbox machine ls` must answer. A start that stops for the GitHub App
   or a tracker 401 is not yours to repair: tell the user.
-- Only `tenbox machine rm`, after the close Job, deletes a volume. A card that is closed without
+- Only `tenbox machine rm`, after the close Job, deletes a volume. A task that is closed without
   it leaves its volume.
