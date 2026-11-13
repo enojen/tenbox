@@ -307,7 +307,8 @@ It lists no commands: it uses the `tenbox` skill and `tenbox help`.
 
 It first reads the project file: the path under `babysitter:` of `tenbox.yaml`, default
 `tenbox-babysitter.md`. The project file holds the rules of one project and names the lane
-directory, outside git, with `<name>.md` (the lane file), `inbox-<name>.md` and `lessons.md`.
+directory, outside git, with one folder per lane, `<name>/lane.md` (the lane file) and
+`<name>/inbox.md`, and the shared `lessons.md`.
 When the project file, its lane directory or the lane file is missing, the skill answers one
 line that names what is missing and stops. No tenbox code reads `babysitter:`; the manifest
 schema only checks that it is non-empty text (else `manifest`).

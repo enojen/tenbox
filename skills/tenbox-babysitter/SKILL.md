@@ -24,11 +24,11 @@ a command.
 
 1. Read `babysitter:` in `tenbox.yaml` (default `tenbox-babysitter.md`) and read that project
    file. When it is missing, answer with one line that names the path, and stop.
-2. The project file names the lane directory. Read `<dir>/$ARGUMENTS.md`. When the project file
+2. The project file names the lane directory. Read `<dir>/$ARGUMENTS/lane.md`. When the project file
    names no lane directory, or the lane file is missing, answer with one line that names what
    is missing, and stop. A new lane starts from `references/lane-template.md` only when the
    user says so.
-3. Read `<dir>/inbox-$ARGUMENTS.md`: the notes of the other lanes.
+3. Read `<dir>/$ARGUMENTS/inbox.md`: the notes of the other lanes.
 4. Go on from "Next step" of the lane file. Tell the user in two or three lines where the lane
    stands.
 

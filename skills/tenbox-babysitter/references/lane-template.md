@@ -1,9 +1,16 @@
 # The lane files
 
-All three files live in the lane directory that the project file names. Fill the angle
-brackets.
+The lane directory that the project file names holds one folder per lane and the shared
+files. Fill the angle brackets.
 
-## The lane file `<name>.md`
+```
+<dir>/
+  <name>/lane.md
+  <name>/inbox.md
+  lessons.md
+```
+
+## The lane file `<name>/lane.md`
 
 ```markdown
 # <name>
@@ -36,7 +43,7 @@ Running Jobs: <Job name> waits for <what>
 The log is append-only. The two lines `Open spoken decisions:` and `Running Jobs:` are always
 there, also when they are empty.
 
-## The inbox `inbox-<name>.md`
+## The inbox `<name>/inbox.md`
 
 One line per note:
 
