@@ -18,14 +18,15 @@ account is at its limit, no node comes and the pod stays `Pending`.
 
 ## Traps
 
-- Temporary, until #252: the box stays up 1 minute after a command, and the next command fails
-  with `machine-busy` until it ends. `--wait` ends when the Job ends, so run the commands of one
-  task one after another with `--wait`.
+- A Job ends when its command ends and the claude sessions it started are idle for 1 minute; a
+  command that starts no session ends at once. While a Job of the task runs, the next command
+  fails with `machine-busy`. `--wait` ends when the Job ends, so run the commands of one task one
+  after another with `--wait`.
 - An out-of-memory end (exit 137, `OOMKilled`): do not change the class; tell the user.
 - Never force-push a PR branch and never rebase it by hand: `tenbox pr` takes main itself.
 - The state of a task is on its volume. Read it with tenbox commands (`status`, `plan show`).
   When a `kubectl exec` is the only way, run it as `env -u GITHUB_TOKEN kubectl exec ...` and do
-  all the work in one command: the box closes after 1 minute.
+  all the work in one command: a box that started no session ends seconds after its command.
 - The auto mode can refuse a command (a PR to ready, a close, a read of production). A refusal
   means stop: give the command to the user.
 - Before the first task, `tenbox machine ls` must answer. A start that stops for the GitHub App
