@@ -110,4 +110,7 @@ tasks by theme.
 
 ## License
 
-[Apache 2.0](LICENSE)
+Tenbox is under the [Functional Source License 1.1, Apache 2.0 Future License](LICENSE)
+(FSL-1.1-ALv2). You may use, change and share it for any purpose except a product or
+service that competes with it. Two years after each release, that release becomes Apache 2.0.
+Versions up to the `apache-2.0-final` tag stay under Apache 2.0.

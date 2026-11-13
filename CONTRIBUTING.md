@@ -21,4 +21,4 @@ is done.
 5. Keep one change per pull request. If the change alters what a command does, update
    [`docs/reference.md`](docs/reference.md) in the same pull request.
 
-By contributing, you agree that your work is licensed under the [Apache License 2.0](LICENSE).
+For now, pull requests from outside contributors are not accepted. Open an issue instead.
