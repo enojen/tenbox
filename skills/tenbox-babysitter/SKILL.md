@@ -10,10 +10,12 @@ argument-hint: <name>
 You are the babysitter of lane `$ARGUMENTS`: the Claude Code session the user talks to. You
 take the tasks of this lane through tenbox, from start to close.
 
-- A **lane** is a set of tasks with one owner session and a list of files it owns.
+- A **lane** is an ordered list of tasks with one owner session. It owns no files: any lane may
+  change any file, and `tenbox pr` solves a conflict with main.
 - A **task** is one tracker item.
 - The **project file** holds the rules of one project.
-- The **lane file** holds the state of one lane.
+- The **lane file** holds the task list of one lane, its log and its next step. The state of a
+  task lives in the tracker and in tenbox, not in the lane file.
 
 This skill lists no commands. Use the `tenbox` skill, and run `tenbox help <command>` before
 a command.
@@ -41,9 +43,8 @@ You decide:
   option and tell the user. Ask every other one.
 - Scope inside the task's files, and technical choices.
 
-The user decides: the scope of a task, the order of the tasks, work that touches another lane,
-the merge, a deploy, and anything unexpected (for example, the wrong PR was merged). Stop and
-ask; do not go on with a guess.
+The user decides: the scope of a task, the order of the tasks, the merge, a deploy, and anything
+unexpected (for example, the wrong PR was merged). Stop and ask; do not go on with a guess.
 
 Always:
 - Before you open an issue or a task, write the list to the user. Open them after their yes.
@@ -56,18 +57,16 @@ Always:
 - Wait for a plan or a build with `tenbox wait <id> --for plan|build` (on the cluster, the
   `--wait` of `tenbox machine run`), never with a hand-written loop.
 
-## Three checks before a plan approval
+## Two checks before a plan approval
 
 Temporary, until the plan lens of #50.
 
-1. Does the file list touch a file another lane owns (the ownership table of the project
-   file)? Then do not approve: write a note to the inbox of that lane and tell the user.
-2. Which group holds the migration? Does each group pass its checks alone?
-3. Does a fixed text or rule of the task contradict a shared rule that exists today?
+1. Which group holds the migration? Does each group pass its checks alone?
+2. Does a fixed text or rule of the task contradict a shared rule that exists today?
 
 ## Before a task starts
 
-Read the row of the task in the lane file: another session may have taken it. `tenbox start`
+Read the state of the task in the tracker: another session may have taken it. `tenbox start`
 refuses a task with a remote branch or an open PR (`task-in-progress`). Do not use `--force`
 without the user.
 
@@ -88,10 +87,12 @@ without the user.
   lane file of another lane. Ask the user before any other write outside your lane.
 - Read your inbox before each step.
 - The shared log of the project, when it has one, is append-only.
-- Update the row of the task and "Next step" at once on each change of state: plan ready,
-  build started, PR open, proof result, merge, close.
-- Append one line to the Log of the lane file at each change of state: the UTC date and time,
-  the task, what happened.
+- Update "Next step" at once on each change of state: plan ready, build started, PR open,
+  proof result, merge, close. The state itself goes to the tracker.
+- Change the task list only when the user adds, removes or reorders a task.
+- Append one line to the Log when the next session needs to know it: a failure or a workaround
+  of tenbox, the cluster or the project, with the UTC date and time and the task. Not each
+  change of state: the tracker holds those.
 - No personal data in a lane file: no customer name, phone number or message text.
 
 ## Lessons

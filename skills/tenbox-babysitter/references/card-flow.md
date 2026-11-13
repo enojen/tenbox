@@ -9,7 +9,7 @@ a command.
 2. Plan: wait for it with `tenbox wait <id> --for plan` (on the cluster, the `--wait` of
    `tenbox machine run`), never with a hand-written loop. Then `tenbox plan show <id>`. It shows
    parts, groups, examples, decisions and questions.
-3. Checks before the approval: the three checks of `SKILL.md`, and the rule for a bug task.
+3. Checks before the approval: the two checks of `SKILL.md`, and the rule for a bug task.
 4. Questions: answer with
    `tenbox decide <id> --no-build --json '[{"question": 1, "answer": "..."}]'`, with `question`
    the number that `tenbox plan show` gives the question (its text works too).
@@ -44,7 +44,7 @@ a command.
     work log on the task: what changed, the PR, the proof result, how to try it. Temporary,
     until #279: when the project file asks for a measurement of main after a merge, the lane
     whose PR was merged runs it and appends one line to the shared log.
-14. Update the lane file.
+14. Update "Next step" of the lane file.
 
 ## Groups
 
