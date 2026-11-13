@@ -8,13 +8,14 @@ brackets.
 ```markdown
 # <name>
 
-<one line on what the lane is>. Builds at one time: <limit>.
+<one line on what the lane is>.
 
 ## Tasks
 
-| # | Task | Waits for | Proof | State | PR | Notes |
-|---|---|---|---|---|---|---|
-| 1 | [<task name>](<task link>) | <what> | <proof result> | not started | | |
+In this order. The state of a task is in the tracker, not here.
+
+1. [<task name>](<task link>)
+2. [<task name>](<task link>): after <task>, when it waits for one
 
 ## Task notes
 
@@ -22,7 +23,7 @@ brackets.
 
 ## Log
 
-- <UTC date and time> · <task> · <what happened>
+- <UTC date and time> · <task> · <a failure or a workaround of tenbox, the cluster or the project>
 
 ## Next step
 
@@ -31,9 +32,6 @@ brackets.
 Open spoken decisions: <what the user said that is not yet a file or a task, such as "leave it for now">
 Running Jobs: <Job name> waits for <what>
 ```
-
-The states of a task are fixed: not started · planning · plan ready · build · draft PR ·
-proof · ready (waiting for merge) · merged · closed · waiting: <what>.
 
 The log is append-only. The two lines `Open spoken decisions:` and `Running Jobs:` are always
 there, also when they are empty.

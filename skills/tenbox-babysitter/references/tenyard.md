@@ -12,7 +12,7 @@ account is at its limit, no node comes and the pod stays `Pending`.
   (`kubectl -n tenbox describe pod <pod>`). The signs are `FailedScheduling`,
   `NotTriggerScaleUp`, a max node group size, or a limit error of the cloud.
 - Then start no new Job, do not try again, stop no other Job, and change no class and no node
-  pool. Set the task to `waiting: cluster capacity` in the lane file, show the user the pod name
+  pool. Write `waiting: cluster capacity` in "Next step" of the lane file, show the user the pod name
   and the event line, and wait for their word.
 - When a pod of another lane is `Pending` for the same reason, start no Job either.
 
