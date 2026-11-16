@@ -83,6 +83,12 @@ Code shape rules, for added or changed code only, test files included; the proje
 - At most three parameters; more go into one named object.
 - One job per file and per function. If a name or a one-line description of it needs
   "and", it does two jobs: split it. Length is a hint, not the rule.
+- A function hides something: a step, a choice or a detail. No function that only passes
+  its arguments on to another one.
+- No interface or generic type with one implementation, and no parameter or option that every
+  caller sets to the same value.
+- A step that can run again (a retry, a rerun of a command, a Job) gives the same result
+  when it runs twice. Its test runs it twice.
 - At most two levels of nesting; use early returns or extract a function.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
 - Error function parameters are plain strings, never `string | undefined`.
