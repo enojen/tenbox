@@ -62,6 +62,9 @@ it: Bash goes back to the session directory after each call.
 
 A fix or a new feature changes behaviour. Never change behaviour on a guess.
 
+0. Before you change code that no test covers, write a test of what it does today for each
+   path through it: each branch, and the edge values (zero, empty, small, large). See each
+   test pass before you change the code. They show what else your change breaks.
 1. Write the test first. Run it and see it fail, for the reason you expect.
 2. Write the code. Run the test and see it pass.
 3. For a fix, undo the fix once, see the test fail again, then put the fix back.
@@ -119,6 +122,12 @@ For the code you write or change. The project `CLAUDE.md` wins where it says oth
 - At most three parameters; more go into one named object.
 - One job per file and per function. If a name or a one-line description of it needs
   "and", it does two jobs: split it. Length is a hint, not the rule.
+- A function hides something: a step, a choice or a detail. No function that only passes
+  its arguments on to another one.
+- No interface or generic type with one implementation, and no parameter or option that every
+  caller sets to the same value. Add it when a second case needs it.
+- A step that can run again (a retry, a rerun of a command, a Job) gives the same result
+  when it runs twice. Its test runs it twice.
 - At most two levels of nesting; use early returns or extract a function.
 - Code with no IO (no files, processes, network or clock) goes to `domain/`.
 - A name says what; a comment, one line, only says why. No comment a name can replace.
