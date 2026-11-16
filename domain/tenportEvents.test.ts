@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { projectId, taskId } from "./ids.ts";
-import { outboxText, readOutbox, taskClosed, taskStarted } from "./tenportEvents.ts";
+import { outboxText, readOutboxLines, taskClosed, taskStarted } from "./tenportEvents.ts";
 
 const TITLE_MAX_CHARS = 200;
 const task = { project: projectId("k7f3qa"), task: taskId("TEN-1") };
@@ -31,10 +31,10 @@ test("a long title is cut to the characters Tenport keeps", () => {
 test("the outbox reads back what it wrote", () => {
   const event = { id: "e1", at: "2026-11-16T20:00:00.000Z", ...taskClosed(task) };
   const text = outboxText([event, event]);
-  expect(readOutbox(text, "outbox.jsonl")).toEqual([event, event]);
+  expect(readOutboxLines(text, "outbox.jsonl")).toEqual([event, event]);
 });
 
 test("an outbox line that is not a task event is a bad file", () => {
   const text = '{"type":"task.exploded"}\n';
-  expect(() => readOutbox(text, "outbox.jsonl")).toThrow("outbox.jsonl");
+  expect(() => readOutboxLines(text, "outbox.jsonl")).toThrow("outbox.jsonl");
 });

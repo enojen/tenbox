@@ -1,6 +1,5 @@
-import type { z } from "zod";
-import type { TenboxError } from "../../domain/errors/index.ts";
-import { errorMessage } from "../../domain/errors/index.ts";
+import { z } from "zod";
+import { errorMessage, TenboxError } from "../../domain/errors/index.ts";
 import { serviceError } from "../../domain/errors/tools.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -119,11 +118,26 @@ async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T
 async function httpFailure(endpoint: Endpoint, response: Response): Promise<TenboxError> {
   const text = await response.text();
   const detail = text.slice(0, ERROR_BODY_CHARS);
-  return endpointError(endpoint, `HTTP ${response.status}: ${detail}`);
+  const status: HttpStatus = { status: response.status };
+  return endpointError(endpoint, `HTTP ${response.status}: ${detail}`, status);
 }
 
-export function endpointError(endpoint: Endpoint, message: string): TenboxError {
-  return serviceError(endpoint.service, endpoint.errorCode, message);
+const HttpStatusSchema = z.object({ status: z.number() });
+type HttpStatus = z.infer<typeof HttpStatusSchema>;
+
+export function endpointError(
+  endpoint: Endpoint,
+  message: string,
+  details?: HttpStatus,
+): TenboxError {
+  return serviceError(endpoint.service, endpoint.errorCode, message, details);
+}
+
+/** The HTTP status of a failed answer; null for a network error or any other error. */
+export function failedStatus(error: unknown): number | null {
+  if (!(error instanceof TenboxError)) return null;
+  const parsed = HttpStatusSchema.safeParse(error.details);
+  return parsed.success ? parsed.data.status : null;
 }
 
 /** A network error or no answer in time is the service's failure, not an internal one. */

@@ -66,7 +66,7 @@ export function taskClosed(closed: ClosedTask): TenportEventBody {
   return { type: TENPORT_EVENT.taskClosed, project, task };
 }
 
-export function readOutbox(content: string, file: string): TenportEvent[] {
+export function readOutboxLines(content: string, file: string): TenportEvent[] {
   const { values, skipped } = jsons.checkLines(TenportEventSchema, content);
   if (skipped > 0) throw badFileError(file, [`${skipped} lines are not task events`]);
   return values;

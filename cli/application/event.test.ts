@@ -5,7 +5,7 @@ import { taskClosed, taskStarted } from "../../domain/tenportEvents.ts";
 import { files } from "../infra/files.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { type FakeTenport, startFakeTenport, TENPORT_TOKEN } from "../test/tenport.ts";
-import { tenportEvents } from "./tenportEvents.ts";
+import { events } from "./event.ts";
 
 const HTTP_CONFLICT = 409;
 const HTTP_SERVER_ERROR = 500;
@@ -40,7 +40,7 @@ afterEach(async () => {
 
 test("without TENPORT_URL and TENPORT_TOKEN nothing is sent or kept", async () => {
   await setup();
-  await tenportEvents.send(started);
+  await events.send(started);
   const kept = await files.exists(outbox());
   expect(tenport.posts()).toEqual([]);
   expect(kept).toBe(false);
@@ -49,7 +49,7 @@ test("without TENPORT_URL and TENPORT_TOKEN nothing is sent or kept", async () =
 test("an event goes to POST /events with the token, a v7 id and the time", async () => {
   await setup();
   tenport.use();
-  await tenportEvents.send(started);
+  await events.send(started);
   const [post] = tenport.posts();
   const kept = await files.exists(outbox());
   expect(post?.path).toBe("/events");
@@ -64,9 +64,9 @@ test("an event Tenport does not take waits in the outbox and goes first next tim
   await setup();
   tenport.use();
   tenport.answerNext(HTTP_SERVER_ERROR);
-  await tenportEvents.send(started);
+  await events.send(started);
   const waiting = await outboxTypes();
-  await tenportEvents.send(closed);
+  await events.send(closed);
   const kept = await files.exists(outbox());
   expect(waiting).toEqual(["task.started"]);
   expect(tenport.events().map((event) => event.type)).toEqual([
@@ -81,9 +81,9 @@ test("when the first waiting event fails, the later ones stay behind it in order
   await setup();
   tenport.use();
   tenport.answerNext(HTTP_SERVER_ERROR);
-  await tenportEvents.send(started);
+  await events.send(started);
   tenport.answerNext(HTTP_SERVER_ERROR);
-  await tenportEvents.send(closed);
+  await events.send(closed);
   const waiting = await outboxTypes();
   expect(waiting).toEqual(["task.started", "task.closed"]);
 });
@@ -92,7 +92,7 @@ test("an event Tenport cannot reach waits in the outbox", async () => {
   await setup();
   tenport.use();
   tenport.stop();
-  await tenportEvents.send(started);
+  await events.send(started);
   const waiting = await outboxTypes();
   expect(waiting).toEqual(["task.started"]);
 });
@@ -101,7 +101,7 @@ test("a 409 answer means Tenport knows it already: the event is not kept", async
   await setup();
   tenport.use();
   tenport.answerNext(HTTP_CONFLICT);
-  await tenportEvents.send(started);
+  await events.send(started);
   const kept = await files.exists(outbox());
   expect(kept).toBe(false);
 });

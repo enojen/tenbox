@@ -1,12 +1,14 @@
 import { z } from "zod";
 import type { TenportEvent } from "../../domain/tenportEvents.ts";
 import type { TenportServer } from "./env.ts";
-import { http } from "./http.ts";
+import { failedStatus, http } from "./http.ts";
 
 interface EventsPost {
   server: TenportServer;
   events: TenportEvent[];
 }
+
+const HTTP_CONFLICT = 409;
 
 const RecordedSchema = z.object({ stored: z.number(), skipped: z.number() });
 
@@ -20,5 +22,9 @@ async function sendEvents(post: EventsPost): Promise<void> {
     headers: { Authorization: `Bearer ${server.token}` },
     errorCode: "tenport",
   };
-  await http.ensure({ endpoint, body: events, schema: RecordedSchema });
+  try {
+    await http.post({ endpoint, body: events, schema: RecordedSchema });
+  } catch (e) {
+    if (failedStatus(e) !== HTTP_CONFLICT) throw e;
+  }
 }
