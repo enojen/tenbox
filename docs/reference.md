@@ -149,6 +149,8 @@ mark a new one, add a line such as `bun.lock linguist-generated`; GitHub folds i
 | `LINEAR_API_KEY` | The Linear key when the manifest has no `tracker.api_key` |
 | `CLICKUP_API_KEY` | The ClickUp key when the manifest has no `tracker.api_key` |
 | `TENBOX_DEBUG` | `1` logs spawned commands and prints stacks |
+| `TENPORT_URL` | The Tenport server that gets the Tenport events; with `TENPORT_TOKEN` only |
+| `TENPORT_TOKEN` | The `tbx_` token of your Tenport login, sent as `Authorization: Bearer` |
 
 ## Task kinds
 
@@ -409,6 +411,20 @@ a public API; only `cli/infra/claude/sessionLinks.ts` reads it. The states:
 A failed send is one stderr line (`notification not sent: ...`); the command's JSON and exit
 code stay the same. The line holds the task id and the decision card title: use a private
 topic. Desktop notifications do not exist; the manifest has no `desktop` key.
+
+**Tenport events.** With `TENPORT_URL` and `TENPORT_TOKEN` set, `tenbox start` sends
+`task.started` after it sets the tracker status, and `tenbox close` sends `task.closed` as its
+last step, to `POST <TENPORT_URL>/events` as a JSON array of one event: `{ id, at, type,
+project, task }`, `id` a UUID v7, `at` the time, `project` the project id of `tenbox.yaml`;
+`task.started` adds `title` (trimmed, cut to 200 characters, left out when empty) and `url` (the
+tracker link, left out when it does not start with `http://` or `https://`). A close without a
+project id sends nothing. Without both variables nothing is sent. Each send first sends the
+events of the outbox, `~/.tenbox/<project id>/outbox.jsonl`, one at a time and oldest first; at
+the first that fails (no answer, or any answer but 2xx and 409) that event and every later one
+stay in the outbox, with one stderr line (`task event kept in the outbox: ...`). A 409 answer
+means Tenport knows the task's state already (a start of an open task, a close of a closed one): the event is
+dropped. An outbox line that is not an event gives one stderr line (`task event not sent: ...`)
+and nothing is sent. The command's JSON and exit code stay the same.
 
 Layers, later ones win: `tenbox.yaml` (task worktree, else main checkout), then
 `tenbox.local.yaml` in the main checkout, then in the task worktree, then

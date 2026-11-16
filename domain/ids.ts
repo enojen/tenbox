@@ -54,6 +54,10 @@ export function newOrganizationId(): string {
   return `o-${randomChars()}`;
 }
 
+export function newEventId(): string {
+  return Bun.randomUUIDv7();
+}
+
 const SHORT_SHA_LENGTH = 7;
 
 export function shortSha(sha: string): string {

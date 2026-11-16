@@ -12,6 +12,7 @@ import type { Project } from "../../domain/projects.ts";
 import { closeComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
 import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
+import { taskClosed } from "../../domain/tenportEvents.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { taskBranch, taskWorktreeDir } from "../../domain/worktrees.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
@@ -21,6 +22,7 @@ import { prs } from "../application/prs.ts";
 import { sessions } from "../application/sessions.ts";
 import { type StatsInput, stats } from "../application/stats.ts";
 import { tasks } from "../application/tasks.ts";
+import { tenportEvents } from "../application/tenportEvents.ts";
 import {
   type BranchRemoveState,
   type WorktreeRemoveState,
@@ -121,6 +123,8 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
   const closedGroups = await removeGroupRemotes(closeTarget, removedGroups);
   const comment = await postComment({ id, tracker, stats: written.stats });
+  if (projectId !== undefined)
+    await tenportEvents.send(taskClosed({ project: projectId, task: id }));
   return {
     ok: true,
     task: id,

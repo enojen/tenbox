@@ -12,6 +12,7 @@ import { type CliRun, makeFakeClaude, tenbox } from "../test/cli.ts";
 import { type FakeTool, fakeTool } from "../test/fakeTools.ts";
 import { checkResult, readStatus } from "../test/helpers.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
+import { startFakeTenport } from "../test/tenport.ts";
 
 const MS_PER_MINUTE = 60_000;
 const DAY_MS = 86_400_000;
@@ -71,6 +72,28 @@ afterEach(async () => {
 });
 
 describe("tenbox close", () => {
+  test("start and close send task.started and task.closed to Tenport", async () => {
+    const tenport = startFakeTenport();
+    try {
+      project = await makeTempProject({ "tenbox.yaml": "project: demo\n", "a.txt": "a\n" });
+      tenport.use();
+      await tenbox(["start", "T-1", "--title", "Login page", "--no-claude"], project.mainDir);
+      await closeT1();
+    } finally {
+      tenport.stop();
+    }
+    const id = await manifests.ensureId(project.mainDir);
+    const [started, closed] = tenport.events();
+    expect(started).toMatchObject({
+      type: "task.started",
+      project: id,
+      task: "T-1",
+      title: "Login page",
+    });
+    expect(closed).toMatchObject({ type: "task.closed", project: id, task: "T-1" });
+    expect(tenport.events()).toHaveLength(2);
+  });
+
   test("closes a clean task and removes worktree and branch, the task dir stays", async () => {
     await setup();
     const run = await closeT1();
