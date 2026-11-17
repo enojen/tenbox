@@ -4,6 +4,11 @@ import { DEFAULT_FAILURE_PATTERN } from "../../domain/failures.ts";
 
 export const CLAUDE_SESSION_VAR = "CLAUDE_CODE_SESSION_ID";
 
+export interface TenportServer {
+  url: string;
+  token: string;
+}
+
 export interface Env {
   cwd: string;
   /** `~/wt`; `TENBOX_WT_ROOT` overrides. */
@@ -28,6 +33,7 @@ export interface Env {
   claudeSession: string | null;
   /** `CLAUDECODE` is set: the command runs inside a Claude Code session, so an agent runs it. */
   agent: boolean;
+  tenport: TenportServer | null;
 }
 
 /** Read at each call, so tests can set `process.env` and `process.chdir` first. */
@@ -46,7 +52,15 @@ export function env(): Env {
     debug: process.env.TENBOX_DEBUG === "1",
     claudeSession: process.env[CLAUDE_SESSION_VAR] ?? null,
     agent: Boolean(process.env.CLAUDECODE),
+    tenport: tenportServer(),
   };
+}
+
+function tenportServer(): TenportServer | null {
+  const url = process.env.TENPORT_URL;
+  const token = process.env.TENPORT_TOKEN;
+  if (!url || !token) return null;
+  return { url, token };
 }
 
 /** Human text goes to stderr; stdout carries exactly one JSON document per command. */

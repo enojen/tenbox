@@ -63,6 +63,8 @@ function testEnv(paths: TempPaths): EnvValues {
     TENBOX_HOME: tenboxHome,
     WTBASE_DIR: path.join(root, "baselines"),
     CLAUDE_CONFIG_DIR: path.join(root, "claude"),
+    TENPORT_URL: undefined,
+    TENPORT_TOKEN: undefined,
     GIT_AUTHOR_NAME: GIT_AUTHOR,
     GIT_AUTHOR_EMAIL: GIT_EMAIL,
     GIT_COMMITTER_NAME: GIT_AUTHOR,

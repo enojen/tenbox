@@ -1,10 +1,12 @@
 import { TenboxError } from "../../domain/errors/index.ts";
 import { taskInProgressError } from "../../domain/errors/tasks.ts";
+import { taskStarted } from "../../domain/event.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { TaskKind } from "../../domain/kinds.ts";
 import { taskDir } from "../../domain/taskDirs.ts";
 import { TASK_STATUS } from "../../domain/tracker.ts";
 import { sessionName, taskBranch, taskWorktreeDir } from "../../domain/worktrees.ts";
+import { events } from "../application/event.ts";
 import { manifests } from "../application/manifests.ts";
 import { plans } from "../application/plans.ts";
 import { projects } from "../application/projects.ts";
@@ -55,6 +57,9 @@ export async function startTask(input: StartInput): Promise<StartResult> {
   if (kind === "docs") await plans.ensureDocs(taskWorktree, task);
   const setup = await setups.run(taskWorktree, manifest.setup, input.setup);
   const status = await tasks.updateStatus(input, tracker, TASK_STATUS.inProgress);
+  await events.send(
+    taskStarted({ project: projectId, task: id, title: task.title, url: task.url }),
+  );
   const claude = await sessions.ensure({
     target: { id, taskWorktree },
     start: {

@@ -6,6 +6,7 @@ import {
   mergeCommitError,
   unmergedError,
 } from "../../domain/errors/prs.ts";
+import { taskClosed } from "../../domain/event.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { TRACKER_KIND } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
@@ -14,6 +15,7 @@ import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { taskBranch, taskWorktreeDir } from "../../domain/worktrees.ts";
+import { events } from "../application/event.ts";
 import { type ExtraGroup, groups } from "../application/groups.ts";
 import { projects } from "../application/projects.ts";
 import { proofs } from "../application/proofs.ts";
@@ -121,6 +123,7 @@ export async function closeTask(input: CloseInput): Promise<CloseResult> {
   const remote = await removeRemoteBranch(closeTarget, mergedOnGithub);
   const closedGroups = await removeGroupRemotes(closeTarget, removedGroups);
   const comment = await postComment({ id, tracker, stats: written.stats });
+  if (projectId !== undefined) await events.send(taskClosed({ project: projectId, task: id }));
   return {
     ok: true,
     task: id,

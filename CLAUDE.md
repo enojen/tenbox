@@ -116,6 +116,8 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). The same watch deletes the PVC of a closed task (a `close.output` newer than the volume, no run created after it, no pod listed) once `TENBOX_SERVER_VOLUME_GRACE_DAYS` (default 3) have passed (`volumeAction`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
+| Tenport event | `task.started` (`tenbox start`) or `task.closed` (`tenbox close`), sent to `POST <TENPORT_URL>/events` with `TENPORT_TOKEN`; nothing is sent without both (`TenportEvent`, `events.send`). Its names and fields are checked against `cli/test/tenport-openapi.json`, a copy of Tenport's `openapi.json`. |
+| outbox | `~/.tenbox/<project id>/outbox/<event id>.json`: one file per Tenport event, written before the send and removed when Tenport takes it; each send sends every file oldest first and stops at the first that fails; a 409 counts as sent, and a 400 or a file that is not JSON is dropped (`outboxDir`). |
 
 ## Code rules
 
@@ -192,8 +194,9 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
   application/  use cases, and one module per glossary concept, named in the plural
     manifests  projects  worktrees/  tasks  setups  sessions  baselines  stats  parts  proofs  builds
     approvals  plans  groups  prs  checks  decisions  notifications  answers  autoAnswers  machines  statusReports
+    event
   infra/        the outside world: files, git, gh, shell, processes, env, baselineStore, http, notify (ntfy),
-                graphql, kubernetes (the cluster API: Jobs and volumes); claude/ (background sessions, session files, transcripts, settings)
+                graphql, kubernetes (the cluster API: Jobs and volumes), tenport (POST /events); claude/ (background sessions, session files, transcripts, settings)
     tracker/      the Tracker adapters and makeTracker
   test/         tempProject.ts, cli.ts (runs the CLI in the test process, inProcess.ts, or as a process for stdin, bundle.ts), hermetic.ts (no real claude, gh or docker in PATH), fakeTools.ts (gh answered in the test process), the end-to-end test and the
                 layers test

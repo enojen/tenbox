@@ -25,8 +25,13 @@ export function settingsError(file: string, reason: string): TenboxError {
 }
 
 /** A remote service answered wrongly; `code` is the service's error code. */
-export function serviceError(service: string, code: string, message: string): TenboxError {
-  return new TenboxError(`${service}: ${message}`, code);
+export function serviceError(
+  service: string,
+  code: string,
+  message: string,
+  details?: unknown,
+): TenboxError {
+  return new TenboxError(`${service}: ${message}`, code, details);
 }
 
 export function trackerError(message: string): TenboxError {
