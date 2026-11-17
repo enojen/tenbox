@@ -7,7 +7,7 @@ import type { ProjectId, TaskId } from "./ids.ts";
  *
  * ~/.tenbox/<project id>/          projectDir
  *   project.json                   projectFile
- *   outbox.jsonl                   outboxFile
+ *   outbox/<event id>.json         outboxDir, outboxEventFile
  *   <id>/                          taskDir; `.tenbox` in the task worktree links here
  *     task.json  task.md           taskFile, taskMdFile
  *     plan.json  plan.md           planFile, planMdFile
@@ -35,7 +35,10 @@ export function projectDir(tenboxHome: string, id: ProjectId): string {
 /** `project.json` in a project's folder: its id and name. */
 export const projectFile = (dir: string): string => path.join(dir, "project.json");
 
-export const outboxFile = (dir: string): string => path.join(dir, "outbox.jsonl");
+export const outboxDir = (dir: string): string => path.join(dir, "outbox");
+
+export const outboxEventFile = (outbox: string, id: string): string =>
+  path.join(outbox, `${id}.json`);
 
 /** `~/.tenbox/<project id>/<id>`: the files of one task; `.tenbox` in its worktree links here. */
 export function taskDir(tenboxHome: string, projectId: ProjectId, id: TaskId): string {

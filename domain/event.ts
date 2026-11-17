@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { badFileError } from "./errors/index.ts";
 import type { ProjectId, TaskId } from "./ids.ts";
 import { jsons } from "./utils.ts";
 
@@ -26,16 +25,11 @@ const TaskClosedBodySchema = z.object({
   task: text,
 });
 
-const TenportEventSchema = z.discriminatedUnion("type", [
-  TaskStartedBodySchema.extend(StampSchema.shape),
-  TaskClosedBodySchema.extend(StampSchema.shape),
-]);
-
 export type TenportEventBody =
   | z.infer<typeof TaskStartedBodySchema>
   | z.infer<typeof TaskClosedBodySchema>;
 
-export type TenportEvent = z.infer<typeof TenportEventSchema>;
+export type TenportEvent = TenportEventBody & z.infer<typeof StampSchema>;
 
 export interface StartedTask {
   project: ProjectId;
@@ -66,12 +60,6 @@ export function taskClosed(closed: ClosedTask): TenportEventBody {
   return { type: TENPORT_EVENT.taskClosed, project, task };
 }
 
-export function readOutboxLines(content: string, file: string): TenportEvent[] {
-  const { values, skipped } = jsons.checkLines(TenportEventSchema, content);
-  if (skipped > 0) throw badFileError(file, [`${skipped} lines are not task events`]);
-  return values;
-}
-
-export function outboxText(events: TenportEvent[]): string {
-  return events.map((event) => `${JSON.stringify(event)}\n`).join("");
+export function outboxEvent(text: string): unknown {
+  return jsons.parse(text);
 }

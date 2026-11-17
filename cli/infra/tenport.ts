@@ -1,11 +1,10 @@
 import { z } from "zod";
-import type { TenportEvent } from "../../domain/event.ts";
 import type { TenportServer } from "./env.ts";
 import { failedStatus, http } from "./http.ts";
 
 interface EventsPost {
   server: TenportServer;
-  events: TenportEvent[];
+  events: unknown[];
 }
 
 const HTTP_CONFLICT = 409;

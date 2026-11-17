@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { outboxText, readOutboxLines, taskClosed, taskStarted } from "./event.ts";
+import { outboxEvent, taskStarted } from "./event.ts";
 import { projectId, taskId } from "./ids.ts";
 
 const TITLE_MAX_CHARS = 200;
@@ -28,13 +28,7 @@ test("a long title is cut to the characters Tenport keeps", () => {
   expect(body).toHaveProperty("title", "ç".repeat(TITLE_MAX_CHARS));
 });
 
-test("the outbox reads back what it wrote", () => {
-  const event = { id: "e1", at: "2026-11-16T20:00:00.000Z", ...taskClosed(task) };
-  const text = outboxText([event, event]);
-  expect(readOutboxLines(text, "outbox.jsonl")).toEqual([event, event]);
-});
-
-test("an outbox line that is not a task event is a bad file", () => {
-  const text = '{"type":"task.exploded"}\n';
-  expect(() => readOutboxLines(text, "outbox.jsonl")).toThrow("outbox.jsonl");
+test("an outbox event is any JSON, and a text that is not JSON is undefined", () => {
+  expect(outboxEvent('{"type":"task.paused"}\n')).toEqual({ type: "task.paused" });
+  expect(outboxEvent("{not json")).toBeUndefined();
 });

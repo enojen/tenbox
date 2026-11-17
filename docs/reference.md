@@ -418,13 +418,16 @@ last step, to `POST <TENPORT_URL>/events` as a JSON array of one event: `{ id, a
 project, task }`, `id` a UUID v7, `at` the time, `project` the project id of `tenbox.yaml`;
 `task.started` adds `title` (trimmed, cut to 200 characters, left out when empty) and `url` (the
 tracker link, left out when it does not start with `http://` or `https://`). A close without a
-project id sends nothing. Without both variables nothing is sent. Each send first sends the
-events of the outbox, `~/.tenbox/<project id>/outbox.jsonl`, one at a time and oldest first; at
-the first that fails (no answer, or any answer but 2xx and 409) that event and every later one
-stay in the outbox, with one stderr line (`task event kept in the outbox: ...`). A 409 answer
-means Tenport knows the task's state already (a start of an open task, a close of a closed one): the event is
-dropped. An outbox line that is not an event gives one stderr line (`task event not sent: ...`)
-and nothing is sent. The command's JSON and exit code stay the same.
+project id sends nothing. Without both variables nothing is sent. Each event is first written to its own file in the
+outbox, `~/.tenbox/<project id>/outbox/<event id>.json`, so a command that dies during the send
+keeps it. Then the send sends every file of the outbox, one at a time and oldest first (the
+UUID v7 file names sort by time), as it is: a file of a type this tenbox does not know goes too.
+A file Tenport takes is removed. At the first that fails (no answer, or any answer but 2xx, 400 and 409)
+that event and every later one stay, with one stderr line (`task event kept in the outbox:
+...`). A 409 answer means Tenport knows the task's state already (a start of an open task, a
+close of a closed one): the file is removed. A 400 answer, or a file that is not JSON, means
+Tenport will never take it: the file is removed with one stderr line (`task event dropped:
+...`). Two commands at the same time may send the same event; Tenport skips it by its id. The command's JSON and exit code stay the same.
 
 Layers, later ones win: `tenbox.yaml` (task worktree, else main checkout), then
 `tenbox.local.yaml` in the main checkout, then in the task worktree, then

@@ -13,6 +13,7 @@ export interface FakeTenport {
   posts(): TenportPost[];
   events(): Record<string, unknown>[];
   answerNext(status: number): void;
+  beforeAnswer(step: () => Promise<void>): void;
   use(): void;
   stop(): void;
 }
@@ -22,12 +23,15 @@ export const TENPORT_TOKEN = "tbx_test";
 export function startFakeTenport(): FakeTenport {
   const posts: TenportPost[] = [];
   const answers: number[] = [];
+  const steps: (() => Promise<void>)[] = [];
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
       const text = await request.text();
       const body = jsons.parse(text);
       const events = Array.isArray(body) ? body.filter(objects.isRecord) : [];
+      const step = steps.shift();
+      if (step !== undefined) await step();
       const status = answers.shift() ?? HTTP_OK;
       posts.push({
         path: new URL(request.url).pathname,
@@ -44,6 +48,7 @@ export function startFakeTenport(): FakeTenport {
     posts: () => posts,
     events: () => posts.flatMap((post) => post.events),
     answerNext: (status) => answers.push(status),
+    beforeAnswer: (step) => steps.push(step),
     use: () => {
       process.env.TENPORT_URL = url;
       process.env.TENPORT_TOKEN = TENPORT_TOKEN;

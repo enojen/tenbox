@@ -117,7 +117,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
 | Tenport event | `task.started` (`tenbox start`) or `task.closed` (`tenbox close`), sent to `POST <TENPORT_URL>/events` with `TENPORT_TOKEN`; nothing is sent without both (`TenportEvent`, `events.send`). |
-| outbox | `~/.tenbox/<project id>/outbox.jsonl`: the Tenport events not sent yet, oldest first; each send sends them first and keeps the first that fails with every later one; a 409 answer counts as sent (`outboxFile`). |
+| outbox | `~/.tenbox/<project id>/outbox/<event id>.json`: one file per Tenport event, written before the send and removed when Tenport takes it; each send sends every file oldest first and stops at the first that fails; a 409 counts as sent, and a 400 or a file that is not JSON is dropped (`outboxDir`). |
 
 ## Code rules
 
