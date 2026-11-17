@@ -98,7 +98,6 @@ function watchCluster(input: ClusterWatch): Watching[] {
     kubernetes: kubernetes.inCluster(env.kubernetesUrl),
     hetzner: env.hetzner,
     now: () => new Date(),
-    volumeEnv: env.volumes,
   });
   if (credentials === null) return [watchingNodes];
   return [watchingNodes, runTokens.watch(db, credentials.watch)];

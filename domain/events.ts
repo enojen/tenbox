@@ -307,19 +307,10 @@ export function readNodeEvent(text: string, file: string): NodeEvent {
   return result.value;
 }
 
-/** A task volume of the cluster came or went; only the server makes these, from its volume watch. */
+/** A task volume of the cluster came or went; only stored ones remain, for the cost report. */
 const VOLUME_EVENT_NAME = { added: "volume.added", removed: "volume.removed" } as const;
 
 export const VOLUME_EVENT_NAMES = Object.values(VOLUME_EVENT_NAME);
-
-/** A Kubernetes storage quantity: whole digits and a binary or decimal suffix (`10Gi`, `5G`). */
-const STORAGE_PATTERN = /^([0-9]+)([KMGTPE]i|[kMGTPE])?$/;
-const BINARY_SUFFIXES = ["Ki", "Mi", "Gi", "Ti", "Pi", "Ei"];
-const DECIMAL_SUFFIXES = ["k", "M", "G", "T", "P", "E"];
-const BINARY_STEP = 1024n;
-const DECIMAL_STEP = 1000n;
-/** Hetzner's "GB" of a volume is a GiB. */
-const GIB = suffixBytes("Gi");
 
 const volumeBase = z.object({
   /** The PVC name: the event's subject. */
@@ -348,115 +339,12 @@ const VolumeRemovedSchema = volumeBase.extend({
 const VolumeEventSchema = z.discriminatedUnion("event", [VolumeAddedSchema, VolumeRemovedSchema]);
 
 export type VolumeEvent = z.infer<typeof VolumeEventSchema>;
-export type VolumeAdded = z.infer<typeof VolumeAddedSchema>;
-type VolumeRemoved = z.infer<typeof VolumeRemovedSchema>;
-/** A Hetzner price, net and gross, as decimal text. */
-export type Price = z.infer<typeof PriceSchema>;
-
-/** A Bound task PVC the cluster lists. */
-export interface ListedVolume {
-  name: string;
-  uid: string;
-  task: string;
-  /** The PVC's creationTimestamp, UTC. */
-  created: string;
-  /** `status.capacity.storage`, a Kubernetes quantity. */
-  capacity: string;
-}
-
-/** The volume events stored so far and the volumes of one poll. */
-interface VolumeState {
-  stored: VolumeEvent[];
-  listed: ListedVolume[];
-}
-
-/** One new volume and the price of a GB-month. */
-export interface NewVolume {
-  volume: ListedVolume;
-  price: Price;
-}
-
-/** One removal of an added volume. */
-interface VolumeRemoval {
-  added: VolumeAdded;
-  late: boolean;
-}
-
-/** One id per PVC and event, so a server that polls again stores nothing twice. */
-export function volumeEventId(event: VolumeEvent): string {
-  return `${event.event}:${event.uid}`;
-}
-
-const isVolumeAdded = (event: VolumeEvent): event is VolumeAdded =>
-  event.event === VOLUME_EVENT_NAME.added;
-
-const removedUids = (stored: VolumeEvent[]): Set<string> =>
-  new Set(stored.filter((event) => !isVolumeAdded(event)).map((event) => event.uid));
-
-/** Volumes are matched by PVC uid: a PVC name may come again. */
-export function volumeChanges(state: VolumeState): Changes<VolumeAdded, ListedVolume> {
-  return presenceChanges({
-    added: state.stored.filter(isVolumeAdded),
-    removed: removedUids(state.stored),
-    listed: state.listed,
-    addedKey: (event) => event.uid,
-    listedKey: (volume) => volume.uid,
-  });
-}
-
-export function volumesUp(stored: VolumeEvent[]): VolumeAdded[] {
-  const removed = removedUids(stored);
-  return stored.filter(isVolumeAdded).filter((event) => !removed.has(event.uid));
-}
-
-/** A new volume, sized in GiB from its capacity; `bad-file` for a capacity that is not a quantity. */
-export function volumeAdded(input: NewVolume): VolumeAdded {
-  const { volume, price } = input;
-  return {
-    event: VOLUME_EVENT_NAME.added,
-    volume: volume.name,
-    uid: volume.uid,
-    task: volume.task,
-    size_gb: capacityGib(volume),
-    price_per_gb_month: price,
-  };
-}
-
-/** The name, task and size of a removed volume come from its `volume.added`. */
-export function volumeRemoved(removal: VolumeRemoval): VolumeRemoved {
-  const { added, late } = removal;
-  return {
-    event: VOLUME_EVENT_NAME.removed,
-    volume: added.volume,
-    uid: added.uid,
-    task: added.task,
-    size_gb: added.size_gb,
-    late,
-  };
-}
 
 /** The body of a stored volume event; `bad-file` unless it fits `VolumeEventSchema`. */
 export function readVolumeEvent(text: string, file: string): VolumeEvent {
   const result = jsons.check(VolumeEventSchema, text);
   if (!result.ok) throw badFileError(file, result.issues);
   return result.value;
-}
-
-function capacityGib(volume: ListedVolume): number {
-  const match = STORAGE_PATTERN.exec(volume.capacity);
-  if (match === null) {
-    throw badFileError(`status.capacity.storage of ${volume.name}`, [
-      `not a quantity: ${volume.capacity}`,
-    ]);
-  }
-  const bytes = BigInt(match[1] ?? "") * suffixBytes(match[2] ?? "");
-  return Number((bytes + GIB - 1n) / GIB);
-}
-
-function suffixBytes(suffix: string): bigint {
-  const binary = BINARY_SUFFIXES.indexOf(suffix);
-  if (binary >= 0) return BINARY_STEP ** BigInt(binary + 1);
-  return DECIMAL_STEP ** BigInt(DECIMAL_SUFFIXES.indexOf(suffix) + 1);
 }
 
 /** The box container of a Job pod ended, or its pod went before it did; only the server makes it, from its Job watch. */
@@ -620,107 +508,4 @@ export function closeOutput(log: string): CloseOutput | null {
   if (start < 0 || end < 0) return null;
   const result = jsons.check(CloseOutputSchema, lines.slice(start, end + 1).join("\n"));
   return result.ok ? result.value : null;
-}
-
-/** A notice the server sent about an idle open task volume; only the server makes it, from its volume watch. */
-export const VOLUME_IDLE = "volume.idle";
-
-const DAY_MS = 86_400_000;
-/** An open task volume with no run for this many days gets one notice. */
-const IDLE_DAYS = 7;
-
-/** One live volume, what its task did, and the rules it goes by. */
-export interface VolumeCheck {
-  volume: ListedVolume;
-  /** The `at` of the newest `close.output` of the volume's task; null when it has none. */
-  closedAt: string | null;
-  /** The `job.finished` bodies of the volume's task. */
-  runs: JobFinished[];
-  now: Date;
-  /** The days a closed task's volume stays after its close. */
-  graceDays: number;
-}
-
-/** A closed task's volume whose grace period is over. */
-interface VolumeDeletion {
-  action: "delete";
-  volume: ListedVolume;
-}
-
-/** An open task's volume with no run for `IDLE_DAYS` or more. */
-export interface VolumeNotice {
-  action: "notify";
-  volume: ListedVolume;
-  /** `TENBOX_PROJECT` of the newest run that has one, else the volume name. */
-  project: string;
-  /** The newest run end, or the volume's creation when that is newer: the start of the idle stretch. */
-  since: string;
-  days: number;
-}
-
-export type VolumeAction = VolumeDeletion | VolumeNotice;
-
-/** What identifies one notice: the volume and the start of its idle stretch. */
-type NoticeKey = Pick<VolumeNotice, "volume" | "since">;
-
-/** The body of a stored `volume.idle`; not part of `EventSchema`, so `POST /events` refuses it. */
-export interface VolumeIdle {
-  event: typeof VOLUME_IDLE;
-  volume: string;
-  uid: string;
-  task: string;
-  since: string;
-  days: number;
-}
-
-/**
- * A volume is closed when its task has a close newer than the volume and no run created after
- * it; else it is open. Null when nothing is due: a closed one inside its grace period, an open one
- * with a run in the last `IDLE_DAYS` days.
- */
-export function volumeAction(check: VolumeCheck): VolumeAction | null {
-  const { volume, closedAt, now } = check;
-  if (closedAt !== null && isClosedVolume(check, closedAt)) {
-    const over = now.getTime() - Date.parse(closedAt) >= check.graceDays * DAY_MS;
-    return over ? { action: "delete", volume } : null;
-  }
-  const since = idleSince(check);
-  const days = Math.floor((now.getTime() - Date.parse(since)) / DAY_MS);
-  if (days < IDLE_DAYS) return null;
-  return { action: "notify", volume, project: runProject(check), since, days };
-}
-
-function isClosedVolume(check: VolumeCheck, closedAt: string): boolean {
-  const closed = Date.parse(closedAt);
-  if (Date.parse(check.volume.created) > closed) return false;
-  return check.runs.every((run) => Date.parse(run.created) <= closed);
-}
-
-function idleSince(check: VolumeCheck): string {
-  const times = [check.volume.created, ...check.runs.map((run) => run.finished)];
-  return times.reduce((newest, time) => (Date.parse(time) > Date.parse(newest) ? time : newest));
-}
-
-function runProject(check: VolumeCheck): string {
-  const newestFirst = [...check.runs].sort(
-    (a, b) => Date.parse(b.finished) - Date.parse(a.finished),
-  );
-  return newestFirst.find((run) => run.project !== null)?.project ?? check.volume.name;
-}
-
-/** One id per volume and idle stretch, so a notice is sent once until a new run ends. */
-export function volumeIdleId(notice: NoticeKey): string {
-  return `${VOLUME_IDLE}:${notice.volume.uid}:${notice.since}`;
-}
-
-export function volumeIdle(notice: VolumeNotice): VolumeIdle {
-  const { volume, since, days } = notice;
-  return {
-    event: VOLUME_IDLE,
-    volume: volume.name,
-    uid: volume.uid,
-    task: volume.task,
-    since,
-    days,
-  };
 }

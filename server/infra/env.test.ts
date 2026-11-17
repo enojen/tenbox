@@ -12,15 +12,12 @@ const KEYS = [
   "KUBERNETES_SERVICE_PORT",
   "HCLOUD_TOKEN",
   "HCLOUD_ENDPOINT",
-  "TENBOX_SERVER_VOLUME_GRACE_DAYS",
-  "TENBOX_SERVER_NTFY",
   "TENBOX_SERVER_GITHUB_APP_ID",
   "TENBOX_SERVER_GITHUB_APP_KEY_FILE",
   "TENBOX_SERVER_RUN_CREDENTIAL_KEY_FILE",
   "TENBOX_SERVER_INJECTOR_TOKEN_FILE",
   "GITHUB_API_URL",
 ];
-const VOLUME_DEFAULTS = { graceDays: 3, ntfy: null };
 const saved: Record<string, string | undefined> = Object.fromEntries(
   KEYS.map((key) => [key, process.env[key]]),
 );
@@ -80,7 +77,6 @@ test("in-cluster: the service URL and the Hetzner token, with the default endpoi
   expect(nodeWatchEnv()).toEqual({
     kubernetesUrl: "https://10.43.0.1:443",
     hetzner: { url: "https://api.hetzner.cloud/v1", token: "t" },
-    volumes: VOLUME_DEFAULTS,
     githubApp: null,
     runCredentials: null,
   });
@@ -95,7 +91,6 @@ test("KUBERNETES_SERVICE_PORT and HCLOUD_ENDPOINT override the defaults; an IPv6
   expect(nodeWatchEnv()).toEqual({
     kubernetesUrl: "https://[fd00::1]:6443",
     hetzner: { url: "http://127.0.0.1:9000/v1", token: "t" },
-    volumes: VOLUME_DEFAULTS,
     githubApp: null,
     runCredentials: null,
   });
@@ -107,30 +102,6 @@ test("a KUBERNETES_SERVICE_PORT that is not a port is an error", () => {
   process.env.KUBERNETES_SERVICE_PORT = "https";
   process.env.HCLOUD_TOKEN = "t";
   expect(() => nodeWatchEnv()).toThrow(/KUBERNETES_SERVICE_PORT/);
-});
-
-test("TENBOX_SERVER_VOLUME_GRACE_DAYS and TENBOX_SERVER_NTFY set the volume rules", () => {
-  for (const key of KEYS) delete process.env[key];
-  process.env.KUBERNETES_SERVICE_HOST = "10.43.0.1";
-  process.env.HCLOUD_TOKEN = "t";
-  process.env.TENBOX_SERVER_VOLUME_GRACE_DAYS = "0";
-  process.env.TENBOX_SERVER_NTFY = "https://ntfy.example.com/topic";
-  expect(nodeWatchEnv()?.volumes).toEqual({ graceDays: 0, ntfy: "https://ntfy.example.com/topic" });
-  process.env.TENBOX_SERVER_NTFY = " ";
-  expect(nodeWatchEnv()?.volumes.ntfy).toBeNull();
-});
-
-test("a grace that is not a whole number of days or an ntfy that is not a URL is an error; the URL is not shown", () => {
-  for (const key of KEYS) delete process.env[key];
-  process.env.KUBERNETES_SERVICE_HOST = "10.43.0.1";
-  process.env.HCLOUD_TOKEN = "t";
-  for (const days of ["abc", "-1", "1.5", ""]) {
-    process.env.TENBOX_SERVER_VOLUME_GRACE_DAYS = days;
-    expect(() => nodeWatchEnv()).toThrow(/TENBOX_SERVER_VOLUME_GRACE_DAYS/);
-  }
-  delete process.env.TENBOX_SERVER_VOLUME_GRACE_DAYS;
-  process.env.TENBOX_SERVER_NTFY = "ntfy.example.com/secret-topic";
-  expect(() => nodeWatchEnv()).toThrow(/^TENBOX_SERVER_NTFY "\(not shown\)"/);
 });
 
 function inCluster(): void {
