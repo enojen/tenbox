@@ -171,7 +171,7 @@ restore_home() {
   }
   case "$code" in
     200)
-      zstd -q -dc "$archive_file" | tar -xf - -C "$home"
+      zstd -q -dc "$archive_file" | tar -xf - -C "$home" --no-overwrite-dir
       rm -f "$archive_file"
       home_from_archive=1
       log "home restored from the task archive"
