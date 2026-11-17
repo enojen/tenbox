@@ -5,6 +5,7 @@ import {
   machineBusyError,
   machineFailedError,
   machineTimeoutError,
+  noArchiveBucketError,
   noLoginError,
   noMachineRunError,
   noProjectIdError,
@@ -25,13 +26,16 @@ import {
   RUN_STATUS,
   type RunConclusion,
   type RunStatus,
+  taskArchiveKey,
   VOLUME_STATE,
   type VolumeState,
 } from "../../domain/machines.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
+import { archives } from "../infra/archives.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
-import { env } from "../infra/env.ts";
+import { type ArchiveBucket, env } from "../infra/env.ts";
+import { files } from "../infra/files.ts";
 import { gh } from "../infra/gh.ts";
 import { git } from "../infra/git.ts";
 import {
@@ -150,6 +154,14 @@ export interface MachineVolume {
   state: VolumeState;
 }
 
+interface MachineRemoval {
+  volume: MachineVolume;
+  archive: MachineVolume;
+}
+
+const ARCHIVE_URL_HOURS = 24;
+const SECONDS_PER_HOUR = 3600;
+
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
   id: TaskId;
@@ -168,6 +180,7 @@ interface CommandRun {
 async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const { id, words, deadlineMs } = input;
   const cmd = parseCommand(input);
+  requireArchiveBucket();
   await ensureLogin();
   const { project, manifest } = await projects.get(env().cwd);
   const projectId = manifest.id;
@@ -189,12 +202,30 @@ async function stop(id: TaskId): Promise<string[]> {
 }
 
 /** Deletes the volume of the task unless a Job of the task is active. */
-async function remove(id: TaskId): Promise<MachineVolume> {
+async function remove(id: TaskId): Promise<MachineRemoval> {
+  const bucket = requireArchiveBucket();
+  const { manifest, project } = await projects.get(env().cwd);
+  if (manifest.id === undefined) throw noProjectIdError(project.mainDir);
   const cluster = await kubernetes.readCluster(env().kubeconfig);
   await ensureIdle(cluster, id);
   const name = `task-${kubeName(id)}`;
-  const deleted = await kubernetes.removeVolume({ cluster, name });
-  return { name, state: deleted ? VOLUME_STATE.deleted : VOLUME_STATE.missing };
+  const volumeDeleted = await kubernetes.removeVolume({ cluster, name });
+  const key = taskArchiveKey(manifest.id, id);
+  const archiveDeleted = await archives.remove({ bucket, key });
+  return {
+    volume: { name, state: removalState(volumeDeleted) },
+    archive: { name: key, state: removalState(archiveDeleted) },
+  };
+}
+
+function removalState(deleted: boolean): VolumeState {
+  return deleted ? VOLUME_STATE.deleted : VOLUME_STATE.missing;
+}
+
+function requireArchiveBucket(): ArchiveBucket {
+  const bucket = env().archiveBucket;
+  if (bucket === null) throw noArchiveBucketError();
+  return bucket;
 }
 
 /** The task id in lower case, `_` as `-`: a Kubernetes name. */
@@ -423,15 +454,25 @@ async function runJob(command: CommandRun): Promise<string> {
     ),
   );
   const fields = await templateFields({ command, services });
-  const volume = await kubernetes.readTemplate({ file: path.join(dir, "pvc.yaml"), fields });
+  const volume = await readVolumeTemplate(dir, fields);
   const file = path.join(dir, "job.yaml");
   const template = await kubernetes.readTemplate({ file, fields });
   const job = kubernetes.addServices({ file, job: template, services });
   if (deadlineMs !== null) await waitIdle({ cluster, id, deadlineMs });
   await ensureIdle(cluster, id);
   await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
-  await kubernetes.ensureVolume({ cluster, object: volume });
+  if (volume !== null) await kubernetes.ensureVolume({ cluster, object: volume });
   return kubernetes.createJob({ cluster, object: job });
+}
+
+async function readVolumeTemplate(
+  dir: string,
+  fields: TemplateFields,
+): Promise<Record<string, unknown> | null> {
+  const file = path.join(dir, "pvc.yaml");
+  const exists = await files.exists(file);
+  if (!exists) return null;
+  return kubernetes.readTemplate({ file, fields });
 }
 
 /**
@@ -462,6 +503,11 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
   const name = resourceClass(command);
   const file = path.join(homePath(manifest.machine.template), "classes.yaml");
   const resources = await kubernetes.readClass({ file, name });
+  const archive = archives.presign({
+    bucket: requireArchiveBucket(),
+    key: taskArchiveKey(projectId, id),
+    expiresInSeconds: ARCHIVE_URL_HOURS * SECONDS_PER_HOUR,
+  });
   return {
     name: kubeName(id),
     task: id,
@@ -472,13 +518,16 @@ async function templateFields(input: FieldsInput): Promise<TemplateFields> {
     base: manifest.base,
     gitName: author.name,
     gitEmail: author.email,
-    image: BOX_IMAGE,
+    image: env().boxImage ?? BOX_IMAGE,
     command: command.cmd,
     cmd: words.map(shellWord).join(" "),
     env: JSON.stringify(boxEnv),
     class: name,
     cpu: resources.cpu,
     memory: resources.memory,
+    archiveDownload: archive.download,
+    archiveUpload: archive.upload,
+    setup: manifest.setup ?? "",
   };
 }
 

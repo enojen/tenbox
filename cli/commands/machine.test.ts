@@ -18,6 +18,9 @@ const TOKEN = "SECRET-TOKEN";
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
 const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
+const BUCKET = "tenbox-test";
+const BUCKET_SECRET = "SECRET-BUCKET-KEY";
+const ARCHIVE_PATH = `/${BUCKET}/tasks/k7f3qa/TEN-1.tar.zst`;
 const PROJECT_SECRET = "project-k7f3qa";
 const TRACKER_KEY = "SECRET-TRACKER-KEY";
 const GITHUB_TOKEN = "github_pat_SECRET";
@@ -60,6 +63,9 @@ spec:
             - name: TENBOX_ENV
               value: |-
                 __ENV__
+            - { name: TENBOX_ARCHIVE_GET, value: "__ARCHIVE_GET__" }
+            - { name: TENBOX_ARCHIVE_PUT, value: "__ARCHIVE_PUT__" }
+            - { name: TENBOX_SETUP, value: "__SETUP__" }
             - name: TRACKER_API_KEY
               valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: tracker_api_key } }
       volumes:
@@ -128,6 +134,7 @@ interface FakeApi {
   secretStatus: number;
   /** The answer status of a DELETE, of a Job or of a PVC. */
   deleteStatus: number;
+  archiveExists: boolean;
   /** The items of every Job list. */
   jobs: unknown[];
   /** The items of every pod list. */
@@ -156,6 +163,7 @@ function startFakeApi(): FakeApi {
     pvcStatus: HTTP_CREATED,
     secretStatus: HTTP_CREATED,
     deleteStatus: HTTP_OK,
+    archiveExists: true,
     jobs: [],
     pods: [],
     nextPods: null,
@@ -174,6 +182,7 @@ function startFakeApi(): FakeApi {
       const body = await readBody(request);
       const auth = request.headers.get("authorization");
       api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
+      if (url.pathname.startsWith(`/${BUCKET}/`)) return bucketAnswer(api, request.method);
       if (url.pathname.endsWith("/log")) {
         return new Response(api.log, { status: api.logStatus });
       }
@@ -191,6 +200,11 @@ function startFakeApi(): FakeApi {
   return api;
 }
 
+function bucketAnswer(api: FakeApi, method: string): Response {
+  if (method === "DELETE") return new Response(null, { status: 204 });
+  return new Response(null, { status: api.archiveExists ? HTTP_OK : HTTP_NOT_FOUND });
+}
+
 interface Creation {
   path: string;
   body: unknown;
@@ -204,8 +218,10 @@ function created(api: FakeApi, creation: Creation): Response {
   return Response.json(body, { status: HTTP_CREATED });
 }
 
+const BODYLESS_METHODS = ["GET", "DELETE", "HEAD"];
+
 const readBody = (request: Request): Promise<unknown> =>
-  request.method === "GET" || request.method === "DELETE" ? Promise.resolve(null) : request.json();
+  BODYLESS_METHODS.includes(request.method) ? Promise.resolve(null) : request.json();
 
 function podList(api: FakeApi): Response {
   const items = api.pods;
@@ -418,6 +434,10 @@ describe("machine", () => {
     await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
     await writeLogin(Date.now() + DAY_MS);
     env.KUBECONFIG = kubeFile;
+    env.TENBOX_BUCKET = `${api.url}/${BUCKET}`;
+    env.TENBOX_BUCKET_REGION = "hel1";
+    env.TENBOX_BUCKET_KEY = "bucket-key";
+    env.TENBOX_BUCKET_SECRET = BUCKET_SECRET;
     fakeTool("gh", (args) =>
       args.join(" ") === "api user" ? { stdout: JSON.stringify(GITHUB_USER) } : { code: 1 },
     );
@@ -436,7 +456,8 @@ describe("machine", () => {
     const meta = jobBody(job).metadata;
     expect(meta.name).toMatch(JOB_NAME);
     expect(meta.labels).toEqual({ app: "tenyard", task: "TEN-1" });
-    expect(jobEnv(job)).toEqual({
+    const { TENBOX_ARCHIVE_GET, TENBOX_ARCHIVE_PUT, ...rest } = jobEnv(job);
+    expect(rest).toEqual({
       TENBOX_TASK: "TEN-1",
       TENBOX_PROJECT: "demo",
       TENBOX_REPO: "https://github.com/o/demo.git",
@@ -445,7 +466,13 @@ describe("machine", () => {
       TENBOX_GIT_EMAIL: "42+octo@users.noreply.github.com",
       TENBOX_CMD: "tenbox build TEN-1",
       TENBOX_ENV: "{}",
+      TENBOX_SETUP: "",
     });
+    expect(TENBOX_ARCHIVE_GET).toStartWith(`${api.url}${ARCHIVE_PATH}?`);
+    expect(TENBOX_ARCHIVE_PUT).toStartWith(`${api.url}${ARCHIVE_PATH}?`);
+    expect(TENBOX_ARCHIVE_GET).not.toBe(TENBOX_ARCHIVE_PUT);
+    expect(TENBOX_ARCHIVE_GET).toContain("X-Amz-Expires=86400");
+    expect(JSON.stringify(job?.body)).not.toContain(BUCKET_SECRET);
     expect(jobValueFrom(job, "TRACKER_API_KEY")).toEqual({
       secretKeyRef: { name: PROJECT_SECRET, key: "tracker_api_key" },
     });
@@ -457,6 +484,35 @@ describe("machine", () => {
       url: `${api.url}${JOBS_PATH}/${meta.name}`,
     });
     expect(run.out).not.toContain(TOKEN);
+  });
+
+  test("without a pvc.yaml in the template machine run posts no PVC", async () => {
+    await files.remove(path.join(template, "pvc.yaml"));
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, JOBS_PATH]);
+  });
+
+  test("the setup of the manifest reaches the Job as TENBOX_SETUP", async () => {
+    await writeManifest(`${machineLine()}setup: bun install\n`);
+    const run = await build();
+    expect(run.code).toBe(0);
+    expect(jobEnv(posts().find((c) => c.path === JOBS_PATH)).TENBOX_SETUP).toBe("bun install");
+  });
+
+  test("TENBOX_BOX_IMAGE replaces the box image of the Job", async () => {
+    env.TENBOX_BOX_IMAGE = "ghcr.io/enojen/tenbox-box:abc";
+    const run = await build();
+    expect(run.code).toBe(0);
+    const job = posts().find((c) => c.path === JOBS_PATH);
+    expect(JSON.stringify(job?.body)).toContain(`"image":"ghcr.io/enojen/tenbox-box:abc"`);
+  });
+
+  test("machine run without a bucket refuses before the cluster is called", async () => {
+    env.TENBOX_BUCKET = "";
+    const run = await build();
+    expect([run.code, run.json.code]).toEqual([1, "no-archive-bucket"]);
+    expect(api.calls).toEqual([]);
   });
 
   test("a GitHub user with no name is the author by login", async () => {
@@ -1331,19 +1387,35 @@ describe("machine", () => {
     expect(run.out).not.toContain(base64("KEY"));
   });
 
-  test("machine rm deletes the task's volume when no Job of the task is active", async () => {
+  test("machine rm deletes the task's volume and archive when no Job of the task is active", async () => {
     const run = await machine(["rm", "TEN-1"]);
     expect(run.code).toBe(0);
     expect(run.json).toEqual({
       ok: true,
       task: "TEN-1",
       volume: { name: "task-ten-1", state: "deleted" },
+      archive: { name: "tasks/k7f3qa/TEN-1.tar.zst", state: "deleted" },
     });
     expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
       ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1"],
       ["DELETE", `${PVCS_PATH}/task-ten-1`, ""],
+      ["HEAD", ARCHIVE_PATH, ""],
+      ["DELETE", ARCHIVE_PATH, ""],
     ]);
     expect(api.calls[1]?.auth).toBe(`Bearer ${TOKEN}`);
+    expect(run.out).not.toContain(BUCKET_SECRET);
+  });
+
+  test("machine rm of an archive that is already gone is missing, not an error", async () => {
+    api.archiveExists = false;
+    const run = await machine(["rm", "TEN-1"]);
+    expect(run.code).toBe(0);
+    expect(run.json.archive).toEqual({ name: "tasks/k7f3qa/TEN-1.tar.zst", state: "missing" });
+    expect(api.calls.map((c) => [c.method, c.path])).toEqual([
+      ["GET", JOBS_PATH],
+      ["DELETE", `${PVCS_PATH}/task-ten-1`],
+      ["HEAD", ARCHIVE_PATH],
+    ]);
   });
 
   test("machine rm refuses with machine-busy while a Job of the task is active", async () => {

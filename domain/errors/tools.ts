@@ -101,6 +101,13 @@ export function noProjectIdError(mainDir: string): TenboxError {
   );
 }
 
+export function noArchiveBucketError(): TenboxError {
+  return new TenboxError(
+    "no bucket for the task archive; set TENBOX_BUCKET, TENBOX_BUCKET_REGION, TENBOX_BUCKET_KEY and TENBOX_BUCKET_SECRET",
+    "no-archive-bucket",
+  );
+}
+
 export function noMachineRunError(task: string): TenboxError {
   return new TenboxError(
     `task ${task} has no Job on the cluster; start one with tenbox machine run`,

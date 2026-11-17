@@ -1,7 +1,7 @@
 # Machines
 
 Each Tenbox task runs in a box: a pod of a Job on the cluster, one Job per command, one
-volume per task. The target design is in [`docs/design.md`](../docs/design.md), section
+task archive per task. The target design is in [`docs/design.md`](../docs/design.md), section
 "Machines". This directory holds what exists today: the box image (`k8s/`), the login
 sync (`login/`) and the server image (`server/`).
 
@@ -24,7 +24,7 @@ computer"). The access token lives hours and the refresh token days.
 
 The same box as a container image, for a Kubernetes pod: Ubuntu 24.04, bun, Node 24, gh,
 claude and this repo at `/opt/tenbox`. Corepack is on, so `pnpm` and `yarn` are the version of the
-project's `packageManager` field, downloaded on first use into the volume. The `box` workflow
+project's `packageManager` field, downloaded on first use into the home. The `box` workflow
 (`.github/workflows/box.yml`) builds it on every push to main and pushes
 `ghcr.io/enojen/tenbox-box:<sha>` and `:latest`; a manual run from another branch pushes
 only `:<sha>` of that branch. It runs on `vars.BOX_RUNNER` (default `ubuntu-latest`) and logs
@@ -44,15 +44,23 @@ docker build machines/k8s --build-arg TENBOX_BRANCH=main --build-arg TENBOX_REF=
 
 The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TENBOX_PROJECT`,
 `TENBOX_REPO`, `TENBOX_CMD`, and `TENBOX_BASE`, the `base` of the manifest) and the secrets (`GITHUB_TOKEN`, `CLAUDE_CREDENTIALS`,
-`TRACKER_API_KEY`, `NTFY_URL`), prepares the volume at `/home/tenbox`, clones the project with `--branch $TENBOX_BASE` (on a kept
-volume it fetches the base and checks it out; an unset `TENBOX_BASE` keeps the clone of the default
+`TRACKER_API_KEY`, `NTFY_URL`), prepares the home at `/home/tenbox`, clones the project with `--branch $TENBOX_BASE` (on a home
+from the task archive it fetches the base and checks it out; an unset `TENBOX_BASE` keeps the clone of the default
 branch), stops with exit 1 and a log line naming the base when `tenbox.yaml` is not tracked in the
 main checkout, then runs `TENBOX_CMD`
-in the foreground in the project's main checkout. The whole container runs as `tenbox`, with no
-root and no `sudo`; tenyard's Job gives a new volume to its group with `fsGroup`. `env -i` drops
+in the foreground in the project's main checkout. Its claude trusts the main checkout, the task
+worktree, `/opt/tenbox` and `~/.tenbox`, the folder of the task dirs, because `claude --bg`
+refuses an added folder it does not trust. The whole container runs as `tenbox`, with no
+root and no `sudo`; tenyard's Job gives the home to its group with `fsGroup`. With
+`TENBOX_ARCHIVE_GET` set, the box first downloads the task archive and unpacks it into the home; an
+answer 404 is a new home, and any other failure stops the boot with exit 1 and saves nothing, so a
+good archive is never replaced by an empty home. After a restore it runs `TENBOX_SETUP` (the
+manifest's `setup`) in the task worktree, when that exists, because the archive holds no
+`node_modules`; a failed setup stops the boot with exit 1. `env -i` drops
 the rest of the env, so the command gets only `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the
 egress settings the Job sets (`HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, each also in lowercase,
-`NODE_USE_ENV_PROXY`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`) and the
+`NODE_USE_ENV_PROXY`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING`, and the image's
+`DISABLE_AUTOUPDATER`, so claude does not download itself into the home) and the
 project's variables: `TENBOX_ENV` holds `machine.env` of `tenbox.yaml` as one JSON object, each
 key one variable; a key named like one of the box's loses to the box's, and a `TENBOX_ENV` that is not JSON stops the boot. The command may leave a
 claude session behind (`tenbox start` and `tenbox build` do): the container then lives while
@@ -61,26 +69,32 @@ left or the sessions have been idle for `IDLE_MINUTES` (1; a plan that waits for
 the sessions of this run count: before the command the box keeps the `id` + `pid` key of each
 session, and after it a session counts when its key is new or its status is `busy`. With no
 counted session the box logs `no session of this run` and ends at once, so a short command such as
-`tenbox status` does not wait for an old idle session on the volume. A
+`tenbox status` does not wait for an old idle session in the home. A
 session resumed by `tenbox answer` can keep `state: working` after its turn ended, so `state` does
 not count. Last it logs one line with what the
 container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s, pids peak <n>, oom_kill <n>`, from
 `memory.peak`, `cpu.stat`, `pids.peak` (processes and threads) and `memory.events` of its cgroup (`oom_kill` counts the processes the kernel killed at the memory limit: above 0, `tenbox machine ls` and `logs` show reason `OOMKilled` even when the container ended with exit 0); the peak counts the file cache too, so the real need
 is at most that. tenyard's resource classes come from these lines. It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
-On exit, also after a SIGTERM (exit 143), it removes the logins from the volume:
+On exit, also after a SIGTERM (exit 143), it removes the logins from the home:
 `~/.claude/.credentials.json`, gh's `hosts.yml` and the main checkout's `tenbox.local.yaml`; the
-next boot writes them again. A SIGKILL leaves them until that next boot.
+next boot writes them again. Then, when the archive was restored or was new and
+`TENBOX_ARCHIVE_PUT` is set, it packs the home with tar and zstd, without `node_modules`,
+`~/.cache`, `~/.npm`, `~/.bun/install/cache`, `~/.local/share/claude` and `~/.local/share/pnpm`,
+and uploads it; a failed pack or upload is one log line and keeps the old archive. A SIGKILL or
+an OOM kill of the box saves nothing: the next run starts from the archive of the run before.
 
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
 reads the kubeconfig (`$KUBECONFIG`, else
-`~/.kube/config`), fills tenyard's `task/pvc.yaml` and `task/job.yaml` (from
+`~/.kube/config`), fills tenyard's `task/job.yaml`, and `task/pvc.yaml` when it exists (from
 `machine.template`, default `~/tenyard/task`), with the resource
 class from `task/classes.yaml` (`machine.plan_class` for `start`, default `plan`; `plan` for `close`, `machine.class` of
 `tenbox.yaml` for `build`, default `build`) and, for `build`, the services of
 `machine.services` from `task/services/` (their sidecars and volumes; their env joins
 `TENBOX_ENV`, where `machine.env` wins), and posts the
-volume `task-<id>` (kept when it exists) and the Job `task-<id>-<MMDD-HHMMSS>` to namespace
-`tenbox` with `fetch`. Before them it writes the project Secret `project-<project id>`, which
+volume `task-<id>` when there is a `pvc.yaml` (kept when it exists) and the Job
+`task-<id>-<MMDD-HHMMSS>` to namespace `tenbox` with `fetch`. The Job gets two presigned URLs of
+the task archive, `TENBOX_ARCHIVE_GET` and `TENBOX_ARCHIVE_PUT`, from the bucket of
+`TENBOX_BUCKET` on your computer; the bucket key stays on your computer. Before them it writes the project Secret `project-<project id>`, which
 the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer
 uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API_KEY` or
 `CLICKUP_API_KEY`) and `ntfy_url` from `notify.ntfy`. `GITHUB_TOKEN` is the run's placeholder,
@@ -92,9 +106,9 @@ file) and `NODE_EXTRA_CA_CERTS`. The box unsets the secrets before the command. 
 `TENBOX_GIT_EMAIL` of the Job, else the name of the token's user. A project without an `id` in its
 `tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
 does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
-volume belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
+bucket belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
 
-After the close Job has ended (`tenbox machine ls`), `tenbox machine rm <id>` deletes the task's volume; it refuses with `machine-busy` while a Job of the task is active.
+After the close Job has ended (`tenbox machine ls`), `tenbox machine rm <id>` deletes the task's volume and archive; it refuses with `machine-busy` while a Job of the task is active.
 
 ## Server image: `server/`
 

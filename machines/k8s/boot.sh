@@ -4,7 +4,7 @@
 # secrets from the app (GITHUB_TOKEN, TRACKER_API_KEY, NTFY_URL, CLAUDE_CREDENTIALS);
 # GITHUB_TOKEN is the run's placeholder, which the injector behind the egress proxy swaps for
 # the run token; TENBOX_INJECTOR_CA is the file of the injector's CA, which git, gh, curl, node
-# and bun then trust next to the system roots. It prepares the volume
+# and bun then trust next to the system roots. It prepares the home
 # at /home/tenbox and runs the tenbox command in the foreground, as tenbox, in the project's
 # main checkout, with the project's variables from TENBOX_ENV (`machine.env` of tenbox.yaml as
 # one JSON object). The command may
@@ -30,7 +30,7 @@ box_env=(HOME="$home" PATH=/usr/local/bin:/usr/bin:/bin USER=tenbox LOGNAME=tenb
 for name in HTTPS_PROXY HTTP_PROXY NO_PROXY; do
   if [ -n "${!name:-}" ]; then box_env+=("$name=${!name}" "${name,,}=${!name}"); fi
 done
-for name in NODE_USE_ENV_PROXY DISABLE_TELEMETRY DISABLE_ERROR_REPORTING; do
+for name in NODE_USE_ENV_PROXY DISABLE_TELEMETRY DISABLE_ERROR_REPORTING DISABLE_AUTOUPDATER; do
   if [ -n "${!name:-}" ]; then box_env+=("$name=${!name}"); fi
 done
 if [ -n "${TENBOX_INJECTOR_CA:-}" ]; then
@@ -49,16 +49,16 @@ prepare_home() {
   cp /etc/skel/.bashrc "$home/.bashrc" 2> /dev/null || true
 }
 
-# 2. claude: the login, Remote Control on, and no first-run questions for the three folders.
+# 2. claude: the login, Remote Control on, and no first-run questions for the folders it works in.
 setup_claude() {
   install -m 600 /dev/null "$home/.claude/.credentials.json"
   printf '%s' "$CLAUDE_CREDENTIALS" > "$home/.claude/.credentials.json"
   if [ ! -f "$home/.claude/settings.json" ]; then
     echo '{ "remoteControlAtStartup": true }' > "$home/.claude/settings.json"
   fi
-  jq -n --arg main "$main" --arg wt "$worktree" --arg repo /opt/tenbox \
+  jq -n --arg main "$main" --arg wt "$worktree" --arg repo /opt/tenbox --arg tasks "$home/.tenbox" \
     '{ hasCompletedOnboarding: true, theme: "dark",
-       projects: ([$main, $wt, $repo] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
+       projects: ([$main, $wt, $repo, $tasks] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
     > "$home/.claude.json"
 }
 
@@ -156,9 +156,79 @@ remove_logins() {
   rm -f "$home/.claude/.credentials.json" "$home/.config/gh/hosts.yml" "$main/tenbox.local.yaml"
 }
 
+archive_file=/tmp/tenbox-home.tar.zst
+archive_restored=0
+home_from_archive=0
+
+restore_home() {
+  if [ -z "${TENBOX_ARCHIVE_GET:-}" ]; then
+    return
+  fi
+  local code
+  code="$(curl -sS -o "$archive_file" -w '%{http_code}' "$TENBOX_ARCHIVE_GET")" || {
+    log "the task archive could not be downloaded"
+    exit 1
+  }
+  case "$code" in
+    200)
+      zstd -q -dc "$archive_file" | tar -xf - -C "$home" --no-overwrite-dir
+      rm -f "$archive_file"
+      home_from_archive=1
+      log "home restored from the task archive"
+      ;;
+    404) log "no task archive yet: a new home" ;;
+    *)
+      log "the task archive download answered HTTP $code"
+      exit 1
+      ;;
+  esac
+  archive_restored=1
+}
+
+pack_home() {
+  local status=0
+  tar -C "$home" -I 'zstd -q -T0 -3' -cf "$archive_file" \
+    --exclude=node_modules --exclude=./.cache --exclude=./.npm --exclude=./.bun/install/cache \
+    --exclude=./.local/share/claude --exclude=./.local/share/pnpm . || status=$?
+  [ "$status" -le 1 ]
+}
+
+save_home() {
+  if [ "$archive_restored" != 1 ] || [ -z "${TENBOX_ARCHIVE_PUT:-}" ]; then
+    return
+  fi
+  if ! pack_home; then
+    log "the home could not be packed; the task archive stays as it was"
+    return
+  fi
+  if curl -sSf -o /dev/null -T "$archive_file" "$TENBOX_ARCHIVE_PUT"; then
+    log "home saved to the task archive: $(du -h "$archive_file" | cut -f1)"
+  else
+    log "the task archive upload failed"
+  fi
+  rm -f "$archive_file"
+}
+
+run_setup() {
+  if [ "$home_from_archive" != 1 ] || [ -z "${TENBOX_SETUP:-}" ] || [ ! -d "$worktree" ]; then
+    return
+  fi
+  log "setup: $TENBOX_SETUP"
+  env -i "${project_env[@]}" "${box_env[@]}" bash -c "cd '$worktree' && $TENBOX_SETUP" < /dev/null || {
+    log "setup failed"
+    exit 1
+  }
+}
+
+finish() {
+  remove_logins
+  save_home
+}
+
 log "image: $(cat /etc/tenbox-image.json)"
-trap remove_logins EXIT
+trap finish EXIT
 trap 'exit 143' TERM INT
+restore_home
 prepare_home
 setup_claude
 setup_github
@@ -168,6 +238,7 @@ read_project_env
 
 # The secrets now live in their files; the tenbox command does not get them in its env.
 unset GITHUB_TOKEN CLAUDE_CREDENTIALS TRACKER_API_KEY NTFY_URL
+run_setup
 log "ready at $(date -u +%FT%TZ)"
 
 : > /var/log/tenbox-run.log

@@ -62,6 +62,6 @@ export async function stopMachine(id: TaskId): Promise<MachineStopResult> {
 
 /** Deletes the volume of the task on the cluster, after its close Job has ended. */
 export async function removeMachineVolume(id: TaskId): Promise<MachineRmResult> {
-  const volume = await machines.remove(id);
-  return { ok: true, task: id, volume };
+  const { volume, archive } = await machines.remove(id);
+  return { ok: true, task: id, volume, archive };
 }
