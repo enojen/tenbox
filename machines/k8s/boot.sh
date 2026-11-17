@@ -49,16 +49,16 @@ prepare_home() {
   cp /etc/skel/.bashrc "$home/.bashrc" 2> /dev/null || true
 }
 
-# 2. claude: the login, Remote Control on, and no first-run questions for the three folders.
+# 2. claude: the login, Remote Control on, and no first-run questions for the folders it works in.
 setup_claude() {
   install -m 600 /dev/null "$home/.claude/.credentials.json"
   printf '%s' "$CLAUDE_CREDENTIALS" > "$home/.claude/.credentials.json"
   if [ ! -f "$home/.claude/settings.json" ]; then
     echo '{ "remoteControlAtStartup": true }' > "$home/.claude/settings.json"
   fi
-  jq -n --arg main "$main" --arg wt "$worktree" --arg repo /opt/tenbox \
+  jq -n --arg main "$main" --arg wt "$worktree" --arg repo /opt/tenbox --arg tasks "$home/.tenbox" \
     '{ hasCompletedOnboarding: true, theme: "dark",
-       projects: ([$main, $wt, $repo] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
+       projects: ([$main, $wt, $repo, $tasks] | map({ (.): { hasTrustDialogAccepted: true } }) | add) }' \
     > "$home/.claude.json"
 }
 

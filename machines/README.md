@@ -48,7 +48,9 @@ The container runs `boot.sh`. It reads the task from the env (`TENBOX_TASK`, `TE
 from the task archive it fetches the base and checks it out; an unset `TENBOX_BASE` keeps the clone of the default
 branch), stops with exit 1 and a log line naming the base when `tenbox.yaml` is not tracked in the
 main checkout, then runs `TENBOX_CMD`
-in the foreground in the project's main checkout. The whole container runs as `tenbox`, with no
+in the foreground in the project's main checkout. Its claude trusts the main checkout, the task
+worktree, `/opt/tenbox` and `~/.tenbox`, the folder of the task dirs, because `claude --bg`
+refuses an added folder it does not trust. The whole container runs as `tenbox`, with no
 root and no `sudo`; tenyard's Job gives the home to its group with `fsGroup`. With
 `TENBOX_ARCHIVE_GET` set, the box first downloads the task archive and unpacks it into the home; an
 answer 404 is a new home, and any other failure stops the boot with exit 1 and saves nothing, so a
