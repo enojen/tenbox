@@ -1,7 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import type { TenboxError } from "../../domain/errors/index.ts";
-import type { BoxEnd, ListedPod, ListedVolume } from "../../domain/events.ts";
+import type { BoxEnd, ListedPod } from "../../domain/events.ts";
 import { http } from "./http.ts";
 
 /** Where Kubernetes mounts the pod's service account token and the cluster CA. */
@@ -9,21 +9,16 @@ const SERVICE_ACCOUNT_DIR = "/var/run/secrets/kubernetes.io/serviceaccount";
 const NODES_PATH = "/api/v1/nodes";
 /** The pods of the task Jobs, the machine runs. */
 const PODS_PATH = "/api/v1/namespaces/tenbox/pods";
-/** The task volumes, one PVC per task. */
-const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
 const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
 const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
 const JOB_ENDS = new Set(["Complete", "Failed"]);
 const CONDITION_TRUE = "True";
-/** The label of the pods and the PVCs of the task Jobs. */
+/** The label of the pods of the task Jobs. */
 const TASK_SELECTOR = "app=tenyard";
-/** The PVC phase once its volume exists. */
-const BOUND = "Bound";
 const BOX = "box";
 /** The pod condition set when the scheduler placed the pod on a node. */
 const POD_SCHEDULED = { type: "PodScheduled", status: "True" } as const;
 const SERVICE = "kubernetes";
-const HTTP_NOT_FOUND = 404;
 const HTTP_CONFLICT = 409;
 
 /** The cluster API and the files of the service account; the token is read at each request, as the kubelet rotates it. */
@@ -107,23 +102,6 @@ const PodSchema = z.object({
 
 const PodListSchema = z.object({ items: z.array(PodSchema) });
 
-const PvcSchema = z.object({
-  metadata: z.object({
-    name: z.string().min(1),
-    uid: z.string().min(1),
-    creationTimestamp: z.iso.datetime(),
-    labels: z.record(z.string(), z.string()).default({}),
-  }),
-  status: z
-    .object({
-      phase: z.string().optional(),
-      capacity: z.object({ storage: z.string().optional() }).default({}),
-    })
-    .default({ capacity: {} }),
-});
-
-const PvcListSchema = z.object({ items: z.array(PvcSchema) });
-
 const JobSchema = z.object({
   metadata: z.object({
     name: z.string().min(1),
@@ -154,7 +132,6 @@ interface JobSecret {
 
 type Pod = z.infer<typeof PodSchema>;
 type Job = z.infer<typeof JobSchema>;
-type Pvc = z.infer<typeof PvcSchema>;
 type Container = z.infer<typeof ContainerSchema>;
 type ContainerStatus = z.infer<typeof ContainerStatusSchema>;
 
@@ -162,12 +139,6 @@ type ContainerStatus = z.infer<typeof ContainerStatusSchema>;
 interface PodLog {
   api: KubernetesApi;
   pod: string;
-}
-
-/** One task PVC, by name. */
-interface VolumeName {
-  api: KubernetesApi;
-  name: string;
 }
 
 /** The API of the cluster the server runs in, as its pod sees it. */
@@ -260,21 +231,6 @@ async function createSecret(input: JobSecret): Promise<void> {
   throw failed(answer);
 }
 
-/** The Bound task PVCs in one request; a PVC without a `task` label or a capacity is left out. */
-async function taskVolumes(api: KubernetesApi): Promise<ListedVolume[]> {
-  const items = await taskItems({ api, path: PVCS_PATH, schema: PvcListSchema });
-  return items.flatMap(listedVolume);
-}
-
-function listedVolume(pvc: Pvc): ListedVolume[] {
-  const { metadata, status } = pvc;
-  const task = metadata.labels.task;
-  const capacity = status.capacity.storage;
-  if (task === undefined || capacity === undefined || status.phase !== BOUND) return [];
-  const created = isoTime(metadata.creationTimestamp);
-  return [{ name: metadata.name, uid: metadata.uid, task, created, capacity }];
-}
-
 /** The last line of the box container's log: the boot line with `oom_kill <n>`. */
 function lastLogLine(input: PodLog): Promise<string> {
   return readLog(input, "&tailLines=1");
@@ -293,18 +249,9 @@ async function readLog(input: PodLog, query: string): Promise<string> {
   throw failed(answer);
 }
 
-/** Deletes one task PVC; an answer 404 means it is gone already. */
-async function removeVolume(input: VolumeName): Promise<void> {
-  const { api, name } = input;
-  const apiPath = `${PVCS_PATH}/${encodeURIComponent(name)}`;
-  const answer = await send({ api, apiPath, method: "DELETE" });
-  if (answer.ok || answer.status === HTTP_NOT_FOUND) return;
-  throw failed(answer);
-}
+type ClusterMethod = "GET" | "POST";
 
-type ClusterMethod = "GET" | "DELETE" | "POST";
-
-/** One request whose answer is not a JSON list: a log, a DELETE or a POST with its JSON body. */
+/** One request whose answer is not a JSON list: a log or a POST with its JSON body. */
 interface ClusterRequest {
   api: KubernetesApi;
   /** The API path, with its query. */
@@ -399,8 +346,6 @@ export const kubernetes = {
   jobPods,
   openJobs,
   createSecret,
-  taskVolumes,
   lastLogLine,
   boxLog,
-  removeVolume,
 };

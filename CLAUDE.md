@@ -25,8 +25,7 @@ the login sync to the Secrets of the box (`machines/login/`), and `tenbox machin
 (TEN-465): `run` posts a Job to namespace `tenbox` of the cluster from `<template>/job.yaml`
 and `ls` lists the Jobs labeled `app=tenyard`. The server's Job watch stores a `job.finished` per
 Job pod and `GET /tasks/{task}/runs` lists them (#94); for a `close` pod that exited 0 it also stores
-`close.output`, the last JSON object of the box log; its volume watch deletes a closed task's volume after
-a grace period and sends one `idle-volume` notice for an open one with no run for 7 days; its run token watch
+`close.output`, the last JSON object of the box log; its run token watch
 writes the placeholder of each open Job, and `POST /run-credentials` gives the injector of tenyard the
 GitHub App token of that Job's repository for it. No sandbox yet.
 
@@ -97,7 +96,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | user | A person on the server, with a GitHub name and one token (`users`). |
 | membership | A user in an organization, with a type `admin` or `member`. |
 | token | A secret `tbx_` string for the HTTP API; only its hash is stored. |
-| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act (the server sends `idle-volume` to `TENBOX_SERVER_NTFY`); states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready, blocked, idle-volume (`Notification`). |
+| notification | One text line `<project> · <task id> · <state> · <detail> → <next command>` sent to the manifest's `notify.ntfy` URL when a person must act; states: needs-you, ready-for-you, failed, check-failed, pr-opened, plan-ready, blocked (`Notification`). |
 | ready-for-you | The notification state of `tenbox build done` with status ready-for-you; the detail is `round N, attention A, nice-to-have B, unproven C`, counted from `build.json`. |
 | check-failed | The notification state of a `tenbox check` with a new failure; the line says "the build goes on" while there is no `build.json`. |
 | pr-opened | The notification state of `tenbox pr` when it creates the PR; the detail is the PR URL. |
@@ -110,10 +109,9 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
 | service | A sidecar container a machine run gets next to the box, e.g. Postgres for the tests: one file in tenyard `task/services/`, a strategic merge patch of the Job. Only `build` takes them, from `machine.services` (`Service`, `kubernetes.addServices`). |
 | node event | `node.added` or `node.removed`: a worker Node of the cluster came or went, with its Hetzner server id, server type, location and, when added, its hourly price; the server makes it from its node watch and stores it in the events table with no user (`NodeEvent`, `nodes.watch`). |
-| idle-volume | The notification state the server's volume watch sends for an open task's volume (no `close.output`, or a run after it) whose newest run ended 7 or more days ago; once per idle stretch, kept as event `volume.idle:<uid>:<stretch start>`; the detail is `<days> days`, the next command `tenbox machine rm <id>` (`VolumeNotice`). |
 | run token | The GitHub token of one machine run: a GitHub App installation token for the repository of the Job's project only, with contents, pull requests and issues write, ended by GitHub after one hour; the box never holds it: the server gives it to the injector for the run's placeholder (`runTokens.resolve`, `githubRepo`). GitHub goes only through the App. |
 | run placeholder | What the box holds instead of its run token: `tbxph_` and the HMAC of the Job's uid with the server's key; the server writes it to the Secret `<job name>-github`, which the Job owns, empty when the App is not installed there; the injector behind the egress proxy swaps it for the run token (`runPlaceholder`, `runTokens.watch`). |
-| volume event | `volume.added` or `volume.removed`: a Bound task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month; the server makes it from its volume watch and stores it in the events table with no user (`VolumeEvent`, `volumes.poller`). The same watch deletes the PVC of a closed task (a `close.output` newer than the volume, no run created after it, no pod listed) once `TENBOX_SERVER_VOLUME_GRACE_DAYS` (default 3) have passed (`volumeAction`). |
+| volume event | `volume.added` or `volume.removed`: a task PVC of namespace `tenbox` came or went, with its PVC uid, task id, size in GiB and, when added, its Hetzner price per GB-month. The server stored them until task homes moved to the bucket archive; it makes none now, and the cost report still reads the stored ones (`VolumeEvent`, `readVolumeEvent`). |
 | session link | `https://claude.ai/code/<bridgeSessionId>` of the newest Claude session of a task worktree; the `click` of every notification the CLI sends (`sessionLinks`). |
 | tracker | The adapter to GitHub Issues, Linear or ClickUp (or none) (`Tracker`, `TrackerKind`). |
 | Tenport event | `task.started` (`tenbox start`) or `task.closed` (`tenbox close`), sent to `POST <TENPORT_URL>/events` with `TENPORT_TOKEN`; nothing is sent without both (`TenportEvent`, `events.send`). Its names and fields are checked against `cli/test/tenport-openapi.json`, a copy of Tenport's `openapi.json`. |
@@ -203,9 +201,9 @@ cli/        tenbox CLI, entry cli/main.ts; cli/args.ts reads the command line
 server/     the HTTP server (Hono + @hono/zod-openapi), entry server/main.ts: routes/ (one zod
             schema per route, `/openapi.json`, Swagger UI on `/docs`, `problems.ts`: every
             error as an RFC 9457 problem), application/ (the rules: organizations, users, projects;
-            nodes, the node watch; machineRuns, the Job watch; volumes, the volume watch; runTokens, the run token watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
-            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line, the task PVCs,
-            hetzner: one server and the volume price, github: the App's installation token, db/ with the drizzle
+            nodes, the node watch; machineRuns, the Job watch; runTokens, the run token watch), commands/ (`tenbox-server user add`, `project add`, `backup`),
+            infra/ (env, tokens, http: a JSON GET with a bearer token, kubernetes: the Node list, the Job pods and their last log line,
+            hetzner: one server, github: the App's installation token, db/ with the drizzle
             schema and migrations, repositories/: data access per table, no rules);
             application/ imports repositories/ directly; imports only server/ and domain/,
             never cli/; cli/ never imports server/ (`cli/test/layers.test.ts`)

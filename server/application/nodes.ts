@@ -12,13 +12,11 @@ import {
   readNodeEvent,
 } from "../../domain/events.ts";
 import type { Db } from "../infra/db/index.ts";
-import type { VolumeEnv } from "../infra/env.ts";
 import { type HetznerApi, hetzner } from "../infra/hetzner.ts";
 import { type ClusterNode, type KubernetesApi, kubernetes } from "../infra/kubernetes.ts";
 import { eventsRepository } from "../infra/repositories/events.ts";
 import { events } from "./events.ts";
 import { machineRuns } from "./machineRuns.ts";
-import { volumes } from "./volumes.ts";
 import { type Watching, watchers } from "./watchers.ts";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -37,8 +35,6 @@ interface NodePoll extends NodeApis {
 
 interface NodeWatch extends NodeApis {
   now: () => Date;
-  /** The rules of the volume watch; without them it only records volumes. */
-  volumeEnv?: VolumeEnv;
 }
 
 /** One node event and the time it happened. */
@@ -66,7 +62,7 @@ async function poll(db: Db, input: NodePoll): Promise<void> {
 }
 
 /**
- * Polls the Nodes, the Job pods and the task volumes now and every 30 seconds; a poll that fails
+ * Polls the Nodes and the Job pods now and every 30 seconds; a poll that fails
  * is logged and the next one tries again, and one poll does not stop the others. Until a node poll succeeds, a
  * removal is late and dated at the start: the node left while the server was down.
  */
@@ -74,13 +70,12 @@ function watch(db: Db, input: NodeWatch): Watching {
   const startedAt = input.now();
   let late = true;
   const pollJobs = machineRuns.poller(db, input);
-  const pollVolumes = volumes.poller(db, { ...input, env: input.volumeEnv ?? null });
   const tick = () => {
     const removedAt = late ? startedAt : input.now();
     const pollNodes = poll(db, { ...input, removedAt, late }).then(() => {
       late = false;
     }, logWatchFailure);
-    return Promise.all([pollNodes, pollJobs(), pollVolumes()]);
+    return Promise.all([pollNodes, pollJobs()]);
   };
   return watchers.every({ intervalMs: POLL_INTERVAL_MS, tick });
 }

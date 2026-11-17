@@ -23,10 +23,6 @@ const ServerSchema = z.object({
   }),
 });
 
-const PricingSchema = z.object({
-  pricing: z.object({ volume: z.object({ price_per_gb_month: PriceSchema }) }),
-});
-
 type Price = z.infer<typeof PriceSchema>;
 
 /** One cloud server: when it was made, its type, its location and the hourly price of its type there. */
@@ -73,15 +69,4 @@ async function server(request: ServerRequest): Promise<HetznerServer> {
   };
 }
 
-/** `GET /pricing`: the price of one GB of volume for one month. */
-async function volumePrice(api: HetznerApi): Promise<Price> {
-  const answer = await http.get({
-    service: SERVICE,
-    url: `${api.url}/pricing`,
-    token: api.token,
-    schema: PricingSchema,
-  });
-  return answer.pricing.volume.price_per_gb_month;
-}
-
-export const hetzner = { serverId, server, volumePrice };
+export const hetzner = { serverId, server };

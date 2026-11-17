@@ -3,7 +3,7 @@ import { badFileError } from "./errors/index.ts";
 import type { JobFinished, NodeAdded, NodeEvent, VolumeEvent } from "./events.ts";
 
 const MS_PER_HOUR = 3_600_000;
-export const HOURS_PER_MONTH = 720n;
+const HOURS_PER_MONTH = 720n;
 const CENTS_PER_EUR = 100n;
 const DECIMAL_BASE = 10n;
 const CENT_DIGITS = 2;

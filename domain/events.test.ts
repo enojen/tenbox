@@ -4,16 +4,9 @@ import {
   type EventName,
   EventSchema,
   eventSubject,
-  type JobFinished,
   jobChanges,
   jobFinished,
   type ListedPod,
-  type ListedVolume,
-  volumeAction,
-  volumeAdded,
-  volumeChanges,
-  volumeIdleId,
-  volumeRemoved,
 } from "./events.ts";
 
 const COMMON = {
@@ -231,44 +224,6 @@ describe("job.finished", () => {
   });
 });
 
-const VOLUME: ListedVolume = {
-  name: "task-187",
-  uid: "pvc-uid-1",
-  task: "187",
-  created: "2026-11-05T10:00:00.000Z",
-  capacity: "10Gi",
-};
-const VOLUME_PRICE = { net: "0.0440", gross: "0.0524" };
-
-describe("volume events", () => {
-  test("size_gb is the capacity in GiB, rounded up", () => {
-    const sizes = ["10Gi", "5G", "10737418241", "1Ti"].map(
-      (capacity) => volumeAdded({ volume: { ...VOLUME, capacity }, price: VOLUME_PRICE }).size_gb,
-    );
-    expect(sizes).toEqual([10, 5, 11, 1024]);
-  });
-
-  test("a capacity that is not a quantity is a bad file", () => {
-    expect(() =>
-      volumeAdded({ volume: { ...VOLUME, capacity: "ten" }, price: VOLUME_PRICE }),
-    ).toThrow("not a quantity: ten");
-  });
-
-  test("a volume is matched by uid, so a new PVC of the same name is a new volume", () => {
-    const added = volumeAdded({ volume: VOLUME, price: VOLUME_PRICE });
-    const again = { ...VOLUME, uid: "pvc-uid-2" };
-    expect(volumeChanges({ stored: [added], listed: [again] })).toEqual({
-      added: [again],
-      removed: [added],
-    });
-    const removed = volumeRemoved({ added, late: false });
-    expect(volumeChanges({ stored: [added, removed], listed: [again] })).toEqual({
-      added: [again],
-      removed: [],
-    });
-  });
-});
-
 describe("closeOutput", () => {
   const BLOCK =
     '{\n  "ok": true,\n  "task": "TEN-7",\n  "stats": {\n    "state": "written"\n  }\n}\n';
@@ -282,62 +237,5 @@ describe("closeOutput", () => {
     expect(closeOutput("plain\n")).toBeNull();
     expect(closeOutput('{\n  "ok": false,\n  "task": "TEN-7"\n}\n')).toBeNull();
     expect(closeOutput('{\n  "ok": true\n}\n')).toBeNull();
-  });
-});
-
-describe("volumeAction", () => {
-  const NOW = new Date("2026-11-15T10:00:00.000Z");
-  const RUN: JobFinished = jobFinished({
-    pod: { ...POD, task: "187", project: "tenbox-demo", end: null },
-    oomInLog: false,
-    at: "2026-11-06T10:00:00.000Z",
-  });
-  const check = { volume: VOLUME, closedAt: null, runs: [RUN], now: NOW, graceDays: 3 };
-
-  test("deletes a closed volume once the grace period is over", () => {
-    expect(volumeAction({ ...check, closedAt: "2026-11-11T10:00:00.000Z" })).toEqual({
-      action: "delete",
-      volume: VOLUME,
-    });
-    expect(volumeAction({ ...check, closedAt: "2026-11-13T10:00:00.000Z" })).toBeNull();
-  });
-
-  test("a run created after the close or a volume made after it means the task is open again", () => {
-    const closedAt = "2026-11-05T12:00:00.000Z";
-    const later = { ...RUN, created: "2026-11-05T13:00:00.000Z" };
-    expect(volumeAction({ ...check, closedAt, runs: [RUN, later] })).toMatchObject({
-      action: "notify",
-    });
-    const reopened = { ...VOLUME, created: "2026-11-05T13:00:00.000Z" };
-    expect(volumeAction({ ...check, closedAt, volume: reopened })).toMatchObject({
-      action: "notify",
-    });
-  });
-
-  test("an open volume with no run for 7 days gets a notice since its newest run", () => {
-    expect(volumeAction(check)).toEqual({
-      action: "notify",
-      volume: VOLUME,
-      project: "tenbox-demo",
-      since: "2026-11-06T10:00:00.000Z",
-      days: 9,
-    });
-    expect(volumeAction({ ...check, now: new Date("2026-11-13T09:59:59.000Z") })).toBeNull();
-  });
-
-  test("with no run, the idle time starts at the volume and the project is the volume name", () => {
-    const notice = volumeAction({ ...check, runs: [] });
-    expect(notice).toEqual({
-      action: "notify",
-      volume: VOLUME,
-      project: "task-187",
-      since: VOLUME.created,
-      days: 10,
-    });
-  });
-
-  test("a notice is stored once per volume and idle stretch", () => {
-    const notice = { volume: VOLUME, since: "2026-11-06T10:00:00.000Z" };
-    expect(volumeIdleId(notice)).toBe("volume.idle:pvc-uid-1:2026-11-06T10:00:00.000Z");
   });
 });
