@@ -45,6 +45,9 @@ export interface TemplateFields {
   class: string;
   cpu: string;
   memory: string;
+  archiveDownload: string;
+  archiveUpload: string;
+  setup: string;
 }
 
 /** One class of tenyard `task/classes.yaml`; its RAM is both the request and the limit. */
@@ -341,6 +344,9 @@ function placeholders(fields: TemplateFields): Placeholders {
     ["__CLASS__", fields.class],
     ["__CPU__", fields.cpu],
     ["__MEMORY__", fields.memory],
+    ["__ARCHIVE_GET__", fields.archiveDownload],
+    ["__ARCHIVE_PUT__", fields.archiveUpload],
+    ["__SETUP__", fields.setup],
   ];
 }
 

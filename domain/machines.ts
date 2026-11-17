@@ -27,6 +27,10 @@ export const VOLUME_STATE = { deleted: "deleted", missing: "missing" } as const;
 
 export type VolumeState = (typeof VOLUME_STATE)[keyof typeof VOLUME_STATE];
 
+export function taskArchiveKey(projectId: string, task: string): string {
+  return `tasks/${projectId}/${task}.tar.zst`;
+}
+
 /** The reason of a box container that ended by the kernel's memory limit. */
 export const OOM_KILLED = "OOMKilled";
 

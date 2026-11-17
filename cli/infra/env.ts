@@ -9,6 +9,14 @@ export interface TenportServer {
   token: string;
 }
 
+export interface ArchiveBucket {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKey: string;
+  secretKey: string;
+}
+
 export interface Env {
   cwd: string;
   /** `~/wt`; `TENBOX_WT_ROOT` overrides. */
@@ -34,6 +42,8 @@ export interface Env {
   /** `CLAUDECODE` is set: the command runs inside a Claude Code session, so an agent runs it. */
   agent: boolean;
   tenport: TenportServer | null;
+  archiveBucket: ArchiveBucket | null;
+  boxImage: string | null;
 }
 
 /** Read at each call, so tests can set `process.env` and `process.chdir` first. */
@@ -53,6 +63,8 @@ export function env(): Env {
     claudeSession: process.env[CLAUDE_SESSION_VAR] ?? null,
     agent: Boolean(process.env.CLAUDECODE),
     tenport: tenportServer(),
+    archiveBucket: archiveBucket(),
+    boxImage: process.env.TENBOX_BOX_IMAGE || null,
   };
 }
 
@@ -61,6 +73,18 @@ function tenportServer(): TenportServer | null {
   const token = process.env.TENPORT_TOKEN;
   if (!url || !token) return null;
   return { url, token };
+}
+
+function archiveBucket(): ArchiveBucket | null {
+  const url = process.env.TENBOX_BUCKET;
+  const region = process.env.TENBOX_BUCKET_REGION;
+  const accessKey = process.env.TENBOX_BUCKET_KEY;
+  const secretKey = process.env.TENBOX_BUCKET_SECRET;
+  if (!url || !region || !accessKey || !secretKey) return null;
+  const parsed = new URL(url);
+  const bucket = parsed.pathname.replace(/^\/+|\/+$/g, "");
+  if (bucket === "") return null;
+  return { endpoint: parsed.origin, bucket, region, accessKey, secretKey };
 }
 
 /** Human text goes to stderr; stdout carries exactly one JSON document per command. */

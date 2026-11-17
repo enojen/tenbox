@@ -371,6 +371,7 @@ export interface MachineRmResult {
   ok: true;
   task: string;
   volume: MachineVolume;
+  archive: MachineVolume;
 }
 
 export interface MachineLsResult {

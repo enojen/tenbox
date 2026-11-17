@@ -1,5 +1,5 @@
 # The tenbox box image for a Kubernetes pod (TEN-460): Ubuntu, bun, Node 24, gh, claude, this
-# repo at /opt/tenbox. /home/tenbox is the task volume.
+# repo at /opt/tenbox. /home/tenbox is the task home.
 # Build it with the box workflow, or by hand (machines/README.md): the context is
 # machines/k8s and holds only the git bundle.
 FROM ubuntu:24.04
@@ -9,7 +9,7 @@ ARG TENBOX_REF=unknown
 ENV DEBIAN_FRONTEND=noninteractive DISABLE_AUTOUPDATER=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg jq unzip openssh-client procps \
+      ca-certificates curl git gnupg jq unzip openssh-client procps zstd \
   && install -d -m 755 /etc/apt/keyrings \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
