@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { TenportEvent } from "../../domain/tenportEvents.ts";
+import type { TenportEvent } from "../../domain/event.ts";
 import type { TenportServer } from "./env.ts";
 import { failedStatus, http } from "./http.ts";
 

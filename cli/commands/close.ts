@@ -6,13 +6,13 @@ import {
   mergeCommitError,
   unmergedError,
 } from "../../domain/errors/prs.ts";
+import { taskClosed } from "../../domain/event.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import { TRACKER_KIND } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
 import { closeComment, type PrTimes, type TaskStats } from "../../domain/stats.ts";
 import { statsFile, taskDir, tenboxDir } from "../../domain/taskDirs.ts";
 import { TASK_STATE } from "../../domain/tasks.ts";
-import { taskClosed } from "../../domain/tenportEvents.ts";
 import { TASK_STATUS, type Tracker } from "../../domain/tracker.ts";
 import { taskBranch, taskWorktreeDir } from "../../domain/worktrees.ts";
 import { events } from "../application/event.ts";

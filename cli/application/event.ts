@@ -1,12 +1,12 @@
 import { errorMessage } from "../../domain/errors/index.ts";
-import { newEventId, projectId } from "../../domain/ids.ts";
-import { outboxFile, projectDir } from "../../domain/taskDirs.ts";
 import {
   outboxText,
   readOutboxLines,
   type TenportEvent,
   type TenportEventBody,
-} from "../../domain/tenportEvents.ts";
+} from "../../domain/event.ts";
+import { newEventId, projectId } from "../../domain/ids.ts";
+import { outboxFile, projectDir } from "../../domain/taskDirs.ts";
 import { env, log, type TenportServer } from "../infra/env.ts";
 import { files } from "../infra/files.ts";
 import { tenport } from "../infra/tenport.ts";

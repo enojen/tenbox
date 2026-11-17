@@ -1,9 +1,9 @@
 import { TenboxError } from "../../domain/errors/index.ts";
 import { taskInProgressError } from "../../domain/errors/tasks.ts";
+import { taskStarted } from "../../domain/event.ts";
 import type { TaskId } from "../../domain/ids.ts";
 import type { TaskKind } from "../../domain/kinds.ts";
 import { taskDir } from "../../domain/taskDirs.ts";
-import { taskStarted } from "../../domain/tenportEvents.ts";
 import { TASK_STATUS } from "../../domain/tracker.ts";
 import { sessionName, taskBranch, taskWorktreeDir } from "../../domain/worktrees.ts";
 import { events } from "../application/event.ts";

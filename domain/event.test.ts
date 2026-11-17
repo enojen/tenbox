@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { outboxText, readOutboxLines, taskClosed, taskStarted } from "./event.ts";
 import { projectId, taskId } from "./ids.ts";
-import { outboxText, readOutboxLines, taskClosed, taskStarted } from "./tenportEvents.ts";
 
 const TITLE_MAX_CHARS = 200;
 const task = { project: projectId("k7f3qa"), task: taskId("TEN-1") };

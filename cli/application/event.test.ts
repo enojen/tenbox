@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { taskClosed, taskStarted } from "../../domain/event.ts";
 import { projectId, taskId } from "../../domain/ids.ts";
 import { outboxFile, projectDir } from "../../domain/taskDirs.ts";
-import { taskClosed, taskStarted } from "../../domain/tenportEvents.ts";
 import { files } from "../infra/files.ts";
 import { makeTempProject, type TempProject } from "../test/tempProject.ts";
 import { type FakeTenport, startFakeTenport, TENPORT_TOKEN } from "../test/tenport.ts";
