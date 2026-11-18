@@ -110,21 +110,17 @@ const ChecksSchema = z.preprocess(
 /** Where Tenbox sends the one-line notifications; without `ntfy` it sends none. */
 const NotifySchema = z.object({ ntfy: z.url().optional() }).strict();
 
-/** The tenyard directory with `job.yaml` and `pvc.yaml`; `~/` is the home directory. */
-const DEFAULT_TEMPLATE = "~/tenyard/task";
-
 /** A name the box's `env` can set: a shell variable name. */
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** Where `tenbox machine run` finds the Job templates, and the variables of the command in the box. */
+/** What a machine run of the project asks Tenport for, and the variables of the command in the box. */
 const MachineSchema = z
   .object({
-    template: z.string().min(1).default(DEFAULT_TEMPLATE),
     /** The resource class of a build in the box. */
     class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.build),
     /** The resource class of `tenbox start` in the box, the planner's run. */
     plan_class: z.enum(RESOURCE_CLASS).default(RESOURCE_CLASS.plan),
-    /** Files of `<template>/services/` that a build gets. */
+    /** The services of Tenport's run template that a build gets, such as `postgres`. */
     services: z
       .array(z.string().refine(isSafeName, { message: "letters, digits, _ and - only" }))
       .default([]),

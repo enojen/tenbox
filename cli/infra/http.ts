@@ -1,18 +1,12 @@
 import { z } from "zod";
 import { errorMessage, TenboxError } from "../../domain/errors/index.ts";
 import { serviceError } from "../../domain/errors/tools.ts";
+import { jsons } from "../../domain/utils.ts";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const ERROR_BODY_CHARS = 200;
 const HTTP_CONFLICT = 409;
 const HTTP_NOT_FOUND = 404;
-
-/** PEM text: the server's CA, and the client certificate and key when they replace a token. */
-export interface EndpointTls {
-  ca?: string;
-  cert?: string;
-  key?: string;
-}
 
 /** One external service; its name and error code mark every failure that comes from it. */
 export interface Endpoint {
@@ -20,7 +14,6 @@ export interface Endpoint {
   url: string;
   headers: Record<string, string>;
   errorCode: string;
-  tls?: EndpointTls;
 }
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
@@ -117,27 +110,64 @@ async function readAnswer<T>(request: JsonGet<T>, response: Response): Promise<T
 
 async function httpFailure(endpoint: Endpoint, response: Response): Promise<TenboxError> {
   const text = await response.text();
-  const detail = text.slice(0, ERROR_BODY_CHARS);
-  const status: HttpStatus = { status: response.status };
-  return endpointError(endpoint, `HTTP ${response.status}: ${detail}`, status);
+  const failure: HttpFailure = {
+    status: response.status,
+    ...problemOf(text),
+    ...retryAfterOf(response),
+  };
+  return endpointError(
+    endpoint,
+    `HTTP ${response.status}: ${text.slice(0, ERROR_BODY_CHARS)}`,
+    failure,
+  );
 }
 
-const HttpStatusSchema = z.object({ status: z.number() });
-type HttpStatus = z.infer<typeof HttpStatusSchema>;
+/** A failed answer: its status, the `code` and `detail` of a problem body, and `Retry-After`. */
+const HttpFailureSchema = z.object({
+  status: z.number(),
+  code: z.string().optional(),
+  detail: z.string().optional(),
+  retryAfterSeconds: z.number().optional(),
+});
+export type HttpFailure = z.infer<typeof HttpFailureSchema>;
+
+const ProblemSchema = z.object({ code: z.string(), detail: z.string() });
+type Problem = z.infer<typeof ProblemSchema>;
+
+type NoFields = Record<string, never>;
+
+function problemOf(text: string): Problem | NoFields {
+  const checked = jsons.check(ProblemSchema, text);
+  return checked.ok ? checked.value : {};
+}
+
+interface RetryAfter {
+  retryAfterSeconds: number;
+}
+
+function retryAfterOf(response: Response): RetryAfter | NoFields {
+  const seconds = Number(response.headers.get("retry-after") ?? "");
+  return Number.isInteger(seconds) && seconds > 0 ? { retryAfterSeconds: seconds } : {};
+}
 
 export function endpointError(
   endpoint: Endpoint,
   message: string,
-  details?: HttpStatus,
+  details?: HttpFailure,
 ): TenboxError {
   return serviceError(endpoint.service, endpoint.errorCode, message, details);
 }
 
+/** The failed answer of an HTTP error; null for a network error or any other error. */
+export function failedAnswer(error: unknown): HttpFailure | null {
+  if (!(error instanceof TenboxError)) return null;
+  const parsed = HttpFailureSchema.safeParse(error.details);
+  return parsed.success ? parsed.data : null;
+}
+
 /** The HTTP status of a failed answer; null for a network error or any other error. */
 export function failedStatus(error: unknown): number | null {
-  if (!(error instanceof TenboxError)) return null;
-  const parsed = HttpStatusSchema.safeParse(error.details);
-  return parsed.success ? parsed.data.status : null;
+  return failedAnswer(error)?.status ?? null;
 }
 
 /** A network error or no answer in time is the service's failure, not an internal one. */
@@ -147,12 +177,20 @@ async function send(endpoint: Endpoint, call: HttpCall): Promise<Response> {
     return await fetch(endpoint.url, {
       ...init,
       headers: { "Content-Type": "application/json", ...endpoint.headers },
-      ...(endpoint.tls === undefined ? {} : { tls: endpoint.tls }),
       ...(unlimited === true ? {} : { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
     });
   } catch (e) {
-    throw endpointError(endpoint, errorMessage(e));
+    throw serviceError(endpoint.service, endpoint.errorCode, errorMessage(e), UNREACHED);
   }
+}
+
+/** The details of a request that got no answer: a network error or no answer in time. */
+const UNREACHED = { unreached: true };
+const UnreachedSchema = z.object({ unreached: z.literal(true) });
+
+/** The request got no answer at all; a failed answer is not this. */
+export function wasUnreached(error: unknown): boolean {
+  return error instanceof TenboxError && UnreachedSchema.safeParse(error.details).success;
 }
 
 async function readJson(endpoint: Endpoint, response: Response): Promise<unknown> {

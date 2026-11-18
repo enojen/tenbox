@@ -5,7 +5,6 @@ import { machines } from "../application/machines.ts";
 import type {
   MachineLogsResultJson,
   MachineLsResult,
-  MachineRmResult,
   MachineRunResultJson,
   MachineStopResult,
   MachineWaitResultJson,
@@ -28,14 +27,15 @@ export async function runOnMachine(
   if (words.length === 0) throw usageError(`usage: ${usage}`);
   const deadlineMs =
     waitSeconds === null ? null : Date.now() + waitSeconds * durations.MS_PER_SECOND;
-  const { task, cmd, url } = await machines.run({ id, words, deadlineMs });
-  if (deadlineMs === null) return { ok: true, task, cmd, url };
-  const end = await machines.wait({ id, cmd, url, deadlineMs });
+  const { task, cmd, run } = await machines.run({ id, words, deadlineMs });
+  if (deadlineMs === null) return { ok: true, task, cmd, run };
+  const end = await machines.wait({ id, cmd, run, deadlineMs });
   return { ok: true, ...end };
 }
 
-export async function listMachineRuns(): Promise<MachineLsResult> {
-  const runs = await machines.list();
+/** The runs of the given tasks, as Tenport keeps them. */
+export async function listMachineRuns(ids: TaskId[]): Promise<MachineLsResult> {
+  const runs = await machines.list(ids);
   return { ok: true, runs };
 }
 
@@ -44,24 +44,18 @@ export interface MachineLogsArgs {
   follow: boolean;
 }
 
-/** Writes the pod log of the task's newest Job to stderr. */
+/** Writes the box log of the task's newest run to stderr. */
 export async function showMachineLogs(args: MachineLogsArgs): Promise<MachineLogsResultJson> {
-  const { task, job, status, reason } = await machines.logs({
+  const { task, run, phase, reason } = await machines.logs({
     id: args.id,
     follow: args.follow,
     write: (chunk) => process.stderr.write(chunk),
   });
-  return { ok: true, task, job, status, reason };
+  return { ok: true, task, run, phase, reason };
 }
 
-/** Ends the running Jobs of the task; its volume stays. */
+/** Stops the running runs of the task; its archive stays. */
 export async function stopMachine(id: TaskId): Promise<MachineStopResult> {
   const stopped = await machines.stop(id);
   return { ok: true, task: id, stopped };
-}
-
-/** Deletes the volume of the task on the cluster, after its close Job has ended. */
-export async function removeMachineVolume(id: TaskId): Promise<MachineRmResult> {
-  const { volume, archive } = await machines.remove(id);
-  return { ok: true, task: id, volume, archive };
 }
