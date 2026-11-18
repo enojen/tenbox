@@ -68,6 +68,26 @@
         ],
         "type": "object"
       },
+      "DeletedTask": {
+        "properties": {
+          "archive": {
+            "$ref": "#/components/schemas/TaskArchiveState"
+          },
+          "project": {
+            "type": "string"
+          },
+          "task": {
+            "example": "TEN-301",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "task",
+          "archive"
+        ],
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "ok": {
@@ -135,7 +155,7 @@
           "name": {
             "type": "string"
           },
-          "org": {
+          "organization": {
             "type": "string"
           },
           "repo": {
@@ -144,7 +164,7 @@
           }
         },
         "required": [
-          "org",
+          "organization",
           "name",
           "repo"
         ],
@@ -294,6 +314,19 @@
         ],
         "type": "object"
       },
+      "NewSecretValue": {
+        "properties": {
+          "value": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
       "Problem": {
         "properties": {
           "code": {
@@ -331,7 +364,7 @@
           "name": {
             "type": "string"
           },
-          "org": {
+          "organization": {
             "type": "string"
           },
           "repo": {
@@ -340,11 +373,18 @@
         },
         "required": [
           "id",
-          "org",
+          "organization",
           "name",
           "repo"
         ],
         "type": "object"
+      },
+      "ProjectSecret": {
+        "enum": [
+          "tracker_api_key",
+          "ntfy_url"
+        ],
+        "type": "string"
       },
       "Recorded": {
         "properties": {
@@ -415,6 +455,34 @@
         ],
         "type": "object"
       },
+      "RunCredential": {
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "RunCredentialRequest": {
+        "properties": {
+          "host": {
+            "example": "api.github.com",
+            "type": "string"
+          },
+          "placeholder": {
+            "example": "tbxph_ETORSF6tK5Aq-PPCa0hncaILEOC-43LTqxG9R15MW38",
+            "type": "string"
+          }
+        },
+        "required": [
+          "placeholder",
+          "host"
+        ],
+        "type": "object"
+      },
       "RunPhase": {
         "enum": [
           "Running",
@@ -438,9 +506,32 @@
             "format": "date-time",
             "type": "string"
           },
+          "exit_code": {
+            "example": 0,
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "name": {
             "example": "task-ten-301-1117-101500",
             "type": "string"
+          },
+          "oom_kill": {
+            "example": 0,
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "output": {
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "phase": {
             "$ref": "#/components/schemas/RunPhase"
@@ -471,7 +562,46 @@
         ],
         "type": "object"
       },
+      "Secret": {
+        "properties": {
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/ProjectSecret"
+          }
+        },
+        "required": [
+          "name",
+          "changed"
+        ],
+        "type": "object"
+      },
+      "TaskArchiveState": {
+        "enum": [
+          "deleted",
+          "missing"
+        ],
+        "type": "string"
+      },
       "TaskClosed": {
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "task": {
+            "example": "TEN-301",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project",
+          "task"
+        ],
+        "type": "object"
+      },
+      "TaskDeleted": {
         "properties": {
           "project": {
             "type": "string"
@@ -558,12 +688,38 @@
                 "type": "object"
               }
             ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TaskDeleted"
+              },
+              {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "task.deleted"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              }
+            ]
           }
         ]
       }
     },
     "securitySchemes": {
       "bearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "injector": {
+        "description": "The injector token: only the injector of the egress proxy has it",
         "scheme": "bearer",
         "type": "http"
       }
@@ -826,6 +982,276 @@
         "security": [
           {
             "bearer": []
+          }
+        ]
+      }
+    },
+    "/projects/{project}/secrets": {
+      "get": {
+        "operationId": "list_secrets",
+        "parameters": [
+          {
+            "description": "The id of the project",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Secret"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The secrets that Tenport wrote for the project, by name: never their values"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/NotMember"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/projects/{project}/secrets/{name}": {
+      "delete": {
+        "operationId": "delete_secret",
+        "parameters": [
+          {
+            "description": "The id of the project",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The name of the secret",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectSecret"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The secret is deleted from the Secret project-<project id>"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A name Tenport does not know"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The user is not an admin of the project's organization"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The project has no such secret"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "write_secret",
+        "parameters": [
+          {
+            "description": "The id of the project",
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The name of the secret",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectSecret"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSecretValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            },
+            "description": "The secret is written to the Secret project-<project id>; Tenport keeps no copy and gives back only its name"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A name Tenport does not know, or a value that is empty or too long"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The user is not an admin of the project's organization"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/run-credentials": {
+      "post": {
+        "operationId": "run_credential",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCredentialRequest"
+              }
+            }
+          },
+          "description": "A placeholder that a box sent, and the host it sent it to",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCredential"
+                }
+              }
+            },
+            "description": "The one-hour GitHub App token for the repository of the open Job that has this placeholder"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The body is not a placeholder and a host"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No injector token, or another one"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No open Job of Tenport has this placeholder, the host is not GitHub, or the GitHub App is not installed on the repository"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "injector": []
           }
         ]
       }
@@ -1156,6 +1582,79 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/tasks/{task}": {
+      "delete": {
+        "operationId": "delete_task",
+        "parameters": [
+          {
+            "description": "The task id, such as TEN-301",
+            "in": "path",
+            "name": "task",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedTask"
+                }
+              }
+            },
+            "description": "The task is deleted. `archive` is `deleted`, or `missing` when the bucket had no task archive, so a second delete is safe"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not a task id or a project id"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/NotMember"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A Job of the task still runs (code machine-busy); nothing is deleted"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
