@@ -39,9 +39,7 @@ a command.
     later `tenbox pr`.
 12. Tell the user: the PR link, what changed, what it deletes and why, the proof. Wait for the
     merge.
-13. After the merge: `tenbox close <id>`. On the cluster, when the close Job has ended,
-    `tenbox machine rm <id>`; it deletes the task volume and cannot be undone. Then write the
-    work log on the task: what changed, the PR, the proof result, how to try it. Temporary,
+13. After the merge: `tenbox close <id>`. Then write the work log on the task: what changed, the PR, the proof result, how to try it. Temporary,
     until #279: when the project file asks for a measurement of main after a merge, the lane
     whose PR was merged runs it and appends one line to the shared log.
 14. Update "Next step" of the lane file.

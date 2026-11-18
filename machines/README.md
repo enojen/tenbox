@@ -83,32 +83,31 @@ next boot writes them again. Then, when the archive was restored or was new and
 and uploads it; a failed pack or upload is one log line and keeps the old archive. A SIGKILL or
 an OOM kill of the box saves nothing: the next run starts from the archive of the run before.
 
-On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box. It
-reads the kubeconfig (`$KUBECONFIG`, else
-`~/.kube/config`), fills tenyard's `task/job.yaml`, and `task/pvc.yaml` when it exists (from
-`machine.template`, default `~/tenyard/task`), with the resource
-class from `task/classes.yaml` (`machine.plan_class` for `start`, default `plan`; `plan` for `close`, `machine.class` of
-`tenbox.yaml` for `build`, default `build`) and, for `build`, the services of
-`machine.services` from `task/services/` (their sidecars and volumes; their env joins
-`TENBOX_ENV`, where `machine.env` wins), and posts the
-volume `task-<id>` when there is a `pvc.yaml` (kept when it exists) and the Job
-`task-<id>-<MMDD-HHMMSS>` to namespace `tenbox` with `fetch`. The Job gets two presigned URLs of
-the task archive, `TENBOX_ARCHIVE_GET` and `TENBOX_ARCHIVE_PUT`, from the bucket of
-`TENBOX_BUCKET` on your computer; the bucket key stays on your computer. Before them it writes the project Secret `project-<project id>`, which
-the Job reads as `TRACKER_API_KEY` and `NTFY_URL`: `tracker_api_key`, the key this computer
-uses for the project (`tracker.api_key` of `tenbox.local.yaml`, else `LINEAR_API_KEY` or
-`CLICKUP_API_KEY`) and `ntfy_url` from `notify.ntfy`. `GITHUB_TOKEN` is the run's placeholder,
-which the server writes for the Job (empty when the GitHub App is not installed on the
-repository, and the box then stops at start); the injector behind the egress proxy swaps it for
-the run token on its way to GitHub. With `TENBOX_INJECTOR_CA`, the file of the injector's CA, the
+On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box
+through [Tenport](https://github.com/enojen/tenport) (`POST /runs`, with `TENPORT_URL` and
+`TENPORT_TOKEN`): it sends the command, the resource class (`machine.plan_class` for `start`,
+default `plan`; `plan` for `close`, `machine.class` of `tenbox.yaml` for `build`, default
+`build`), for `build` the services of `machine.services`, and `machine.env`. Tenport fills
+tenyard's `task/job.yaml` with the class from `task/classes.yaml` and the services from
+`task/services/` (their sidecars and volumes; their env joins `TENBOX_ENV`, where `machine.env`
+wins), signs the two URLs of the task archive, `TENBOX_ARCHIVE_GET` and `TENBOX_ARCHIVE_PUT`, and
+creates the Job `task-<id>-<MMDD-HHMMSS>` in namespace `tenbox`; the bucket key stays in Tenport.
+Before the run the CLI writes the project secrets that the Job reads as `TRACKER_API_KEY` and
+`NTFY_URL`: `tracker_api_key`, the key this computer uses for the project (`tracker.api_key` of
+`tenbox.local.yaml`, else `LINEAR_API_KEY` or `CLICKUP_API_KEY`) and `ntfy_url` from
+`notify.ntfy`. `GITHUB_TOKEN` is the run's placeholder, which Tenport writes to the Secret
+`<run>-placeholder` of the Job; the injector behind the egress proxy swaps it for the run token
+on its way to GitHub. With `TENBOX_INJECTOR_CA`, the file of the injector's CA, the
 box gives the command `SSL_CERT_FILE` and `GIT_SSL_CAINFO` (the system roots and that CA in one
 file) and `NODE_EXTRA_CA_CERTS`. The box unsets the secrets before the command. Commits carry `TENBOX_GIT_NAME` and
 `TENBOX_GIT_EMAIL` of the Job, else the name of the token's user. A project without an `id` in its
-`tenbox.yaml` is refused. It refuses with `machine-busy` while a Job of the task is active and
-does not follow the log: `tenbox machine ls` lists the Jobs with their state. The Job and the
-bucket belong to [Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
+`tenbox.yaml` is refused; the id is the one Tenport gave the project. It refuses with
+`machine-busy` while a run of the task is Running and does not follow the log: `tenbox machine ls
+<id>` lists the task's runs with their phase. The Job and the bucket belong to
+[Tenyard](https://github.com/enojen/tenyard); tenbox keeps no copy of them.
 
-After the close Job has ended (`tenbox machine ls`), `tenbox machine rm <id>` deletes the task's volume and archive; it refuses with `machine-busy` while a Job of the task is active.
+No tenbox command deletes a task archive: a person deletes it, and the bucket deletes an archive
+30 days after its last write.
 
 ## Server image: `server/`
 

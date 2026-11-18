@@ -29,7 +29,7 @@ account is at its limit, no node comes and the pod stays `Pending`.
   all the work in one command: a box that started no session ends seconds after its command.
 - The auto mode can refuse a command (a PR to ready, a close, a read of production). A refusal
   means stop: give the command to the user.
-- Before the first task, `tenbox machine ls` must answer. A start that stops for the GitHub App
+- Before the first task, `tenbox machine ls <id>` must answer for the lane's tasks. A start that stops for the GitHub App
   or a tracker 401 is not yours to repair: tell the user.
-- Only `tenbox machine rm`, after the close Job, deletes a volume. A task that is closed without
-  it leaves its volume.
+- You delete nothing on the cluster or in the bucket: a person deletes a task archive. The bucket
+  deletes an archive 30 days after its last write.
