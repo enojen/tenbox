@@ -78,22 +78,6 @@ export function loginExpiredError(expiry: Date): TenboxError {
   );
 }
 
-export function noKubeconfigError(file: string): TenboxError {
-  return new TenboxError(
-    `no kubeconfig at ${file}; set KUBECONFIG or write ~/.kube/config`,
-    "no-kubeconfig",
-  );
-}
-
-/** `reason` names the missing field, never a value: the file holds the cluster credentials. */
-export function kubeconfigError(file: string, reason: string): TenboxError {
-  return new TenboxError(`kubeconfig ${file}: ${reason}`, "kubeconfig");
-}
-
-export function templateError(file: string, reason: string): TenboxError {
-  return new TenboxError(`machine template ${file}: ${reason}`, "template");
-}
-
 export function noProjectIdError(mainDir: string): TenboxError {
   return new TenboxError(
     `no project id in ${mainDir}/tenbox.yaml; run tenbox start once and commit tenbox.yaml`,
@@ -101,35 +85,45 @@ export function noProjectIdError(mainDir: string): TenboxError {
   );
 }
 
-export function noArchiveBucketError(): TenboxError {
-  return new TenboxError(
-    "no bucket for the task archive; set TENBOX_BUCKET, TENBOX_BUCKET_REGION, TENBOX_BUCKET_KEY and TENBOX_BUCKET_SECRET",
-    "no-archive-bucket",
-  );
-}
-
 export function noMachineRunError(task: string): TenboxError {
   return new TenboxError(
-    `task ${task} has no Job on the cluster; start one with tenbox machine run`,
+    `task ${task} has no run; start one with tenbox machine run`,
     "no-machine-run",
   );
 }
 
-export function machineBusyError(task: string, jobs: string[]): TenboxError {
+export function machineBusyError(task: string, runs: string[]): TenboxError {
   return new TenboxError(
-    `task ${task} still runs on the cluster: ${jobs.join(", ")}; wait until it ends`,
+    `task ${task} still runs on the cluster: ${runs.join(", ")}; wait until it ends`,
     "machine-busy",
   );
 }
 
-/** `details` is the result of the run: the Job, its status, reason, output and log. */
-export function machineFailedError(job: string, details: unknown): TenboxError {
-  return new TenboxError(`Job ${job} failed on the cluster`, "machine-failed", details);
+/** `details` is the result of the run: its phase, reason, exit code and output. */
+export function machineFailedError(run: string, details: unknown): TenboxError {
+  return new TenboxError(`run ${run} failed on the cluster`, "machine-failed", details);
 }
 
-export function machineTimeoutError(task: string, jobs: string[]): TenboxError {
+export function machineTimeoutError(task: string, runs: string[]): TenboxError {
   return new TenboxError(
-    `task ${task} still runs on the cluster after the timeout: ${jobs.join(", ")}; it keeps running`,
+    `task ${task} still runs on the cluster after the timeout: ${runs.join(", ")}; it keeps running`,
     "machine-timeout",
   );
+}
+
+export function noTenportError(): TenboxError {
+  return new TenboxError(
+    "no Tenport for the machine runs; set TENPORT_URL and TENPORT_TOKEN",
+    "no-tenport",
+  );
+}
+
+/** A box that waits for something that does not come by itself, such as a missing Secret. */
+export function boxNotStartedError(run: string, reason: string): TenboxError {
+  return new TenboxError(`the box of run ${run} cannot start: ${reason}`, "box-not-started");
+}
+
+/** Tenport keeps the run, but its Job and its log are gone. */
+export function logGoneError(run: string): TenboxError {
+  return new TenboxError(`the log of run ${run} is gone with its Job`, "job-gone");
 }

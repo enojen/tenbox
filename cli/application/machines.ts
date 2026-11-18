@@ -1,51 +1,34 @@
-import path from "node:path";
 import { COMMAND, type CommandName } from "../../domain/commands.ts";
 import {
+  boxNotStartedError,
+  logGoneError,
   loginExpiredError,
   machineBusyError,
   machineFailedError,
   machineTimeoutError,
-  noArchiveBucketError,
   noLoginError,
   noMachineRunError,
   noProjectIdError,
-  serviceError,
+  noTenportError,
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import {
-  commandOutput,
   gitAuthor,
-  JOB_STATUS,
-  type JobStatus,
-  logTail,
-  OOM_KILLED,
-  oomKilledInLog,
+  lastingBoxReason,
   RESOURCE_CLASS,
   type ResourceClass,
-  RUN_STATUS,
-  type RunConclusion,
-  type RunStatus,
-  taskArchiveKey,
-  VOLUME_STATE,
-  type VolumeState,
+  RUN_PHASE,
+  type RunPhase,
 } from "../../domain/machines.ts";
 import type { Manifest } from "../../domain/manifests.ts";
 import type { Project } from "../../domain/projects.ts";
-import { archives } from "../infra/archives.ts";
 import { claudeCredentials } from "../infra/claude/credentials.ts";
-import { type ArchiveBucket, env } from "../infra/env.ts";
-import { files } from "../infra/files.ts";
+import { env, type TenportServer } from "../infra/env.ts";
 import { gh } from "../infra/gh.ts";
-import { git } from "../infra/git.ts";
-import {
-  type Cluster,
-  type Job,
-  kubernetes,
-  type Service,
-  type TemplateFields,
-} from "../infra/kubernetes.ts";
+import { failedAnswer } from "../infra/http.ts";
 import { pollUntil } from "../infra/poll.ts";
+import { type NewRun, type RunState, tenport } from "../infra/tenport.ts";
 import { findApiKey } from "../infra/tracker/apiKeys.ts";
 import { projects } from "./projects.ts";
 
@@ -74,64 +57,58 @@ const MACHINE_COMMANDS = {
 } satisfies Partial<Record<CommandName, CommandShape>>;
 type MachineCommand = keyof typeof MACHINE_COMMANDS;
 
-/** The image of the box: what runs a tenbox command in a Job (`machines/k8s/`). */
-const BOX_IMAGE = "ghcr.io/enojen/tenbox-box:latest";
-/** The label of every Job and volume of tenyard. */
-const TENYARD_SELECTOR = "app=tenyard";
-
 /** The words after `--`: `tenbox <cmd> <id> [flags]`. */
 const USAGE =
   "tenbox machine run <id> -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags]";
+
+const POLL_MS = 2000;
+const MS_PER_SECOND = 1000;
+/** The Tenport problem codes a machine command acts on. */
+const PROBLEM = {
+  machineBusy: "machine-busy",
+  boxNotStarted: "box-not-started",
+  jobGone: "job-gone",
+} as const;
+
+/** The project secrets the Job template reads, by the name Tenport gives them. */
+const PROJECT_SECRET = { trackerApiKey: "tracker_api_key", ntfyUrl: "ntfy_url" } as const;
 
 interface MachineRunInput {
   id: TaskId;
   /** The words after `--`. */
   words: string[];
-  /** With `--wait`: when the wait for an active Job of the task gives up; null refuses at once. */
+  /** With `--wait`: when the wait for a running run of the task gives up; null refuses at once. */
   deadlineMs: number | null;
 }
 
 interface MachineRunResult {
   task: TaskId;
   cmd: MachineCommand;
-  url: string;
+  /** The name of the run in Tenport. */
+  run: string;
 }
-
-/** One Job of the cluster. */
-export interface MachineRunRow {
-  id: string;
-  title: string;
-  status: RunStatus;
-  conclusion: RunConclusion | null;
-  /** Why the box container ended, e.g. `OOMKilled`, of a failed run; null when unknown. */
-  reason: string | null;
-  url: string;
-  created: string;
-}
-
-/** Tenbox commands run as a Job on the cluster. */
-export const machines = { run, wait, list, stop, remove, logs };
 
 interface MachineWaitInput {
   id: TaskId;
   cmd: MachineCommand;
-  /** The API URL of the Job, as `run` returns it. */
-  url: string;
+  run: string;
   deadlineMs: number;
 }
 
+/** How a run ended, as Tenport keeps it. */
 export interface MachineRunEnd {
   task: TaskId;
   cmd: MachineCommand;
-  job: string;
-  status: RunConclusion;
+  run: string;
+  phase: RunPhase;
   reason: string | null;
-  /** The last top-level JSON object of the pod log, null without one. */
+  exit_code: number | null;
+  oom_kill: number | null;
+  /** The JSON result of the tenbox command, null without one. */
   output: Record<string, unknown> | null;
-  log: string;
 }
 
-/** The task's newest Job log: where each text chunk goes, and whether to follow. */
+/** The task's newest run log: where each text chunk goes, and whether to follow. */
 interface MachineLogsInput {
   id: TaskId;
   follow: boolean;
@@ -140,27 +117,16 @@ interface MachineLogsInput {
 
 interface MachineLogsResult {
   task: TaskId;
-  job: string;
-  status: JobStatus;
+  run: string;
+  phase: RunPhase;
   reason: string | null;
 }
 
-const POLL_MS = 2000;
-/** How much of the end of a log `logs` keeps to find the last boot line. */
-const LOG_TAIL_CHARS = 4096;
-/** The volume of a task and what `remove` did to it. */
-export interface MachineVolume {
-  name: string;
-  state: VolumeState;
+/** The Tenport project of the current directory and the server to ask. */
+interface TenportProject {
+  server: TenportServer;
+  projectId: ProjectId;
 }
-
-interface MachineRemoval {
-  volume: MachineVolume;
-  archive: MachineVolume;
-}
-
-const ARCHIVE_URL_HOURS = 24;
-const SECONDS_PER_HOUR = 3600;
 
 /** A checked command of the task and the project it runs in. */
 interface CommandRun {
@@ -168,233 +134,219 @@ interface CommandRun {
   cmd: MachineCommand;
   words: string[];
   project: Project;
-  projectId: ProjectId;
   manifest: Manifest;
+  target: TenportProject;
   deadlineMs: number | null;
 }
 
-/**
- * Refuses before the cluster is called when the command is not allowed, the login is gone or the
- * project has no id.
- */
+/** Tenbox commands run as Jobs on the cluster, through Tenport. */
+export const machines = { run, wait, list, stop, logs };
+
+/** Refuses before Tenport is called when the command is not allowed or the login is gone. */
 async function run(input: MachineRunInput): Promise<MachineRunResult> {
   const { id, words, deadlineMs } = input;
   const cmd = parseCommand(input);
-  requireArchiveBucket();
   await ensureLogin();
   const { project, manifest } = await projects.get(env().cwd);
-  const projectId = manifest.id;
-  if (projectId === undefined) throw noProjectIdError(project.mainDir);
-  const url = await runJob({ id, cmd, words, project, projectId, manifest, deadlineMs });
-  return { task: id, cmd, url };
+  const target = tenportProject({ project, manifest });
+  const name = await startRun({ id, cmd, words, project, manifest, target, deadlineMs });
+  return { task: id, cmd, run: name };
 }
 
-/** Deletes the active Jobs of the task; the names it deleted. The volume stays. */
+/**
+ * Polls Tenport until the run is no longer Running. A Failed or Unknown run is `machine-failed`
+ * with the result in its details; past the deadline `machine-timeout`, and the run goes on.
+ */
+async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
+  const { id, cmd, run: name, deadlineMs } = input;
+  const { server } = await currentProject();
+  const check = async () => {
+    const state = await tenport.findRun({ server, name });
+    return state.phase === RUN_PHASE.running ? null : state;
+  };
+  const ended = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
+  if (ended === null) throw machineTimeoutError(id, [name]);
+  const { phase, reason, exit_code, oom_kill, output } = ended;
+  const result = { task: id, cmd, run: name, phase, reason, exit_code, oom_kill, output };
+  if (phase !== RUN_PHASE.succeeded) throw machineFailedError(name, result);
+  return result;
+}
+
+/** Every run of each task, oldest first. */
+async function list(ids: TaskId[]): Promise<RunState[]> {
+  const target = await currentProject();
+  const runs = await Promise.all(ids.map((id) => taskRuns(target, id)));
+  return runs.flat();
+}
+
+/** Deletes the Jobs of the task's running runs; the names it stopped. */
 async function stop(id: TaskId): Promise<string[]> {
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const names = await activeJobs(cluster, id);
+  const target = await currentProject();
+  const running = await runningRuns(target, id);
   const stopped: string[] = [];
-  for (const name of names) {
-    const deleted = await kubernetes.removeJob({ cluster, name });
-    if (deleted) stopped.push(name);
+  for (const name of running) {
+    const done = await tenport.stopRun({ server: target.server, name });
+    if (done) stopped.push(name);
   }
   return stopped;
 }
 
-/** Deletes the volume of the task unless a Job of the task is active. */
-async function remove(id: TaskId): Promise<MachineRemoval> {
-  const bucket = requireArchiveBucket();
-  const { manifest, project } = await projects.get(env().cwd);
-  if (manifest.id === undefined) throw noProjectIdError(project.mainDir);
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  await ensureIdle(cluster, id);
-  const name = `task-${kubeName(id)}`;
-  const volumeDeleted = await kubernetes.removeVolume({ cluster, name });
-  const key = taskArchiveKey(manifest.id, id);
-  const archiveDeleted = await archives.remove({ bucket, key });
-  return {
-    volume: { name, state: removalState(volumeDeleted) },
-    archive: { name: key, state: removalState(archiveDeleted) },
-  };
-}
-
-function removalState(deleted: boolean): VolumeState {
-  return deleted ? VOLUME_STATE.deleted : VOLUME_STATE.missing;
-}
-
-function requireArchiveBucket(): ArchiveBucket {
-  const bucket = env().archiveBucket;
-  if (bucket === null) throw noArchiveBucketError();
-  return bucket;
-}
-
-/** The task id in lower case, `_` as `-`: a Kubernetes name. */
-const kubeName = (id: TaskId): string => id.toLowerCase().replaceAll("_", "-");
-
-async function list(): Promise<MachineRunRow[]> {
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const jobs = await kubernetes.listJobs(cluster, TENYARD_SELECTOR);
-  return Promise.all(jobs.map((job) => toRow({ cluster, job })));
-}
-
-/** Writes the log of the newest Job of the task; its status is read after the log ends. */
+/** Writes the log of the newest run of the task; its phase is read after the log ends. */
 async function logs(input: MachineLogsInput): Promise<MachineLogsResult> {
   const { id, follow, write } = input;
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
-  const newest = jobs.sort((a, b) => b.created.localeCompare(a.created))[0];
+  const target = await currentProject();
+  const runs = await taskRuns(target, id);
+  const newest = runs.at(-1);
   if (newest === undefined) throw noMachineRunError(id);
-  const podName = await waitForPod({ cluster, job: newest.name, follow });
-  const chunks = await kubernetes.streamLog({ cluster, pod: podName, follow });
-  let tail = "";
-  for await (const chunk of chunks) {
-    write(chunk);
-    tail = (tail + chunk).slice(-LOG_TAIL_CHARS);
-  }
-  const after = await kubernetes.listJobs(cluster, `task=${id}`);
-  const job = after.find((j) => j.name === newest.name) ?? newest;
-  const pod = await kubernetes.findPod(cluster, newest.name);
-  const reason = boxReason({ podReason: pod?.reason ?? null, log: tail });
-  return { task: id, job: newest.name, status: jobStatus(job), reason };
+  const { server } = target;
+  const chunks = await openLog({ server, name: newest.name, follow });
+  for await (const chunk of chunks) write(chunk);
+  const after = await tenport.findRun({ server, name: newest.name });
+  return { task: id, run: after.name, phase: after.phase, reason: after.reason };
 }
 
-interface BoxEnd {
-  podReason: string | null;
-  log: string;
-}
-
-function boxReason(end: BoxEnd): string | null {
-  if (end.podReason === OOM_KILLED || oomKilledInLog(end.log)) return OOM_KILLED;
-  return end.podReason;
-}
-
-/**
- * Polls until the Job ended, then reads its pod log once. A failed Job is `machine-failed` with
- * the result in its details; past the deadline `machine-timeout`, and the Job keeps running.
- */
-async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
-  const { id, cmd, url, deadlineMs } = input;
-  const job = url.slice(url.lastIndexOf("/") + 1);
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const check = () => jobEnd({ cluster, id, job });
-  const ended = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
-  if (ended === null) throw machineTimeoutError(id, [job]);
-  let box: BoxEnd = { podReason: null, log: "" };
-  if (ended.found) box = await readBox({ cluster, job });
-  const result = {
-    task: id,
-    cmd,
-    job,
-    status: ended.status,
-    reason: boxReason(box),
-    output: commandOutput(box.log),
-    log: logTail(box.log),
-  };
-  if (result.status === JOB_STATUS.failure) throw machineFailedError(job, result);
-  return result;
-}
-
-interface JobRef {
-  cluster: Cluster;
-  id: TaskId;
-  job: string;
-}
-
-/** An ended Job; `found` is false for a Job gone from the list, which counts as failed. */
-interface EndedJob {
-  status: RunConclusion;
-  found: boolean;
-}
-
-/** Null while the Job runs. */
-async function jobEnd(ref: JobRef): Promise<EndedJob | null> {
-  const jobs = await kubernetes.listJobs(ref.cluster, `task=${ref.id}`);
-  const job = jobs.find((j) => j.name === ref.job);
-  if (job === undefined) return { status: JOB_STATUS.failure, found: false };
-  const status = jobStatus(job);
-  return status === JOB_STATUS.inProgress ? null : { status, found: true };
-}
-
-interface JobInCluster {
-  cluster: Cluster;
-  job: string;
-}
-
-async function readBox(input: JobInCluster): Promise<BoxEnd> {
-  const pod = await kubernetes.findPod(input.cluster, input.job);
-  if (pod === null) return { podReason: null, log: "" };
-  const log = await readLog({ cluster: input.cluster, pod: pod.name });
-  return { podReason: pod.reason, log };
-}
-
-function jobStatus(job: Job): JobStatus {
-  if (job.succeeded > 0) return JOB_STATUS.success;
-  if (job.failed > 0) return JOB_STATUS.failure;
-  return JOB_STATUS.inProgress;
-}
-
-/** The pod to read, and whether to wait for it to start. */
-interface PodWait {
-  cluster: Cluster;
-  job: string;
+interface LogOpen {
+  server: TenportServer;
+  name: string;
   follow: boolean;
 }
 
-/** Without `follow`, a pod that is not running yet is left to the API's own answer. */
-async function waitForPod(input: PodWait): Promise<string> {
-  const { cluster, job, follow } = input;
-  const check = async () => {
-    const pod = await kubernetes.findPod(cluster, job);
-    return pod !== null && (pod.started || !follow) ? pod.name : null;
-  };
-  const deadlineMs = follow ? Number.POSITIVE_INFINITY : Date.now();
-  const found = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
-  if (found === null) throw serviceError("kubernetes", "kubernetes", `Job ${job} has no pod yet`);
-  return found;
-}
-
-/** One Job and the cluster to ask for the reason of its failure. */
-interface RowInput {
-  cluster: Cluster;
-  job: Job;
-}
-
-interface LogRead {
-  cluster: Cluster;
-  pod: string;
-  tailLines?: number;
-}
-
-/** The log of a pod; empty when the log is gone, so one Job never stops the listing. */
-async function readLog(input: LogRead): Promise<string> {
-  try {
-    const chunks = await kubernetes.streamLog({ ...input, follow: false });
-    let text = "";
-    for await (const chunk of chunks) text += chunk;
-    return text;
-  } catch {
-    return "";
+/**
+ * The log stream of a run. A followed log of a box that has not started asks again after
+ * Tenport's Retry-After, unless the box waits for something that does not come by itself.
+ */
+async function openLog(open: LogOpen): Promise<AsyncIterable<string>> {
+  for (;;) {
+    try {
+      return await tenport.streamLog(open);
+    } catch (e) {
+      await Bun.sleep(retryAfterSeconds({ error: e, open }) * MS_PER_SECOND);
+    }
   }
 }
 
-/** An ended Job: the OOMKilled from the last log line of its newest pod, else the terminated reason of that pod. */
-async function endReason(input: RowInput): Promise<string | null> {
-  const { cluster, job } = input;
-  const pod = await kubernetes.findPod(cluster, job.name);
-  if (pod === null) return null;
-  if (pod.reason === OOM_KILLED) return pod.reason;
-  const text = await readLog({ cluster, pod: pod.name, tailLines: 1 });
-  return oomKilledInLog(text) ? OOM_KILLED : pod.reason;
+interface LogFailure {
+  error: unknown;
+  open: LogOpen;
 }
 
-async function toRow(input: RowInput): Promise<MachineRunRow> {
-  const { cluster, job } = input;
-  const row = { id: job.name, title: job.cmd, url: job.url, created: job.created };
-  const status = jobStatus(job);
-  if (status === JOB_STATUS.inProgress)
-    return { ...row, status: RUN_STATUS.inProgress, conclusion: null, reason: null };
-  const reason = await endReason({ cluster, job });
-  return { ...row, status: RUN_STATUS.completed, conclusion: status, reason };
+/** How long to wait before the log is asked for again; throws when the error stands. */
+function retryAfterSeconds(failure: LogFailure): number {
+  const { error, open } = failure;
+  const answer = failedAnswer(error);
+  if (answer?.code === PROBLEM.jobGone) throw logGoneError(open.name);
+  if (answer?.code !== PROBLEM.boxNotStarted || !open.follow) throw error;
+  const lasting = lastingBoxReason(answer.detail ?? "");
+  if (lasting !== null) throw boxNotStartedError(open.name, lasting);
+  return answer.retryAfterSeconds ?? 1;
+}
+
+const taskRuns = (target: TenportProject, id: TaskId): Promise<RunState[]> =>
+  tenport.listRuns({ server: target.server, project: target.projectId, task: id });
+
+async function runningRuns(target: TenportProject, id: TaskId): Promise<string[]> {
+  const runs = await taskRuns(target, id);
+  return runs.filter((r) => r.phase === RUN_PHASE.running).map((r) => r.name);
+}
+
+interface ProjectOfDir {
+  project: Project;
+  manifest: Manifest;
+}
+
+async function currentProject(): Promise<TenportProject> {
+  const { project, manifest } = await projects.get(env().cwd);
+  return tenportProject({ project, manifest });
+}
+
+/** The project id of `tenbox.yaml` is the id Tenport gave the project. */
+function tenportProject(of: ProjectOfDir): TenportProject {
+  const { project, manifest } = of;
+  const server = env().tenport;
+  if (server === null) throw noTenportError();
+  if (manifest.id === undefined) throw noProjectIdError(project.mainDir);
+  return { server, projectId: manifest.id };
+}
+
+/** Writes the project secrets, then posts the run; `--wait` asks again while the task is busy. */
+async function startRun(command: CommandRun): Promise<string> {
+  const { id, target, deadlineMs } = command;
+  const run = await newRun(command);
+  await saveProjectSecrets(command);
+  const post = () => postRun({ target, run });
+  if (deadlineMs === null) {
+    const started = await post();
+    return started ?? busy(target, id);
+  }
+  const started = await pollUntil({ check: post, deadlineMs, intervalMs: POLL_MS });
+  if (started !== null) return started;
+  const running = await runningRuns(target, id);
+  throw machineTimeoutError(id, running);
+}
+
+interface RunPost {
+  target: TenportProject;
+  run: NewRun;
+}
+
+/** The name of the started run; null while a run of the task is still Running. */
+async function postRun(post: RunPost): Promise<string | null> {
+  const { target, run } = post;
+  try {
+    return await tenport.startRun({ server: target.server, run });
+  } catch (e) {
+    if (failedAnswer(e)?.code !== PROBLEM.machineBusy) throw e;
+    return null;
+  }
+}
+
+async function busy(target: TenportProject, id: TaskId): Promise<never> {
+  const running = await runningRuns(target, id);
+  throw machineBusyError(id, running);
+}
+
+async function newRun(command: CommandRun): Promise<NewRun> {
+  const { id, cmd, words, project, manifest, target } = command;
+  const user = await gh.user(project.mainDir);
+  const author = gitAuthor(user);
+  return {
+    project: target.projectId,
+    task: id,
+    command: words,
+    base: manifest.base,
+    class: resourceClass(command),
+    ...(manifest.setup === undefined ? {} : { setup: manifest.setup }),
+    author,
+    services: MACHINE_COMMANDS[cmd].tests ? manifest.machine.services : [],
+    env: manifest.machine.env,
+  };
+}
+
+/**
+ * The tracker key and the ntfy URL this computer uses for the project, as the project secrets the
+ * Job template reads. A value the project lacks is left out.
+ */
+async function saveProjectSecrets(command: CommandRun): Promise<void> {
+  const { manifest, target } = command;
+  const values = {
+    [PROJECT_SECRET.trackerApiKey]: findApiKey(manifest.tracker),
+    [PROJECT_SECRET.ntfyUrl]: manifest.notify.ntfy ?? null,
+  };
+  for (const [name, value] of Object.entries(values)) {
+    if (value === null) continue;
+    const { server, projectId } = target;
+    await tenport.saveProjectSecret({ server, project: projectId, name, value });
+  }
+}
+
+/**
+ * A command that runs the project's tests or sends the build takes `machine.class`, `start`
+ * takes `machine.plan_class`.
+ */
+function resourceClass(command: CommandRun): ResourceClass {
+  if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.class;
+  if (command.cmd === COMMAND.start) return command.manifest.machine.plan_class;
+  return RESOURCE_CLASS.plan;
 }
 
 /** The command after `--`, checked: only the flags of its command. */
@@ -435,176 +387,9 @@ function argsFit(input: ArgsInput): boolean {
   return true;
 }
 
-/** The refresh token must still be valid: the machine takes its login from the same file. */
+/** The refresh token must still be valid: the login sync gives the box the same file. */
 async function ensureLogin(): Promise<void> {
   const expiry = await claudeCredentials.findRefreshExpiry();
   if (expiry === null) throw noLoginError(claudeCredentials.file());
   if (expiry <= Date.now()) throw loginExpiredError(new Date(expiry));
-}
-
-/** Every Job gets the project and its origin: the box clones the project on a new volume. */
-async function runJob(command: CommandRun): Promise<string> {
-  const { id, manifest, projectId, deadlineMs } = command;
-  const values = projectSecretValues(manifest);
-  const cluster = await kubernetes.readCluster(env().kubeconfig);
-  const dir = homePath(manifest.machine.template);
-  const services = await Promise.all(
-    serviceNames(command).map((name) =>
-      kubernetes.readService(path.join(dir, "services", `${name}.yaml`)),
-    ),
-  );
-  const fields = await templateFields({ command, services });
-  const volume = await readVolumeTemplate(dir, fields);
-  const file = path.join(dir, "job.yaml");
-  const template = await kubernetes.readTemplate({ file, fields });
-  const job = kubernetes.addServices({ file, job: template, services });
-  if (deadlineMs !== null) await waitIdle({ cluster, id, deadlineMs });
-  await ensureIdle(cluster, id);
-  await kubernetes.saveSecret({ cluster, name: `project-${projectId}`, values });
-  if (volume !== null) await kubernetes.ensureVolume({ cluster, object: volume });
-  return kubernetes.createJob({ cluster, object: job });
-}
-
-async function readVolumeTemplate(
-  dir: string,
-  fields: TemplateFields,
-): Promise<Record<string, unknown> | null> {
-  const file = path.join(dir, "pvc.yaml");
-  const exists = await files.exists(file);
-  if (!exists) return null;
-  return kubernetes.readTemplate({ file, fields });
-}
-
-/**
- * The project Secret the tenyard Job template reads, `project-<project id>`: the tracker key and
- * the ntfy URL this computer uses for the project. A value the project lacks is left out.
- */
-function projectSecretValues(manifest: Manifest): Record<string, string> {
-  const trackerKey = findApiKey(manifest.tracker);
-  const ntfy = manifest.notify.ntfy;
-  return {
-    ...(trackerKey === null ? {} : { tracker_api_key: trackerKey }),
-    ...(ntfy === undefined ? {} : { ntfy_url: ntfy }),
-  };
-}
-
-interface FieldsInput {
-  command: CommandRun;
-  services: Service[];
-}
-
-async function templateFields(input: FieldsInput): Promise<TemplateFields> {
-  const { command, services } = input;
-  const { id, words, project, projectId, manifest } = command;
-  const boxEnv = Object.assign({}, ...services.map((s) => s.env), manifest.machine.env);
-  const repo = await originUrl(project);
-  const user = await gh.user(project.mainDir);
-  const author = gitAuthor(user);
-  const name = resourceClass(command);
-  const file = path.join(homePath(manifest.machine.template), "classes.yaml");
-  const resources = await kubernetes.readClass({ file, name });
-  const archive = archives.presign({
-    bucket: requireArchiveBucket(),
-    key: taskArchiveKey(projectId, id),
-    expiresInSeconds: ARCHIVE_URL_HOURS * SECONDS_PER_HOUR,
-  });
-  return {
-    name: kubeName(id),
-    task: id,
-    run: runStamp(new Date()),
-    project: project.name,
-    projectId,
-    repo,
-    base: manifest.base,
-    gitName: author.name,
-    gitEmail: author.email,
-    image: env().boxImage ?? BOX_IMAGE,
-    command: command.cmd,
-    cmd: words.map(shellWord).join(" "),
-    env: JSON.stringify(boxEnv),
-    class: name,
-    cpu: resources.cpu,
-    memory: resources.memory,
-    archiveDownload: archive.download,
-    archiveUpload: archive.upload,
-    setup: manifest.setup ?? "",
-  };
-}
-
-/**
- * A command that runs the project's tests or sends the build takes `machine.class`, `start`
- * takes `machine.plan_class`.
- */
-function resourceClass(command: CommandRun): ResourceClass {
-  if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.class;
-  if (command.cmd === COMMAND.start) return command.manifest.machine.plan_class;
-  return RESOURCE_CLASS.plan;
-}
-
-async function activeJobs(cluster: Cluster, id: TaskId): Promise<string[]> {
-  const jobs = await kubernetes.listJobs(cluster, `task=${id}`);
-  return jobs.filter((job) => job.active > 0).map((job) => job.name);
-}
-
-function serviceNames(command: CommandRun): string[] {
-  if (MACHINE_COMMANDS[command.cmd].tests) return command.manifest.machine.services;
-  return [];
-}
-
-/** Two commands of one task must not share its volume. */
-async function ensureIdle(cluster: Cluster, id: TaskId): Promise<void> {
-  const active = await activeJobs(cluster, id);
-  if (active.length > 0) throw machineBusyError(id, active);
-}
-
-interface IdleWait {
-  cluster: Cluster;
-  id: TaskId;
-  deadlineMs: number;
-}
-
-async function waitIdle(input: IdleWait): Promise<void> {
-  const { cluster, id, deadlineMs } = input;
-  let active: string[] = [];
-  const check = async () => {
-    active = await activeJobs(cluster, id);
-    return active.length === 0 ? active : null;
-  };
-  const idle = await pollUntil({ check, deadlineMs, intervalMs: POLL_MS });
-  if (idle === null) throw machineTimeoutError(id, active);
-}
-
-/** `MMDD-HHMMSS` in UTC: the run part of a Job name. */
-function runStamp(now: Date): string {
-  return now.toISOString().replace(/^\d{4}-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d).*$/, "$1$2-$3$4$5");
-}
-
-const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
-
-/** The box runs `TENBOX_CMD` with `bash -c`: a title must stay one word and run nothing. */
-function shellWord(word: string): string {
-  if (SHELL_SAFE.test(word)) return word;
-  return `'${word.replaceAll("'", `'\\''`)}'`;
-}
-
-/** A `~/` path of the manifest, from the home directory. */
-function homePath(dir: string): string {
-  if (dir.startsWith("~/")) return path.join(env().home, dir.slice("~/".length));
-  return dir;
-}
-
-/** The origin of the main checkout, without a token in it. */
-async function originUrl(project: Project): Promise<string> {
-  const repo = await git.findRemoteUrl(project.mainDir);
-  if (repo === null) throw usageError(`${project.name} has no git remote origin`);
-  return withoutUserinfo(repo);
-}
-
-/** A token in the origin URL would land in the Job. */
-function withoutUserinfo(url: string): string {
-  if (!URL.canParse(url)) return url;
-  const parsed = new URL(url);
-  parsed.username = "";
-  parsed.password = "";
-  return parsed.href;
 }

@@ -55,9 +55,9 @@ For the flow of a task, the files of a task and `tenbox.yaml`, read the
   project id, tracker ids, people, customers); write "a client project" instead, and check the
   draft for such names before the person says yes. A workflow never reports.
 - On the cluster: `tenbox machine run <id> -- <command>` runs one tenbox command of the task
-  as a Job, from the templates of [Tenyard](https://github.com/enojen/tenyard); see
-  "Machines" in the reference. `tenbox machine run <id> --wait -- <command>` waits for the
-  Job to end and prints the command's JSON as `output`; use it instead of polling `machine ls`.
-  Why a build there failed or waits: `reason` of
-  `tenbox machine run <id> -- tenbox status <id>`, not `kubectl`. After its close Job ends, `tenbox machine rm <id>` deletes the
-  task's volume; run it only then, it cannot be undone.
+  as a Job through Tenport; see "Machines" in the reference. `tenbox machine run <id> --wait --
+  <command>` waits for the run to end and prints the command's JSON as `output`; use it instead
+  of polling `machine ls`. `tenbox machine ls <id> [<id>...]` lists the runs of the tasks you
+  name. Why a build there failed or waits: `reason` of
+  `tenbox machine run <id> -- tenbox status <id>`, not `kubectl`. No tenbox command deletes a
+  task archive; a person does.

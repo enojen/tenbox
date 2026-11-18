@@ -5,7 +5,7 @@ import type { BaseInfo, CheckOutcome } from "../../domain/checks.ts";
 import type { NumberedQuestion } from "../../domain/decisions.ts";
 import type { FailedState } from "../../domain/errors/index.ts";
 import type { Group } from "../../domain/groups.ts";
-import type { JobStatus } from "../../domain/machines.ts";
+import type { RunPhase } from "../../domain/machines.ts";
 import type { TrackerKind } from "../../domain/manifests.ts";
 import type { StalePart } from "../../domain/parts.ts";
 import type { PlanResult } from "../../domain/plans.ts";
@@ -17,13 +17,14 @@ import type { TaskStats } from "../../domain/stats.ts";
 import type { ListedReport, StatusReport } from "../../domain/statusReports.ts";
 import type { AnswerSaved } from "../application/answers.ts";
 import type { DecisionsSaved } from "../application/decisions.ts";
-import type { MachineRunEnd, MachineRunRow, MachineVolume } from "../application/machines.ts";
+import type { MachineRunEnd } from "../application/machines.ts";
 import type { SessionStartInfo, SessionStopState } from "../application/sessions.ts";
 import type { SetupResult } from "../application/setups.ts";
 import type { StatsFrom } from "../application/stats.ts";
 import type { StatusUpdate } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
 import type { PrBranch } from "../infra/gh.ts";
+import type { RunState } from "../infra/tenport.ts";
 import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
 import type { LINK_STATE } from "./install.ts";
 import type { WaitEvent } from "./wait.ts";
@@ -343,11 +344,11 @@ export interface MachineRunResultJson {
   ok: true;
   task: string;
   cmd: string;
-  /** The API URL of the Job. */
-  url: string;
+  /** The name of the run in Tenport. */
+  run: string;
 }
 
-/** `tenbox machine run --wait`: how the Job ended; a failed one is `machine-failed` instead. */
+/** `tenbox machine run --wait`: how the run ended; a failed one is `machine-failed` instead. */
 export interface MachineWaitResultJson extends MachineRunEnd {
   ok: true;
 }
@@ -355,28 +356,21 @@ export interface MachineWaitResultJson extends MachineRunEnd {
 export interface MachineLogsResultJson {
   ok: true;
   task: string;
-  job: string;
-  status: JobStatus;
+  run: string;
+  phase: RunPhase;
   reason: string | null;
 }
 
 export interface MachineStopResult {
   ok: true;
   task: string;
-  /** The names of the Jobs deleted. */
+  /** The names of the runs stopped. */
   stopped: string[];
-}
-
-export interface MachineRmResult {
-  ok: true;
-  task: string;
-  volume: MachineVolume;
-  archive: MachineVolume;
 }
 
 export interface MachineLsResult {
   ok: true;
-  runs: MachineRunRow[];
+  runs: RunState[];
 }
 
 export interface PartDoneResult {

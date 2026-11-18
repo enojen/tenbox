@@ -29,13 +29,7 @@ import { commandHelp } from "./commands/help.ts";
 import { blockedHook } from "./commands/hook.ts";
 import { install } from "./commands/install.ts";
 import { listTasks } from "./commands/list.ts";
-import {
-  listMachineRuns,
-  removeMachineVolume,
-  runOnMachine,
-  showMachineLogs,
-  stopMachine,
-} from "./commands/machine.ts";
+import { listMachineRuns, runOnMachine, showMachineLogs, stopMachine } from "./commands/machine.ts";
 import { mergeCheck } from "./commands/mergeCheck.ts";
 import { partDone, partReopen } from "./commands/part.ts";
 import { planDone, planShow } from "./commands/plan.ts";
@@ -84,7 +78,7 @@ const STATUS_USAGE = "tenbox status <id>";
 const LIST_USAGE = "tenbox list";
 const BUILD_USAGE = "tenbox build <id> [--defaults]";
 const MACHINE_USAGE =
-  "tenbox machine run <id> [--wait [--timeout 600]] -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine rm <id> | tenbox machine ls | tenbox machine logs <id> [--follow]";
+  "tenbox machine run <id> [--wait [--timeout 600]] -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine ls <id> [<id>...] | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
@@ -361,11 +355,10 @@ const COMMANDS: Record<CommandName, Command> = {
         return showMachineLogs({ id: idArg(rest, MACHINE_USAGE), follow });
       }
       if (follow) throw usageError(`usage: ${MACHINE_USAGE}`);
-      if (action === "ls" && rest.length === 0) return listMachineRuns();
-      if (action === "stop" && rest.length === 1) return stopMachine(idArg(rest, MACHINE_USAGE));
-      if (action === "rm" && rest.length === 1) {
-        return removeMachineVolume(idArg(rest, MACHINE_USAGE));
+      if (action === "ls" && rest.length > 0) {
+        return listMachineRuns(rest.map((word) => idArg([word], MACHINE_USAGE)));
       }
+      if (action === "stop" && rest.length === 1) return stopMachine(idArg(rest, MACHINE_USAGE));
       if (action !== "run" || !argv.includes("--")) throw usageError(`usage: ${MACHINE_USAGE}`);
       const [, ...words] = rest;
       const id = idArg(rest, MACHINE_USAGE);

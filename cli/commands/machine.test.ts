@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import path from "node:path";
-import { z } from "zod";
+import { jsons } from "../../domain/utils.ts";
 import { files } from "../infra/files.ts";
 import { git } from "../infra/git.ts";
 import { tenbox } from "../test/cli.ts";
@@ -12,97 +12,30 @@ const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 const HTTP_OK = 200;
 const HTTP_CREATED = 201;
+const HTTP_NO_CONTENT = 204;
 const HTTP_CONFLICT = 409;
 const HTTP_NOT_FOUND = 404;
-const TOKEN = "SECRET-TOKEN";
-const JOBS_PATH = "/apis/batch/v1/namespaces/tenbox/jobs";
-const PVCS_PATH = "/api/v1/namespaces/tenbox/persistentvolumeclaims";
-const SECRETS_PATH = "/api/v1/namespaces/tenbox/secrets";
-const BUCKET = "tenbox-test";
-const BUCKET_SECRET = "SECRET-BUCKET-KEY";
-const ARCHIVE_PATH = `/${BUCKET}/tasks/k7f3qa/TEN-1.tar.zst`;
-const PROJECT_SECRET = "project-k7f3qa";
+const HTTP_SERVICE_UNAVAILABLE = 503;
+const TENPORT_TOKEN = "tbx_SECRET";
+const PROJECT_ID = "k7f3qa";
+const RUN = "task-ten-1-1118-101500";
+const OLD_RUN = "task-ten-1-1118-090000";
+const CREATED = "2026-11-18T10:15:00Z";
 const TRACKER_KEY = "SECRET-TRACKER-KEY";
-const GITHUB_TOKEN = "github_pat_SECRET";
 const NTFY_URL = "https://ntfy.sh/secret-topic";
-const JOB_NAME = /^task-ten-1-\d{4}-\d{6}$/;
-const CREATED = "2026-10-21T10:00:00Z";
 const GITHUB_USER = { login: "octo", id: 42, name: "Octo Cat" };
+const AUTHOR = { name: "Octo Cat", email: "42+octo@users.noreply.github.com" };
+const OUTPUT = { ok: true, task: "TEN-1", approved: true };
+const BOX_LOG = "tenbox-boot: cloning\ntenbox-boot: command ended with exit code 0\n";
 
 let project: TempProject;
 let claudeDir: string;
 let env: Record<string, string>;
 
-/** A shortened tenyard `task/job.yaml`: the fields tenbox fills and the tests read back. */
-const JOB_TEMPLATE = `apiVersion: batch/v1
-kind: Job
-metadata:
-  name: task-__NAME__-__RUN__
-  labels: { app: tenyard, task: __TASK__ }
-spec:
-  template:
-    metadata:
-      labels: { app: tenyard, task: __TASK__, class: __CLASS__, command: __COMMAND__ }
-    spec:
-      containers:
-        - name: box
-          image: __IMAGE__
-          resources:
-            requests: { cpu: __CPU__, memory: __MEMORY__ }
-            limits: { memory: __MEMORY__ }
-          env:
-            - { name: TENBOX_TASK, value: "__TASK__" }
-            - { name: TENBOX_PROJECT, value: "__PROJECT__" }
-            - { name: TENBOX_REPO, value: "__REPO__" }
-            - { name: TENBOX_BASE, value: "__BASE__" }
-            - { name: TENBOX_GIT_NAME, value: "__GIT_NAME__" }
-            - { name: TENBOX_GIT_EMAIL, value: "__GIT_EMAIL__" }
-            - name: TENBOX_CMD
-              value: |-
-                __CMD__
-            - name: TENBOX_ENV
-              value: |-
-                __ENV__
-            - { name: TENBOX_ARCHIVE_GET, value: "__ARCHIVE_GET__" }
-            - { name: TENBOX_ARCHIVE_PUT, value: "__ARCHIVE_PUT__" }
-            - { name: TENBOX_SETUP, value: "__SETUP__" }
-            - name: TRACKER_API_KEY
-              valueFrom: { secretKeyRef: { name: project-__PROJECT_ID__, key: tracker_api_key } }
-      volumes:
-        - name: home
-          persistentVolumeClaim: { claimName: task-__NAME__ }
-`;
-
-const CLASSES = `plan: { cpu: 250m, memory: 1536Mi }
-build: { cpu: 500m, memory: 2Gi }
-heavy: { cpu: 500m, memory: 3Gi }
-`;
-
-const POSTGRES_SERVICE = `spec:
-  template:
-    spec:
-      initContainers:
-        - { name: postgres, image: postgres:16, restartPolicy: Always }
-      containers:
-        - name: box
-          env:
-            - { name: TEST_PG_URL, value: "postgres://test:test@127.0.0.1:5432" }
-      volumes:
-        - name: pgdata
-          emptyDir: { medium: Memory }
-`;
-
-const PVC_TEMPLATE = `apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: task-__NAME__
-  labels: { app: tenyard, task: __TASK__ }
-`;
-
 beforeEach(async () => {
   project = await makeTempProject({ "tenbox.yaml": "project: demo\n" });
   claudeDir = path.join(project.root, "claude");
-  // The tracker keys of the shell that runs the tests must not reach the Secret.
+  // The tracker keys of the shell that runs the tests must not reach Tenport.
   env = { CLAUDE_CONFIG_DIR: claudeDir, CLICKUP_API_KEY: "", LINEAR_API_KEY: "" };
 });
 
@@ -116,62 +49,50 @@ const writeLogin = (expiresAt: number) =>
 
 const machine = (args: string[]) => tenbox(["machine", ...args], project.mainDir, env);
 
-/** One request the fake Kubernetes API got. */
-interface ApiCall {
+/** One request the fake Tenport got. */
+interface Call {
   method: string;
   path: string;
-  query: string;
+  query: URLSearchParams;
   auth: string | null;
   body: unknown;
 }
 
-/** A Kubernetes API server on 127.0.0.1 that logs each request. */
-interface FakeApi {
+/** What the fake Tenport answers to one request. */
+interface Answer {
+  status: number;
+  body?: unknown;
+  retryAfter?: number;
+}
+
+type RunState = Record<string, unknown>;
+
+/** A Tenport on 127.0.0.1 that logs each request and answers from its fields. */
+interface FakeTenport {
   url: string;
-  calls: ApiCall[];
-  /** The answer status of the PVC POST. */
-  pvcStatus: number;
-  secretStatus: number;
-  /** The answer status of a DELETE, of a Job or of a PVC. */
-  deleteStatus: number;
-  archiveExists: boolean;
-  /** The items of every Job list. */
-  jobs: unknown[];
-  /** The items of every pod list. */
-  pods: unknown[];
-  /** When set, the items of the pod lists after the next one: the pod starts between two polls. */
-  nextPods: unknown[] | null;
-  /** When set, the items of the Job lists after the next one: a Job ends between two polls. */
-  nextJobs: unknown[] | null;
-  /**
-   * When set, a posted Job joins the Job lists with these statuses, one per list (the last one
-   * stays); when null, a posted Job is never listed.
-   */
-  runStatuses: Record<string, number>[] | null;
-  /** The Job the fake lists for the last POST of a Job. */
-  posted: object | null;
-  /** The body and the status of every pod log answer. */
-  log: string;
-  logStatus: number;
+  calls: Call[];
+  /** The answers of `POST /runs`, one each; after them a created `RUN`. */
+  posts: Answer[];
+  /** The runs `GET /runs` lists, by their task. */
+  runs: RunState[];
+  /** The phases of `GET /runs/{name}`, one each; the last one stays. */
+  phases: string[];
+  /** The fields of an ended run besides its phase. */
+  end: RunState;
+  /** The answers of `GET /runs/{name}/log`, one each; after them `BOX_LOG`. */
+  logs: Answer[];
   stop(): void;
 }
 
-function startFakeApi(): FakeApi {
-  const api: FakeApi = {
+function startFakeTenport(): FakeTenport {
+  const fake: FakeTenport = {
     url: "",
     calls: [],
-    pvcStatus: HTTP_CREATED,
-    secretStatus: HTTP_CREATED,
-    deleteStatus: HTTP_OK,
-    archiveExists: true,
-    jobs: [],
-    pods: [],
-    nextPods: null,
-    nextJobs: null,
-    runStatuses: null,
-    posted: null,
-    log: "",
-    logStatus: HTTP_OK,
+    posts: [],
+    runs: [],
+    phases: ["Running"],
+    end: {},
+    logs: [],
     stop: () => {},
   };
   const server = Bun.serve({
@@ -179,1264 +100,479 @@ function startFakeApi(): FakeApi {
     hostname: "127.0.0.1",
     fetch: async (request) => {
       const url = new URL(request.url);
-      const body = await readBody(request);
+      const text = await request.text();
+      const body = text === "" ? null : jsons.parse(text);
       const auth = request.headers.get("authorization");
-      api.calls.push({ method: request.method, path: url.pathname, query: url.search, auth, body });
-      if (url.pathname.startsWith(`/${BUCKET}/`)) return bucketAnswer(api, request.method);
-      if (url.pathname.endsWith("/log")) {
-        return new Response(api.log, { status: api.logStatus });
-      }
-      if (url.pathname.endsWith("/pods")) return podList(api);
-      if (request.method === "GET") return jobList(api);
-      if (request.method === "DELETE" && url.pathname.startsWith(JOBS_PATH)) {
-        return removeJob(api, url.pathname);
-      }
-      if (request.method === "DELETE") return Response.json({}, { status: api.deleteStatus });
-      return created(api, { path: url.pathname, body });
+      const call = { method: request.method, path: url.pathname, query: url.searchParams };
+      fake.calls.push({ ...call, auth, body });
+      return respond(answerOf(fake, request.method, url));
     },
   });
-  api.url = `http://127.0.0.1:${server.port}`;
-  api.stop = () => server.stop(true);
-  return api;
+  fake.url = `http://127.0.0.1:${server.port}`;
+  fake.stop = () => server.stop(true);
+  return fake;
 }
 
-function bucketAnswer(api: FakeApi, method: string): Response {
-  if (method === "DELETE") return new Response(null, { status: 204 });
-  return new Response(null, { status: api.archiveExists ? HTTP_OK : HTTP_NOT_FOUND });
+function answerOf(fake: FakeTenport, method: string, url: URL): Answer {
+  const route = `${method} ${url.pathname}`;
+  if (route === "POST /runs") return fake.posts.shift() ?? { status: HTTP_CREATED, body: newRun() };
+  if (route === "GET /runs") return { status: HTTP_OK, body: runsOf(fake, url) };
+  if (url.pathname.endsWith("/log")) return fake.logs.shift() ?? { status: HTTP_OK, body: BOX_LOG };
+  if (method === "PUT") return { status: HTTP_OK, body: { name: lastPart(url) } };
+  if (method === "DELETE") return { status: HTTP_NO_CONTENT };
+  return { status: HTTP_OK, body: runOf(fake, lastPart(url)) };
 }
 
-interface Creation {
-  path: string;
-  body: unknown;
+const lastPart = (url: URL): string => url.pathname.split("/").pop() ?? "";
+
+function respond(answer: Answer): Response {
+  const { status, body, retryAfter } = answer;
+  const headers: Record<string, string> =
+    retryAfter === undefined ? {} : { "Retry-After": String(retryAfter) };
+  if (typeof body === "string") return new Response(body, { status, headers });
+  if (body === undefined) return new Response(null, { status, headers });
+  return Response.json(body, { status, headers });
 }
 
-function created(api: FakeApi, creation: Creation): Response {
-  const { path: apiPath, body } = creation;
-  if (apiPath === PVCS_PATH) return Response.json(body, { status: api.pvcStatus });
-  if (apiPath === SECRETS_PATH) return Response.json(body, { status: api.secretStatus });
-  if (apiPath === JOBS_PATH) listPostedJob(api, body);
-  return Response.json(body, { status: HTTP_CREATED });
+const newRun = () => ({ name: RUN, project: PROJECT_ID, task: "TEN-1" });
+
+const runsOf = (fake: FakeTenport, url: URL) =>
+  fake.runs.filter((run) => run.task === url.searchParams.get("task"));
+
+function runOf(fake: FakeTenport, name: string): RunState {
+  const [phase = "Running", ...rest] = fake.phases;
+  if (rest.length > 0) fake.phases = rest;
+  const ended = phase === "Running" ? {} : fake.end;
+  return { ...runState({ name, phase }), ...ended };
 }
 
-const BODYLESS_METHODS = ["GET", "DELETE", "HEAD"];
-
-const readBody = (request: Request): Promise<unknown> =>
-  BODYLESS_METHODS.includes(request.method) ? Promise.resolve(null) : request.json();
-
-function podList(api: FakeApi): Response {
-  const items = api.pods;
-  if (api.nextPods !== null) {
-    api.pods = api.nextPods;
-    api.nextPods = null;
-  }
-  return Response.json({ items });
-}
-
-function jobList(api: FakeApi): Response {
-  const items = api.jobs.map((job) => (job === api.posted ? postedWithNextStatus(api) : job));
-  if (api.nextJobs !== null) {
-    api.jobs = api.nextJobs;
-    api.nextJobs = null;
-  }
-  return Response.json({ items });
-}
-
-const PostedJobSchema = z.looseObject({ metadata: z.looseObject({ name: z.string() }) });
-
-/** The posted Job as the API lists it: with a creationTimestamp and a status. */
-function listPostedJob(api: FakeApi, body: unknown): void {
-  if (api.runStatuses === null) return;
-  const job = PostedJobSchema.parse(body);
-  api.posted = { ...job, metadata: { ...job.metadata, creationTimestamp: CREATED }, status: {} };
-  api.jobs = [...api.jobs, api.posted];
-}
-
-function postedWithNextStatus(api: FakeApi): object {
-  const [status = {}, ...rest] = api.runStatuses ?? [];
-  if (rest.length > 0) api.runStatuses = rest;
-  return { ...api.posted, status };
-}
-
-/** A deleted Job is gone from the next list, as with propagationPolicy=Background. */
-function removeJob(api: FakeApi, apiPath: string): Response {
-  if (api.deleteStatus !== HTTP_OK) return Response.json({}, { status: api.deleteStatus });
-  const name = apiPath.slice(`${JOBS_PATH}/`.length);
-  api.jobs = api.jobs.filter((job) => !JSON.stringify(job).includes(`"name":"${name}"`));
-  return Response.json({ kind: "Status", status: "Success" });
-}
-
-const base64 = (text: string) => Buffer.from(text).toString("base64");
-
-interface TokenUser {
-  token: string;
-}
-
-/** The user entry of the tenyard kubeconfig. */
-interface CertificateUser {
-  "client-certificate-data": string;
-  "client-key-data": string;
-}
-
-type KubeUser = TokenUser | CertificateUser;
-
-interface KubeconfigInput {
-  server: string;
-  user: KubeUser;
-}
-
-function kubeconfig(input: KubeconfigInput): string {
-  return JSON.stringify({
-    apiVersion: "v1",
-    "current-context": "tenyard",
-    contexts: [{ name: "tenyard", context: { cluster: "c", user: "u" } }],
-    clusters: [
-      { name: "c", cluster: { server: input.server, "certificate-authority-data": base64("CA") } },
-    ],
-    users: [{ name: "u", user: input.user }],
-  });
-}
-
-/** A posted Job body, as far as the tests read it. */
-const JobBodySchema = z.object({
-  metadata: z.object({ name: z.string(), labels: z.unknown() }),
-  spec: z.object({
-    template: z.object({
-      metadata: z.object({ labels: z.record(z.string(), z.string()) }),
-      spec: z.object({
-        containers: z.array(
-          z.object({
-            resources: z.unknown(),
-            env: z.array(
-              z.object({
-                name: z.string(),
-                value: z.string().optional(),
-                valueFrom: z.unknown().optional(),
-              }),
-            ),
-          }),
-        ),
-      }),
-    }),
-  }),
-});
-
-const jobBody = (call: ApiCall | undefined) => JobBodySchema.parse(call?.body);
-
-/** The env of the box container in a posted Job: the values, without the Secret refs. */
-function jobEnv(call: ApiCall | undefined): Record<string, string> {
-  const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
-  return Object.fromEntries(
-    entries.flatMap((e) => (e.value === undefined ? [] : [[e.name, e.value]])),
-  );
-}
-
-/** The pod's class label and the resources of the box container in a posted Job. */
-function jobClass(call: ApiCall | undefined) {
-  const template = jobBody(call).spec.template;
-  return {
-    label: template.metadata.labels.class,
-    resources: template.spec.containers[0]?.resources,
-  };
-}
-
-/** The `command` label of the pod in a posted Job. */
-function jobCommand(call: ApiCall | undefined): string | undefined {
-  return jobBody(call).spec.template.metadata.labels.command;
-}
-
-/** The resources a class of `CLASSES` gives the box: the RAM request is its limit. */
-function classResources(cpu: string, memory: string) {
-  return { requests: { cpu, memory }, limits: { memory } };
-}
-
-/** The `valueFrom` of one env entry of the box container in a posted Job. */
-function jobValueFrom(call: ApiCall | undefined, name: string): unknown {
-  const entries = jobBody(call).spec.template.spec.containers[0]?.env ?? [];
-  return entries.find((e) => e.name === name)?.valueFrom;
-}
-
-const PodSpecSchema = z.object({
-  spec: z.object({
-    template: z.object({
-      spec: z.object({
-        initContainers: z.array(z.object({ name: z.string() })).default([]),
-        volumes: z.array(z.object({ name: z.string() })).default([]),
-      }),
-    }),
-  }),
-});
-
-function jobPod(call: ApiCall | undefined) {
-  const spec = PodSpecSchema.parse(call?.body).spec.template.spec;
-  return {
-    sidecars: spec.initContainers.map((c) => c.name),
-    volumes: spec.volumes.map((v) => v.name),
-  };
-}
-
-/** A Secret body, as far as the tests read it. */
-const SecretBodySchema = z.object({
-  metadata: z.object({ name: z.string() }),
-  stringData: z.record(z.string(), z.string()),
-});
-
-const secretBody = (call: ApiCall | undefined) => SecretBodySchema.parse(call?.body);
-
-interface FakeJobInput {
+interface RunInput {
   name: string;
-  status: Record<string, number>;
-  created?: string;
+  phase: string;
+  task?: string;
 }
 
-const BOOT_ENDED = "tenbox-boot: command ended with exit code 0";
-
-function fakePod(name: string, phase = "Running", reason?: string) {
-  const containerStatuses =
-    reason === undefined ? [] : [{ name: "box", state: { terminated: { reason } } }];
-  return { metadata: { name, creationTimestamp: CREATED }, status: { phase, containerStatuses } };
-}
-
-function fakeJob(input: FakeJobInput) {
-  const env = [{ name: "TENBOX_CMD", value: "tenbox build TEN-1" }];
+function runState(input: RunInput): RunState {
+  const { name, phase, task = "TEN-1" } = input;
   return {
-    metadata: { name: input.name, creationTimestamp: input.created ?? CREATED },
-    spec: { template: { spec: { containers: [{ name: "box", env }] } } },
-    status: input.status,
+    name,
+    project: PROJECT_ID,
+    task,
+    command: "build",
+    class: "build",
+    created: CREATED,
+    phase,
+    reason: null,
+    exit_code: null,
+    oom_kill: null,
+    output: null,
   };
 }
+
+interface ProblemInput {
+  status: number;
+  code: string;
+  detail: string;
+}
+
+const problem = (input: ProblemInput): Answer => ({
+  status: input.status,
+  body: { type: "about:blank", title: "", ...input },
+});
+
+const busyProblem = () =>
+  problem({ status: HTTP_CONFLICT, code: "machine-busy", detail: "a Job of the task still runs" });
+
+/** Tenport's `box-not-started` answer for a box that waits with this reason. */
+const notStarted = (reason: string): Answer => ({
+  ...problem({
+    status: HTTP_CONFLICT,
+    code: "box-not-started",
+    detail: `the box container of the run ${RUN} has not started: ${reason}`,
+  }),
+  retryAfter: 1,
+});
 
 describe("machine", () => {
-  let api: FakeApi;
-  let template: string;
-  let kubeFile: string;
+  let tenport: FakeTenport;
 
   const writeManifest = (lines: string) =>
-    files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\nid: k7f3qa\n${lines}`);
-
-  const machineLine = () => `machine: { template: ${template} }\n`;
+    files.write(
+      path.join(project.mainDir, "tenbox.yaml"),
+      `project: demo\nid: ${PROJECT_ID}\n${lines}`,
+    );
 
   const writeLocal = (text: string) =>
     files.write(path.join(project.mainDir, "tenbox.local.yaml"), text);
 
-  const build = () => machine(["run", "TEN-1", "--", "tenbox", "build", "TEN-1"]);
+  const run = (words: string[]) => machine(["run", "TEN-1", "--", "tenbox", ...words, "TEN-1"]);
 
-  const posts = () => api.calls.filter((c) => c.method === "POST");
+  const calls = (method: string, prefix: string) =>
+    tenport.calls.filter((c) => c.method === method && c.path.startsWith(prefix));
+
+  const postedRun = () => calls("POST", "/runs")[0]?.body;
 
   beforeEach(async () => {
-    api = startFakeApi();
-    template = path.join(project.root, "tenyard", "task");
-    kubeFile = path.join(project.root, "kubeconfig");
-    await files.write(path.join(template, "job.yaml"), JOB_TEMPLATE);
-    await files.write(path.join(template, "pvc.yaml"), PVC_TEMPLATE);
-    await files.write(path.join(template, "classes.yaml"), CLASSES);
-    await files.write(kubeFile, kubeconfig({ server: api.url, user: { token: TOKEN } }));
-    await writeManifest(machineLine());
+    tenport = startFakeTenport();
+    await writeManifest("");
     await git.run(["remote", "add", "origin", "https://github.com/o/demo.git"], project.mainDir);
     await writeLogin(Date.now() + DAY_MS);
-    env.KUBECONFIG = kubeFile;
-    env.TENBOX_BUCKET = `${api.url}/${BUCKET}`;
-    env.TENBOX_BUCKET_REGION = "hel1";
-    env.TENBOX_BUCKET_KEY = "bucket-key";
-    env.TENBOX_BUCKET_SECRET = BUCKET_SECRET;
+    env.TENPORT_URL = tenport.url;
+    env.TENPORT_TOKEN = TENPORT_TOKEN;
     fakeTool("gh", (args) =>
       args.join(" ") === "api user" ? { stdout: JSON.stringify(GITHUB_USER) } : { code: 1 },
     );
   });
 
-  afterEach(() => api.stop());
+  afterEach(() => tenport.stop());
 
-  test("machine run on k8s posts the project Secret, the PVC and the Job", async () => {
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
-    const [, pvc, job] = posts();
-    expect(pvc?.body).toMatchObject({
-      metadata: { name: "task-ten-1", labels: { task: "TEN-1" } },
-    });
-    const meta = jobBody(job).metadata;
-    expect(meta.name).toMatch(JOB_NAME);
-    expect(meta.labels).toEqual({ app: "tenyard", task: "TEN-1" });
-    const { TENBOX_ARCHIVE_GET, TENBOX_ARCHIVE_PUT, ...rest } = jobEnv(job);
-    expect(rest).toEqual({
-      TENBOX_TASK: "TEN-1",
-      TENBOX_PROJECT: "demo",
-      TENBOX_REPO: "https://github.com/o/demo.git",
-      TENBOX_BASE: "main",
-      TENBOX_GIT_NAME: "Octo Cat",
-      TENBOX_GIT_EMAIL: "42+octo@users.noreply.github.com",
-      TENBOX_CMD: "tenbox build TEN-1",
-      TENBOX_ENV: "{}",
-      TENBOX_SETUP: "",
-    });
-    expect(TENBOX_ARCHIVE_GET).toStartWith(`${api.url}${ARCHIVE_PATH}?`);
-    expect(TENBOX_ARCHIVE_PUT).toStartWith(`${api.url}${ARCHIVE_PATH}?`);
-    expect(TENBOX_ARCHIVE_GET).not.toBe(TENBOX_ARCHIVE_PUT);
-    expect(TENBOX_ARCHIVE_GET).toContain("X-Amz-Expires=86400");
-    expect(JSON.stringify(job?.body)).not.toContain(BUCKET_SECRET);
-    expect(jobValueFrom(job, "TRACKER_API_KEY")).toEqual({
-      secretKeyRef: { name: PROJECT_SECRET, key: "tracker_api_key" },
-    });
-    expect(posts().map((c) => c.auth)).toEqual(Array(3).fill(`Bearer ${TOKEN}`));
-    expect(run.json).toEqual({
-      ok: true,
-      task: "TEN-1",
-      cmd: "build",
-      url: `${api.url}${JOBS_PATH}/${meta.name}`,
-    });
-    expect(run.out).not.toContain(TOKEN);
-  });
-
-  test("without a pvc.yaml in the template machine run posts no PVC", async () => {
-    await files.remove(path.join(template, "pvc.yaml"));
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, JOBS_PATH]);
-  });
-
-  test("the setup of the manifest reaches the Job as TENBOX_SETUP", async () => {
-    await writeManifest(`${machineLine()}setup: bun install\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(jobEnv(posts().find((c) => c.path === JOBS_PATH)).TENBOX_SETUP).toBe("bun install");
-  });
-
-  test("TENBOX_BOX_IMAGE replaces the box image of the Job", async () => {
-    env.TENBOX_BOX_IMAGE = "ghcr.io/enojen/tenbox-box:abc";
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(JSON.stringify(job?.body)).toContain(`"image":"ghcr.io/enojen/tenbox-box:abc"`);
-  });
-
-  test("machine run without a bucket refuses before the cluster is called", async () => {
-    env.TENBOX_BUCKET = "";
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "no-archive-bucket"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test("a GitHub user with no name is the author by login", async () => {
-    fakeTool("gh", () => ({ stdout: JSON.stringify({ ...GITHUB_USER, name: null }) }));
-    const run = await build();
-    expect(run.code).toBe(0);
-    const env = jobEnv(posts().find((c) => c.path === JOBS_PATH));
-    expect([env.TENBOX_GIT_NAME, env.TENBOX_GIT_EMAIL]).toEqual([
-      "octo",
-      "42+octo@users.noreply.github.com",
-    ]);
-  });
-
-  test("machine run stops before the cluster when gh cannot name the user", async () => {
-    fakeTool("gh", () => ({ code: 1, stderr: "not logged in" }));
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "gh"]);
-    expect(posts()).toEqual([]);
-  });
-
-  test("machine run on k8s keeps an existing PVC", async () => {
-    api.pvcStatus = HTTP_CONFLICT;
-    const run = await build();
-    expect([run.code, run.json.ok]).toEqual([0, true]);
-    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
-  });
-
-  test("the project Secret holds the tracker key and the ntfy URL of the local manifest", async () => {
-    await writeManifest(`${machineLine()}tracker: { kind: linear }\n`);
-    await writeLocal(`tracker:\n  api_key: "${TRACKER_KEY}"\nnotify:\n  ntfy: "${NTFY_URL}"\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    const secret = secretBody(posts()[0]);
-    expect(secret.metadata.name).toBe(PROJECT_SECRET);
-    expect(secret.stringData).toEqual({ tracker_api_key: TRACKER_KEY, ntfy_url: NTFY_URL });
-    expect(run.out).not.toContain(TRACKER_KEY);
-  });
-
-  test("without a key in the manifest the Secret takes the tracker's env variable", async () => {
-    await writeManifest(`${machineLine()}tracker: { kind: clickup }\n`);
-    env.CLICKUP_API_KEY = TRACKER_KEY;
-    env.LINEAR_API_KEY = "SECRET-OTHER-TRACKER";
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(secretBody(posts()[0]).stringData).toEqual({ tracker_api_key: TRACKER_KEY });
-  });
-
-  test("a project with no tracker and no ntfy gets an empty Secret, no key of the shell", async () => {
-    env.LINEAR_API_KEY = TRACKER_KEY;
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(secretBody(posts()[0]).stringData).toEqual({});
-  });
-
-  test("machine.github_token_file is refused: GitHub goes only through the App", async () => {
-    const tokenFile = path.join(project.root, "github-token");
-    await files.write(tokenFile, `${GITHUB_TOKEN}\n`);
-    await writeLocal(`machine: { github_token_file: ${tokenFile} }\n`);
-    const run = await build();
-    expect(run.code).toBe(1);
-    expect(String(run.json.error)).toContain("github_token_file");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("tenbox help machine names no project GitHub token", async () => {
-    const run = await tenbox(["help", "machine"], project.mainDir, env);
-    expect(run.err).not.toContain("github_token");
-  });
-
-  test("an existing project Secret is replaced", async () => {
-    api.secretStatus = HTTP_CONFLICT;
-    await writeLocal(`notify:\n  ntfy: "${NTFY_URL}"\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    const writes = api.calls.filter((c) => c.method !== "GET");
-    expect(writes.map((c) => [c.method, c.path])).toEqual([
-      ["POST", SECRETS_PATH],
-      ["PUT", `${SECRETS_PATH}/${PROJECT_SECRET}`],
-      ["POST", PVCS_PATH],
-      ["POST", JOBS_PATH],
-    ]);
-    expect(secretBody(writes[1]).stringData).toEqual({ ntfy_url: NTFY_URL });
-  });
-
-  test("a project without an id is no-project-id before any request", async () => {
-    await files.write(path.join(project.mainDir, "tenbox.yaml"), `project: demo\n${machineLine()}`);
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "no-project-id"]);
-    expect(String(run.json.error)).toContain("tenbox.yaml");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("machine run without a kubeconfig fails before any request", async () => {
-    env.KUBECONFIG = path.join(project.root, "missing");
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "no-kubeconfig"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test("an expired refresh token is login-expired, mentions /login and sends no request", async () => {
-    await writeLogin(Date.now() - MINUTE_MS);
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "login-expired"]);
-    expect(String(run.json.error)).toContain("/login");
-    expect(run.out).not.toContain("SECRET");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("a missing .credentials.json is no-login and sends no request", async () => {
-    await files.remove(path.join(claudeDir, ".credentials.json"));
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "no-login"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test.each([
-    ["another id", ["run", "TEN-1", "--", "tenbox", "build", "TEN-2"]],
-    ["another command", ["run", "TEN-1", "--", "tenbox", "list"]],
-    ["no --", ["run", "TEN-1"]],
-    ["words without --", ["run", "TEN-1", "tenbox", "build", "TEN-1"]],
-    ["a flag of another command", ["run", "TEN-1", "--", "tenbox", "build", "TEN-1", "--force"]],
-    ["--title without a title", ["run", "TEN-1", "--", "tenbox", "start", "TEN-1", "--title"]],
-    ["pr with --group", ["run", "TEN-1", "--", "tenbox", "pr", "TEN-1", "--group", "2"]],
-    [
-      "check --group without a value",
-      ["run", "TEN-1", "--", "tenbox", "check", "TEN-1", "--group"],
-    ],
-    [
-      "decide --json without a value",
-      ["run", "TEN-1", "--", "tenbox", "decide", "TEN-1", "--json"],
-    ],
-    ["answer without a number", ["run", "TEN-1", "--", "tenbox", "answer", "TEN-1"]],
-    ["answer with two numbers", ["run", "TEN-1", "--", "tenbox", "answer", "TEN-1", "1", "2"]],
-    ["plan without show", ["run", "TEN-1", "--", "tenbox", "plan", "TEN-1"]],
-  ])("%s is a usage error before any request", async (_name, args) => {
-    const run = await machine(args);
-    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test("machine.env reaches TENBOX_ENV as one JSON object", async () => {
-    const env = `env: { TEST_MAX_WORKERS: "1", GREETING: "it's $(x)" }`;
-    await writeManifest(`machine: { template: ${template}, ${env} }\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_MAX_WORKERS":"1","GREETING":"it's $(x)"}`);
-  });
-
-  test.each([
-    ["start", ["tenbox", "start", "TEN-1"]],
-    ["close", ["tenbox", "close", "TEN-1"]],
-  ])("%s runs in the plan class", async (_name, words) => {
-    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
-    const run = await machine(["run", "TEN-1", "--", ...words]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobClass(job)).toEqual({
-      label: "plan",
-      resources: classResources("250m", "1536Mi"),
-    });
-  });
-
-  test("start runs in the class of machine.plan_class", async () => {
-    await writeManifest(`machine: { template: ${template}, plan_class: heavy }\n`);
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobClass(job)).toEqual({ label: "heavy", resources: classResources("500m", "3Gi") });
-  });
-
-  test("start runs in the plan class without plan_class", async () => {
-    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobClass(job)).toEqual({ label: "plan", resources: classResources("250m", "1536Mi") });
-  });
-
-  test("an unknown plan_class is a manifest error", async () => {
-    await writeManifest(`machine: { template: ${template}, plan_class: huge }\n`);
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
-    expect(run.code).not.toBe(0);
-    expect(String(run.json.error)).toContain("machine.plan_class");
-  });
-
-  test("__BASE__ is main without base in the manifest", async () => {
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_BASE).toBe("main");
-  });
-
-  test("__BASE__ is base of the manifest", async () => {
-    await writeManifest(`base: develop\nmachine: { template: ${template} }\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_BASE).toBe("develop");
-  });
-
-  test("a build runs in the build class by default", async () => {
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobClass(job)).toEqual({
-      label: "build",
-      resources: classResources("500m", "2Gi"),
-    });
-  });
-
-  test("a build runs in the class of machine.class", async () => {
-    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
-    const run = await build();
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobClass(job)).toEqual({
-      label: "heavy",
-      resources: classResources("500m", "3Gi"),
-    });
-  });
-
-  test("a class that classes.yaml does not have is a template error before any request", async () => {
-    await files.write(path.join(template, "classes.yaml"), CLASSES.replace(/^heavy:.*\n/m, ""));
-    await writeManifest(`machine: { template: ${template}, class: heavy }\n`);
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "template"]);
-    expect(String(run.json.error)).toContain('no class "heavy" (plan, build)');
-    expect(api.calls).toEqual([]);
-  });
-
-  test.each([
-    ["missing", null],
-    ["a class without memory", `build: { cpu: 500m }\n`],
-    ["a class with a CPU limit", `build: { cpu: 500m, cpu_limit: "4", memory: 2Gi }\n`],
-  ])("a classes.yaml that is %s is a template error before any request", async (_name, text) => {
-    const file = path.join(template, "classes.yaml");
-    if (text === null) await files.remove(file);
-    else await files.write(file, text);
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "template"]);
-    expect(String(run.json.error)).toContain("classes.yaml");
-    expect(api.calls).toEqual([]);
-  });
-
-  describe("services", () => {
-    const writeService = (name: string, text: string) =>
-      files.write(path.join(template, "services", `${name}.yaml`), text);
-
-    beforeEach(async () => {
-      await writeService("postgres", POSTGRES_SERVICE);
-      await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
-    });
-
-    test("a build adds the sidecar and the volume, and the service env goes to TENBOX_ENV", async () => {
-      const run = await build();
-      expect(run.code).toBe(0);
-      const job = posts().find((c) => c.path === JOBS_PATH);
-      expect(jobPod(job)).toEqual({ sidecars: ["postgres"], volumes: ["home", "pgdata"] });
-      expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_PG_URL":"postgres://test:test@127.0.0.1:5432"}`);
-      expect(jobEnv(job).TEST_PG_URL).toBeUndefined();
-    });
-
-    test("machine.env wins over a service env of the same name", async () => {
-      const env = `env: { TEST_PG_URL: "postgres://own", GREETING: "hi" }`;
-      await writeManifest(`machine: { template: ${template}, services: [postgres], ${env} }\n`);
-      const run = await build();
-      expect(run.code).toBe(0);
-      const job = posts().find((c) => c.path === JOBS_PATH);
-      expect(jobEnv(job).TENBOX_ENV).toBe(`{"TEST_PG_URL":"postgres://own","GREETING":"hi"}`);
-    });
-
-    test.each([
-      ["start", ["tenbox", "start", "TEN-1"]],
-      ["close", ["tenbox", "close", "TEN-1"]],
-    ])("%s gets no service", async (_name, words) => {
-      const run = await machine(["run", "TEN-1", "--", ...words]);
-      expect(run.code).toBe(0);
-      const job = posts().find((c) => c.path === JOBS_PATH);
-      expect(jobPod(job)).toEqual({ sidecars: [], volumes: ["home"] });
-      expect(jobEnv(job).TENBOX_ENV).toBe("{}");
-    });
-
-    test("a service without a file is a template error before any request", async () => {
-      await writeManifest(`machine: { template: ${template}, services: [postgres, redis] }\n`);
-      const run = await build();
-      expect([run.code, run.json.code]).toEqual([1, "template"]);
-      expect(String(run.json.error)).toContain(path.join("services", "redis.yaml"));
-      expect(api.calls).toEqual([]);
-    });
-
-    test.each([
-      [
-        "a key tenbox does not add",
-        POSTGRES_SERVICE.replace("      volumes:", "      nodeSelector: {}\n      volumes:"),
-      ],
-      ["a container other than box", POSTGRES_SERVICE.replace("name: box", "name: other")],
-      [
-        "an env from a Secret",
-        POSTGRES_SERVICE.replace(
-          `value: "postgres://test:test@127.0.0.1:5432"`,
-          "valueFrom: { secretKeyRef: { name: pg, key: url } }",
-        ),
-      ],
-      ["no mapping", "- postgres\n"],
-    ])("a service file with %s is a template error before any request", async (_name, text) => {
-      await writeService("postgres", text);
-      const run = await build();
-      expect([run.code, run.json.code]).toEqual([1, "template"]);
-      expect(String(run.json.error)).toContain(path.join("services", "postgres.yaml"));
-      expect(api.calls).toEqual([]);
-    });
-
-    test("a service name that is not a file name is a manifest error", async () => {
-      await writeManifest(`machine: { template: ${template}, services: [../job] }\n`);
-      const run = await build();
-      expect([run.code, run.json.code]).toEqual([1, "manifest"]);
-      expect(api.calls).toEqual([]);
-    });
-  });
-
-  test("close --force reaches TENBOX_CMD", async () => {
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "close", "TEN-1", "--force"]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_CMD).toBe("tenbox close TEN-1 --force");
-  });
-
-  test("start --force reaches TENBOX_CMD", async () => {
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1", "--force"]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_CMD).toBe("tenbox start TEN-1 --force");
-  });
-
-  /** The Job one `machine run` posted: the box command and the class label. */
-  async function runWords(words: string[]) {
-    const run = await machine(["run", "TEN-1", "--", "tenbox", ...words]);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    return { run, cmd: jobEnv(job).TENBOX_CMD, label: jobClass(job).label, job };
-  }
-
-  test("__COMMAND__ is the command name, without flags and the id", async () => {
-    const build = await machine(["run", "TEN-1", "--", "tenbox", "build", "TEN-1"]);
-    expect(build.code).toBe(0);
-    expect(jobCommand(posts().find((c) => c.path === JOBS_PATH))).toBe("build");
-    api.calls.length = 0;
-    const plan = await runWords(["plan", "show", "TEN-1"]);
-    expect(jobCommand(plan.job)).toBe("plan");
-    api.calls.length = 0;
-    const close = await runWords(["close", "TEN-1", "--force"]);
-    expect(jobCommand(close.job)).toBe("close");
-  });
-
-  test("approve runs as a Job in the plan class", async () => {
-    const { run, cmd, label } = await runWords(["approve", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toMatchObject({ ok: true, task: "TEN-1", cmd: "approve" });
-    expect(run.json.url).toContain(JOBS_PATH);
-    expect([cmd, label]).toEqual(["tenbox approve TEN-1", "plan"]);
-  });
-
-  test("decide JSON reaches TENBOX_CMD as one quoted word in the build class", async () => {
-    await files.write(path.join(template, "services", "postgres.yaml"), POSTGRES_SERVICE);
-    await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
-    const json = `[{"answer":"it's $(x)"}]`;
-    const { run, cmd, label, job } = await runWords(["decide", "TEN-1", "--json", json]);
-    expect(run.code).toBe(0);
-    expect(cmd).toBe(`tenbox decide TEN-1 --json '[{"answer":"it'\\''s $(x)"}]'`);
-    expect(label).toBe("build");
-    expect(jobPod(job).sidecars).toEqual(["postgres"]);
-  });
-
-  test("answer with an option runs as a Job in the build class", async () => {
-    const { run, cmd, label } = await runWords(["answer", "TEN-1", "1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toMatchObject({ cmd: "answer" });
-    expect([cmd, label]).toEqual(["tenbox answer TEN-1 1", "build"]);
-  });
-
-  test("plan show and status run as Jobs in the plan class", async () => {
-    const plan = await runWords(["plan", "show", "TEN-1"]);
-    expect(plan.run.json).toMatchObject({ cmd: "plan" });
-    expect([plan.cmd, plan.label]).toEqual(["tenbox plan show TEN-1", "plan"]);
-    api.calls.length = 0;
-    const status = await runWords(["status", "TEN-1"]);
-    expect(status.run.code).toBe(0);
-    expect([status.cmd, status.label]).toEqual(["tenbox status TEN-1", "plan"]);
-  });
-
-  test("check with group and tier runs in the build class with services", async () => {
-    await files.write(path.join(template, "services", "postgres.yaml"), POSTGRES_SERVICE);
-    await writeManifest(`machine: { template: ${template}, services: [postgres] }\n`);
-    const { run, cmd, label, job } = await runWords([
-      "check",
-      "TEN-1",
-      "--group",
-      "2",
-      "--tier",
-      "full",
-    ]);
-    expect(run.code).toBe(0);
-    expect([cmd, label]).toEqual(["tenbox check TEN-1 --group 2 --tier full", "build"]);
-    expect(jobPod(job).sidecars).toEqual(["postgres"]);
-  });
-
-  test("pr with its flags runs in the plan class", async () => {
-    const { run, cmd, label } = await runWords(["pr", "TEN-1", "--ready", "--force", "--wait"]);
-    expect(run.code).toBe(0);
-    expect([cmd, label]).toEqual(["tenbox pr TEN-1 --ready --force --wait", "plan"]);
-  });
-
-  test("a token in the origin url does not reach the Job", async () => {
-    const origin = "https://x-access-token:ghp_secret@github.com/o/demo.git";
-    await git.run(["remote", "set-url", "origin", origin], project.mainDir);
-    const run = await machine(["run", "TEN-1", "--", "tenbox", "start", "TEN-1"]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_REPO).toBe("https://github.com/o/demo.git");
-    expect(JSON.stringify(api.calls)).not.toContain("ghp_secret");
-  });
-
-  test.each([
-    ["a string", "machine: k8s\n"],
-    ["the kind key", "machine: { kind: k8s }\n"],
-  ])("machine as %s is a manifest error", async (_name, line) => {
-    await writeManifest(line);
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "manifest"]);
-    expect(String(run.json.error)).toContain("machine");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("machine ls on k8s lists the Jobs with their state", async () => {
-    api.jobs = [
-      fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } }),
-      fakeJob({ name: "task-ten-2-1021-090000", status: { succeeded: 1 } }),
-    ];
-    const run = await machine(["ls"]);
-    const row = (id: string) => ({
-      id,
-      title: "tenbox build TEN-1",
-      url: `${api.url}${JOBS_PATH}/${id}`,
-      created: CREATED,
-    });
-    expect(run.json).toEqual({
-      ok: true,
-      runs: [
-        { ...row("task-ten-1-1021-100000"), status: "in_progress", conclusion: null, reason: null },
-        {
-          ...row("task-ten-2-1021-090000"),
-          status: "completed",
-          conclusion: "success",
-          reason: null,
-        },
-      ],
-    });
-    expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
-      ["GET", JOBS_PATH, "?labelSelector=app%3Dtenyard"],
-      ["GET", "/api/v1/namespaces/tenbox/pods", "?labelSelector=job-name%3Dtask-ten-2-1021-090000"],
-    ]);
-  });
-
-  describe("machine logs", () => {
-    const NEWER = "task-ten-1-1021-110000";
-    const OLDER = "task-ten-1-1021-100000";
-    const LOG = "boot: cloning\ntenbox start TEN-1\n";
-
-    const twoJobs = () => [
-      fakeJob({ name: OLDER, status: { failed: 1 } }),
-      fakeJob({ name: NEWER, status: { succeeded: 1 }, created: "2026-10-21T11:00:00Z" }),
-    ];
-
-    test("machine logs prints the newest Job's pod log to stderr and the job on stdout", async () => {
-      api.jobs = twoJobs();
-      api.pods = [fakePod("pod-newer")];
-      api.log = LOG;
-      const run = await machine(["logs", "TEN-1"]);
-      expect(run.code).toBe(0);
-      expect(run.err).toContain("boot: cloning\ntenbox start TEN-1");
-      expect(run.json).toEqual({
-        ok: true,
+  describe("machine run", () => {
+    test("posts the run to Tenport and names it", async () => {
+      const started = await run(["build"]);
+      expect(started.json).toEqual({ ok: true, task: "TEN-1", cmd: "build", run: RUN });
+      expect(postedRun()).toEqual({
+        project: PROJECT_ID,
         task: "TEN-1",
-        job: NEWER,
-        status: "success",
-        reason: null,
+        command: ["tenbox", "build", "TEN-1"],
+        base: "main",
+        class: "build",
+        author: AUTHOR,
+        services: [],
+        env: {},
       });
-      const pods = api.calls.find((c) => c.path.endsWith("/pods"));
-      expect(pods?.query).toBe(`?labelSelector=${encodeURIComponent(`job-name=${NEWER}`)}`);
-      const log = api.calls.find((c) => c.path.endsWith("/log"));
-      expect(log?.path).toBe("/api/v1/namespaces/tenbox/pods/pod-newer/log");
-      expect(log?.query).toBe("");
+      expect(calls("POST", "/runs")[0]?.auth).toBe(`Bearer ${TENPORT_TOKEN}`);
     });
 
-    test("machine logs --follow streams until the pod ends", async () => {
-      api.jobs = [fakeJob({ name: NEWER, status: { failed: 1 } })];
-      api.pods = [fakePod("pod-newer")];
-      api.log = LOG;
-      const run = await machine(["logs", "TEN-1", "--follow"]);
-      expect(run.code).toBe(0);
-      expect(run.err).toContain("tenbox start TEN-1");
-      expect(run.json).toEqual({
-        ok: true,
-        task: "TEN-1",
-        job: NEWER,
-        status: "failure",
-        reason: null,
+    test("the setup, the base and machine.env of the manifest reach the run", async () => {
+      await writeManifest("setup: bun install\nbase: develop\nmachine: { env: { A: one } }\n");
+      await run(["build"]);
+      expect(postedRun()).toMatchObject({
+        setup: "bun install",
+        base: "develop",
+        env: { A: "one" },
       });
-      const log = api.calls.find((c) => c.path.endsWith("/log"));
-      expect(log?.query).toBe("?follow=true");
     });
 
-    test("machine logs --follow waits for a Pending pod to run", async () => {
-      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
-      api.pods = [fakePod("pod-newer", "Pending")];
-      api.nextPods = [fakePod("pod-newer")];
-      api.log = LOG;
-      const run = await machine(["logs", "TEN-1", "--follow"]);
-      expect(run.json).toEqual({
-        ok: true,
-        task: "TEN-1",
-        job: NEWER,
-        status: "success",
-        reason: null,
+    test("a GitHub user with no name is the author by login", async () => {
+      fakeTool("gh", () => ({ stdout: JSON.stringify({ ...GITHUB_USER, name: null }) }));
+      await run(["build"]);
+      expect(postedRun()).toMatchObject({ author: { name: "octo", email: AUTHOR.email } });
+    });
+
+    test("stops before Tenport when gh cannot name the user", async () => {
+      fakeTool("gh", () => ({ code: 1, stderr: "not logged in" }));
+      const started = await run(["build"]);
+      expect(started.json.ok).toBe(false);
+      expect(tenport.calls).toEqual([]);
+    });
+
+    test("the tracker key and the ntfy URL become project secrets before the run", async () => {
+      await writeManifest("tracker: { kind: clickup, list_id: '1' }\n");
+      await writeLocal(`tracker: { api_key: ${TRACKER_KEY} }\nnotify: { ntfy: ${NTFY_URL} }\n`);
+      await run(["build"]);
+      expect(tenport.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+        `PUT /projects/${PROJECT_ID}/secrets/tracker_api_key`,
+        `PUT /projects/${PROJECT_ID}/secrets/ntfy_url`,
+        "POST /runs",
+      ]);
+      expect(calls("PUT", "/projects").map((c) => c.body)).toEqual([
+        { value: TRACKER_KEY },
+        { value: NTFY_URL },
+      ]);
+    });
+
+    test("without a key in the manifest the secret takes the tracker's env variable", async () => {
+      await writeManifest("tracker: { kind: clickup, list_id: '1' }\n");
+      env.CLICKUP_API_KEY = TRACKER_KEY;
+      await run(["build"]);
+      expect(calls("PUT", "/projects").map((c) => c.body)).toEqual([{ value: TRACKER_KEY }]);
+    });
+
+    test("a project with no tracker key and no ntfy writes no secret", async () => {
+      await run(["build"]);
+      expect(calls("PUT", "/projects")).toEqual([]);
+    });
+
+    test("a project without an id is no-project-id before any request", async () => {
+      await files.write(path.join(project.mainDir, "tenbox.yaml"), "project: demo\n");
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("no-project-id");
+      expect(tenport.calls).toEqual([]);
+    });
+
+    test("without TENPORT_URL it is no-tenport before any request", async () => {
+      env.TENPORT_URL = "";
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("no-tenport");
+      expect(tenport.calls).toEqual([]);
+    });
+
+    test("an expired refresh token is login-expired and sends no request", async () => {
+      await writeLogin(Date.now() - MINUTE_MS);
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("login-expired");
+      expect(String(started.json.error)).toContain("/login");
+      expect(tenport.calls).toEqual([]);
+    });
+
+    test("a missing .credentials.json is no-login and sends no request", async () => {
+      await files.remove(path.join(claudeDir, ".credentials.json"));
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("no-login");
+      expect(tenport.calls).toEqual([]);
+    });
+
+    test("start runs in the class of machine.plan_class", async () => {
+      await writeManifest("machine: { plan_class: build }\n");
+      await run(["start"]);
+      expect(postedRun()).toMatchObject({ class: "build" });
+    });
+
+    test("approve runs in the plan class without services", async () => {
+      await writeManifest("machine: { services: [postgres] }\n");
+      await run(["approve"]);
+      expect(postedRun()).toMatchObject({ class: "plan", services: [] });
+    });
+
+    test("a build takes machine.class and machine.services", async () => {
+      await writeManifest("machine: { class: heavy, services: [postgres] }\n");
+      await run(["build"]);
+      expect(postedRun()).toMatchObject({ class: "heavy", services: ["postgres"] });
+    });
+
+    test("pr takes no services and its flags reach the command", async () => {
+      await writeManifest("machine: { services: [postgres] }\n");
+      await machine(["run", "TEN-1", "--", "tenbox", "pr", "TEN-1", "--ready"]);
+      expect(postedRun()).toMatchObject({
+        command: ["tenbox", "pr", "TEN-1", "--ready"],
+        class: "plan",
+        services: [],
       });
-      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(3);
     });
 
-    test("machine logs --follow waits for a pod that does not exist yet", async () => {
-      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
-      api.pods = [];
-      api.nextPods = [fakePod("pod-newer")];
-      api.log = LOG;
-      const run = await machine(["logs", "TEN-1", "--follow"]);
-      expect(run.json).toEqual({
-        ok: true,
-        task: "TEN-1",
-        job: NEWER,
-        status: "success",
-        reason: null,
-      });
-      expect(api.calls.filter((c) => c.path.endsWith("/pods")).length).toBe(3);
+    test("a command, a task or a flag that is not allowed is a usage error", async () => {
+      const refused = [
+        ["run", "TEN-1", "--", "tenbox", "merge-check", "TEN-1"],
+        ["run", "TEN-1", "--", "tenbox", "build", "TEN-2"],
+        ["run", "TEN-1", "--", "tenbox", "build", "TEN-1", "--force"],
+        ["run", "TEN-1", "--", "bash", "-c", "x"],
+      ];
+      for (const args of refused) {
+        const started = await machine(args);
+        expect(started.code).toBe(USAGE_EXIT);
+      }
+      expect(tenport.calls).toEqual([]);
     });
 
-    test("machine logs without --follow and without a pod is a kubernetes error", async () => {
-      api.jobs = [fakeJob({ name: NEWER, status: { succeeded: 1 } })];
-      api.pods = [];
-      const run = await machine(["logs", "TEN-1"]);
-      expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
-      expect(String(run.json.error)).toContain(`Job ${NEWER} has no pod yet`);
+    test("machine.template is no field of the manifest any more", async () => {
+      await writeManifest("machine: { template: ~/tenyard/task }\n");
+      const started = await run(["build"]);
+      expect(started.json.ok).toBe(false);
+      expect(tenport.calls).toEqual([]);
     });
 
-    test("machine logs of a task with no Job is no-machine-run", async () => {
-      const run = await machine(["logs", "TEN-9"]);
-      expect([run.code, run.json.code]).toEqual([1, "no-machine-run"]);
-      expect(String(run.json.error)).toContain("TEN-9");
-      expect(String(run.json.error)).toContain("tenbox machine run");
-      expect(api.calls.map((c) => c.path)).toEqual([JOBS_PATH]);
+    test("a busy task is machine-busy and names the running run", async () => {
+      tenport.posts = [busyProblem()];
+      tenport.runs = [runState({ name: OLD_RUN, phase: "Running" })];
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("machine-busy");
+      expect(String(started.json.error)).toContain(OLD_RUN);
     });
 
-    test("a failed log request is a kubernetes error without the token", async () => {
-      api.jobs = twoJobs();
-      api.pods = [fakePod("pod-newer")];
-      api.log = "container is waiting to start";
-      api.logStatus = 400;
-      const run = await machine(["logs", "TEN-1"]);
-      expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
-      expect(String(run.json.error)).toContain("HTTP 400");
-      expect(run.out + run.err).not.toContain(TOKEN);
+    test("a Tenport without an answer for a moment is asked again", async () => {
+      tenport.posts = [
+        problem({ status: HTTP_SERVICE_UNAVAILABLE, code: "unavailable", detail: "starting" }),
+      ];
+      const started = await run(["build"]);
+      expect(started.json).toMatchObject({ ok: true, run: RUN });
+      expect(calls("POST", "/runs")).toHaveLength(2);
     });
-
-    test.each([
-      ["no id", ["logs"]],
-      ["another word", ["logs", "TEN-1", "now"]],
-    ])("machine logs with %s is a usage error", async (_name, args) => {
-      const run = await machine(args);
-      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-      expect(String(run.json.error)).toContain("tenbox machine logs <id> [--follow]");
-    });
-
-    test("--follow with another action is a usage error and sends no request", async () => {
-      const run = await machine(["ls", "--follow"]);
-      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-      expect(api.calls).toEqual([]);
-    });
-  });
-
-  test("ls shows OOMKilled for a failed run", async () => {
-    api.jobs = [
-      fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } }),
-      fakeJob({ name: "task-ten-2-1021-090000", status: { active: 1 } }),
-    ];
-    api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
-    const run = await machine(["ls"]);
-    expect(run.json.runs).toMatchObject([{ reason: "OOMKilled" }, { reason: null }]);
-    const podCalls = api.calls.filter((c) => c.path.endsWith("/pods"));
-    expect(podCalls).toHaveLength(1);
-  });
-
-  test("ls and logs show OOMKilled when the last log line says oom_kill 1", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { succeeded: 1 } })];
-    api.pods = [fakePod("pod-1", "Succeeded", "Completed")];
-    api.log = `${BOOT_ENDED}\ntenbox-boot: memory peak 3000 MiB, cpu 50 s, pids peak 134, oom_kill 1\n`;
-    const ls = await machine(["ls"]);
-    expect(ls.json.runs).toMatchObject([{ conclusion: "success", reason: "OOMKilled" }]);
-    const logs = await machine(["logs", "TEN-1"]);
-    expect(logs.json).toMatchObject({ status: "success", reason: "OOMKilled" });
-  });
-
-  test("ls and logs give reason null when the last log line says oom_kill 0", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { succeeded: 1 } })];
-    api.pods = [fakePod("pod-1", "Succeeded")];
-    api.log = `${BOOT_ENDED}\ntenbox-boot: memory peak 300 MiB, cpu 5 s, oom_kill 0\n`;
-    const ls = await machine(["ls"]);
-    expect(ls.json.runs).toMatchObject([{ reason: null }]);
-    const logs = await machine(["logs", "TEN-1"]);
-    expect(logs.json).toMatchObject({ reason: null });
-  });
-
-  test("ls gives reason null for a failed run whose pod is gone", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
-    const run = await machine(["ls"]);
-    expect(run.json.runs).toMatchObject([{ reason: null }]);
-  });
-
-  test("logs shows OOMKilled for a killed pod", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
-    api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
-    const run = await machine(["logs", "TEN-1"]);
-    expect(run.json).toMatchObject({ status: "failure", reason: "OOMKilled" });
-  });
-
-  test("logs gives reason null for a pod without a terminated reason", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
-    api.pods = [fakePod("pod-1")];
-    const run = await machine(["logs", "TEN-1"]);
-    expect(run.json).toMatchObject({ status: "failure", reason: null });
-  });
-
-  test("a failed Job is completed with conclusion failure", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { failed: 1 } })];
-    const run = await machine(["ls"]);
-    expect(run.json.runs).toMatchObject([{ status: "completed", conclusion: "failure" }]);
-  });
-
-  test("a run refuses with machine-busy while a Job of the task is active", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "machine-busy"]);
-    expect(String(run.json.error)).toContain("task-ten-1-1021-100000");
-    expect(api.calls.map((c) => [c.method, c.query])).toEqual([
-      ["GET", "?labelSelector=task%3DTEN-1"],
-    ]);
   });
 
   describe("machine run --wait", () => {
-    const OLD_JOB = "task-ten-1-1021-100000";
-    const APPROVE_OUTPUT = { ok: true, task: "TEN-1", approved: true };
-    const BOOT_LINES = `tenbox-boot: cloning\n${BOOT_ENDED}\ntenbox-boot: oom_kill 0`;
-
     const waitRun = (words: string[], flags: string[] = []) =>
       machine(["run", "TEN-1", "--wait", ...flags, "--", "tenbox", ...words, "TEN-1"]);
 
-    const postedJob = () => jobBody(posts().find((c) => c.path === JOBS_PATH)).metadata.name;
-
-    test("run --wait prints the command output after the Job succeeded", async () => {
-      api.runStatuses = [{ active: 1 }, { succeeded: 1 }];
-      api.pods = [fakePod("pod-1", "Succeeded")];
-      api.log = `tenbox-boot: cloning\n${JSON.stringify(APPROVE_OUTPUT, null, 2)}\n${BOOT_LINES}\n`;
-      const run = await waitRun(["approve"]);
-      expect(run.code).toBe(0);
-      const job = postedJob();
-      expect(job).toMatch(JOB_NAME);
-      expect(run.json).toEqual({
+    test("prints Tenport's result after the run Succeeded", async () => {
+      tenport.phases = ["Running", "Succeeded"];
+      tenport.end = { reason: "Completed", exit_code: 0, oom_kill: 0, output: OUTPUT };
+      const waited = await waitRun(["approve"]);
+      expect(waited.json).toEqual({
         ok: true,
         task: "TEN-1",
         cmd: "approve",
-        job,
-        status: "success",
-        reason: null,
-        output: APPROVE_OUTPUT,
-        log: api.log.trimEnd(),
+        run: RUN,
+        phase: "Succeeded",
+        reason: "Completed",
+        exit_code: 0,
+        oom_kill: 0,
+        output: OUTPUT,
       });
-      const log = api.calls.find((c) => c.path.endsWith("/log"));
-      expect(log?.query).toBe("");
+      expect(tenport.calls.filter((c) => c.path.endsWith("/log"))).toEqual([]);
     });
 
-    test("run --wait on a failed Job is machine-failed", async () => {
-      api.runStatuses = [{ failed: 1 }];
-      api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
-      api.log = `${BOOT_LINES}\n`;
-      const run = await waitRun(["build"]);
-      expect([run.code, run.json.ok, run.json.code]).toEqual([1, false, "machine-failed"]);
-      expect(run.json.details).toEqual({
-        task: "TEN-1",
-        cmd: "build",
-        job: postedJob(),
-        status: "failure",
+    test("a Failed run is machine-failed with Tenport's result", async () => {
+      tenport.phases = ["Failed"];
+      tenport.end = { reason: "OOMKilled", exit_code: 137, oom_kill: 1 };
+      const waited = await waitRun(["build"]);
+      expect([waited.code, waited.json.code]).toEqual([1, "machine-failed"]);
+      expect(waited.json.details).toMatchObject({
+        run: RUN,
+        phase: "Failed",
         reason: "OOMKilled",
+        exit_code: 137,
+        oom_kill: 1,
         output: null,
-        log: BOOT_LINES,
       });
     });
 
-    test("run --wait waits for the active Job of the task instead of machine-busy", async () => {
-      api.jobs = [fakeJob({ name: OLD_JOB, status: { active: 1 } })];
-      api.nextJobs = [fakeJob({ name: OLD_JOB, status: { succeeded: 1 } })];
-      api.runStatuses = [{ succeeded: 1 }];
-      api.pods = [fakePod("pod-1", "Succeeded")];
-      const run = await waitRun(["status"]);
-      expect(run.code).toBe(0);
-      expect(run.json).toMatchObject({ ok: true, cmd: "status", status: "success" });
-      expect(postedJob()).not.toBe(OLD_JOB);
+    test("an Unknown run is machine-failed", async () => {
+      tenport.phases = ["Unknown"];
+      const waited = await waitRun(["build"]);
+      expect(waited.json.code).toBe("machine-failed");
+      expect(waited.json.details).toMatchObject({ phase: "Unknown" });
     });
 
-    test("run --wait past the timeout is machine-timeout", async () => {
-      api.runStatuses = [{ active: 1 }];
-      const run = await waitRun(["build"], ["--timeout", "0"]);
-      expect([run.code, run.json.code]).toEqual([1, "machine-timeout"]);
-      expect(String(run.json.error)).toContain(postedJob());
-      expect(api.calls.filter((c) => c.method === "DELETE")).toEqual([]);
+    test("a busy task is asked again until the run starts", async () => {
+      tenport.posts = [busyProblem()];
+      tenport.phases = ["Succeeded"];
+      const waited = await waitRun(["status"]);
+      expect(waited.json).toMatchObject({ ok: true, run: RUN, phase: "Succeeded" });
+      expect(calls("POST", "/runs")).toHaveLength(2);
     });
 
-    test("run --wait past the timeout for the active Job posts nothing", async () => {
-      api.jobs = [fakeJob({ name: OLD_JOB, status: { active: 1 } })];
-      const run = await waitRun(["build"], ["--timeout", "0"]);
-      expect([run.code, run.json.code]).toEqual([1, "machine-timeout"]);
-      expect(String(run.json.error)).toContain(OLD_JOB);
-      expect(posts()).toEqual([]);
+    test("past the timeout it is machine-timeout and the run goes on", async () => {
+      const waited = await waitRun(["build"], ["--timeout", "0"]);
+      expect(waited.json.code).toBe("machine-timeout");
+      expect(String(waited.json.error)).toContain(RUN);
+      expect(calls("DELETE", "/runs")).toEqual([]);
+    });
+  });
+
+  describe("machine ls", () => {
+    test("lists the runs of each task it names", async () => {
+      tenport.runs = [
+        runState({ name: OLD_RUN, phase: "Succeeded" }),
+        runState({ name: "task-ten-2-1118-100000", phase: "Running", task: "TEN-2" }),
+        runState({ name: "task-ten-3-1118-100000", phase: "Running", task: "TEN-3" }),
+      ];
+      const listed = await machine(["ls", "TEN-1", "TEN-2"]);
+      expect(listed.json).toEqual({ ok: true, runs: tenport.runs.slice(0, 2) });
+      const asked = calls("GET", "/runs").map((c) => [c.query.get("project"), c.query.get("task")]);
+      expect(asked).toEqual([
+        [PROJECT_ID, "TEN-1"],
+        [PROJECT_ID, "TEN-2"],
+      ]);
     });
 
-    test("output is null when the log has no JSON object", async () => {
-      api.runStatuses = [{ succeeded: 1 }];
-      api.pods = [fakePod("pod-1", "Succeeded")];
-      api.log = `${BOOT_LINES}\n`;
-      const run = await waitRun(["approve"]);
-      expect(run.code).toBe(0);
-      expect(run.json).toMatchObject({ status: "success", output: null, log: BOOT_LINES });
+    test("without a task id it is a usage error", async () => {
+      const listed = await machine(["ls"]);
+      expect(listed.code).toBe(USAGE_EXIT);
+      expect(tenport.calls).toEqual([]);
+    });
+  });
+
+  describe("machine logs", () => {
+    const logCalls = () => calls("GET", `/runs/${RUN}/log`);
+
+    beforeEach(() => {
+      tenport.runs = [
+        runState({ name: OLD_RUN, phase: "Succeeded" }),
+        runState({ name: RUN, phase: "Running" }),
+      ];
+      tenport.phases = ["Succeeded"];
     });
 
-    test("a Job that disappears during the wait is machine-failed with no log", async () => {
-      api.pods = [fakePod("pod-1", "Failed", "OOMKilled")];
-      api.log = `${BOOT_LINES}\n`;
-      const run = await waitRun(["build"]);
-      expect([run.code, run.json.code]).toEqual([1, "machine-failed"]);
-      expect(run.json.details).toMatchObject({
-        job: postedJob(),
-        status: "failure",
+    test("prints the newest run's log to stderr and its phase on stdout", async () => {
+      const shown = await machine(["logs", "TEN-1"]);
+      expect(shown.err).toContain(BOX_LOG);
+      expect(shown.json).toEqual({
+        ok: true,
+        task: "TEN-1",
+        run: RUN,
+        phase: "Succeeded",
         reason: null,
-        output: null,
-        log: "",
       });
+      expect(logCalls()[0]?.query.get("follow")).toBe("false");
     });
 
-    test("pr --wait after -- reaches the box and the run does not wait", async () => {
-      const run = await machine(["run", "TEN-1", "--", "tenbox", "pr", "TEN-1", "--wait"]);
-      expect(run.code).toBe(0);
-      expect(Object.keys(run.json)).toEqual(["ok", "task", "cmd", "url"]);
+    test("--follow asks again after Retry-After while the box has not started", async () => {
+      tenport.logs = [notStarted("ContainerCreating")];
+      const shown = await machine(["logs", "TEN-1", "--follow"]);
+      expect(shown.json).toMatchObject({ ok: true, run: RUN });
+      expect(logCalls().map((c) => c.query.get("follow"))).toEqual(["true", "true"]);
     });
 
-    test.each([
-      [
-        "--timeout without --wait",
-        ["run", "TEN-1", "--timeout", "5", "--", "tenbox", "build", "TEN-1"],
-      ],
-      [
-        "--timeout that is not a number",
-        ["run", "TEN-1", "--wait", "--timeout", "x", "--", "tenbox", "build", "TEN-1"],
-      ],
-      ["ls --wait", ["ls", "--wait"]],
-      ["logs --wait", ["logs", "TEN-1", "--wait"]],
-      ["stop --wait", ["stop", "TEN-1", "--wait"]],
-      ["rm --timeout", ["rm", "TEN-1", "--wait", "--timeout", "5"]],
-    ])("%s is usage", async (_name, args) => {
-      const run = await machine(args);
-      expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-      expect(api.calls).toEqual([]);
+    test("--follow stops at a box that cannot start by itself and names the reason", async () => {
+      tenport.logs = [notStarted("ErrImagePull")];
+      const shown = await machine(["logs", "TEN-1", "--follow"]);
+      expect(shown.json.code).toBe("box-not-started");
+      expect(String(shown.json.error)).toContain("ErrImagePull");
+      expect(logCalls()).toHaveLength(1);
+    });
+
+    test("the log of a run whose Job is gone is job-gone", async () => {
+      tenport.logs = [
+        problem({ status: HTTP_CONFLICT, code: "job-gone", detail: "the Job of the run is gone" }),
+      ];
+      const shown = await machine(["logs", "TEN-1"]);
+      expect(shown.json.code).toBe("job-gone");
+    });
+
+    test("a task with no run is no-machine-run", async () => {
+      tenport.runs = [];
+      const shown = await machine(["logs", "TEN-1"]);
+      expect(shown.json.code).toBe("no-machine-run");
+    });
+
+    test("a failed log request does not show the token", async () => {
+      tenport.logs = [
+        problem({ status: HTTP_NOT_FOUND, code: "not-found", detail: "Tenport does not know it" }),
+      ];
+      const shown = await machine(["logs", "TEN-1"]);
+      expect(shown.json.ok).toBe(false);
+      expect(shown.out + shown.err).not.toContain(TENPORT_TOKEN);
     });
   });
 
-  test("machine stop deletes the active Job of the task with its pods", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    const run = await machine(["stop", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: ["task-ten-1-1021-100000"] });
-    expect(api.calls.map((c) => [c.method, c.path, c.query, c.auth])).toEqual([
-      ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1", `Bearer ${TOKEN}`],
-      [
-        "DELETE",
-        `${JOBS_PATH}/task-ten-1-1021-100000`,
-        "?propagationPolicy=Background",
-        `Bearer ${TOKEN}`,
-      ],
-    ]);
-  });
-
-  test("machine stop with no active Job is ok with an empty list", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-090000", status: { succeeded: 1 } })];
-    const run = await machine(["stop", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: [] });
-    expect(api.calls.map((c) => c.method)).toEqual(["GET"]);
-  });
-
-  test("machine run after stop is not machine-busy", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    await machine(["stop", "TEN-1"]);
-    const ls = await machine(["ls"]);
-    expect(ls.json.runs).toEqual([]);
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(posts().map((c) => c.path)).toEqual([SECRETS_PATH, PVCS_PATH, JOBS_PATH]);
-  });
-
-  test("machine stop without a kubeconfig fails before any request", async () => {
-    env.KUBECONFIG = path.join(project.root, "missing-kubeconfig");
-    const run = await machine(["stop", "TEN-1"]);
-    expect([run.code, run.json.code]).toEqual([1, "no-kubeconfig"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test("machine stop of a Job that ends before its DELETE is ok and not stopped", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    api.deleteStatus = HTTP_NOT_FOUND;
-    const run = await machine(["stop", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toEqual({ ok: true, task: "TEN-1", stopped: [] });
-  });
-
-  test("machine stop without an id is a usage error", async () => {
-    const run = await machine(["stop"]);
-    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-    expect(String(run.json.error)).toContain("tenbox machine stop <id>");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("machine stop with an extra word is a usage error", async () => {
-    const run = await machine(["stop", "TEN-1", "TEN-2"]);
-    expect([run.code, run.json.code]).toEqual([USAGE_EXIT, "usage"]);
-    expect(api.calls).toEqual([]);
-  });
-
-  test("a failed DELETE is a kubernetes error", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    api.deleteStatus = 500;
-    const run = await machine(["stop", "TEN-1"]);
-    expect([run.code, run.json.code]).toEqual([1, "kubernetes"]);
-  });
-
-  test("a missing job.yaml is a template error before any request", async () => {
-    await files.remove(path.join(template, "job.yaml"));
-    const run = await build();
-    expect([run.code, run.json.code]).toEqual([1, "template"]);
-    expect(String(run.json.error)).toContain("job.yaml");
-    expect(api.calls).toEqual([]);
-  });
-
-  test("the title reaches TENBOX_CMD quoted for the shell", async () => {
-    const words = ["tenbox", "start", "TEN-1", "--title", "Fix it's $(x)"];
-    const run = await machine(["run", "TEN-1", "--", ...words]);
-    expect(run.code).toBe(0);
-    const job = posts().find((c) => c.path === JOBS_PATH);
-    expect(jobEnv(job).TENBOX_CMD).toBe(`tenbox start TEN-1 --title 'Fix it'\\''s $(x)'`);
-  });
-
-  test("a client certificate and key are sent without a token", async () => {
-    const user = { "client-certificate-data": base64("CERT"), "client-key-data": base64("KEY") };
-    await files.write(kubeFile, kubeconfig({ server: api.url, user }));
-    const run = await build();
-    expect(run.code).toBe(0);
-    expect(api.calls.map((c) => c.auth)).toEqual([null, null, null, null]);
-    expect(run.out).not.toContain(base64("KEY"));
-  });
-
-  test("machine rm deletes the task's volume and archive when no Job of the task is active", async () => {
-    const run = await machine(["rm", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json).toEqual({
-      ok: true,
-      task: "TEN-1",
-      volume: { name: "task-ten-1", state: "deleted" },
-      archive: { name: "tasks/k7f3qa/TEN-1.tar.zst", state: "deleted" },
+  describe("machine stop", () => {
+    test("stops only the running runs of the task", async () => {
+      tenport.runs = [
+        runState({ name: OLD_RUN, phase: "Succeeded" }),
+        runState({ name: RUN, phase: "Running" }),
+      ];
+      const stopped = await machine(["stop", "TEN-1"]);
+      expect(stopped.json).toEqual({ ok: true, task: "TEN-1", stopped: [RUN] });
+      expect(calls("DELETE", "/runs").map((c) => c.path)).toEqual([`/runs/${RUN}`]);
     });
-    expect(api.calls.map((c) => [c.method, c.path, c.query])).toEqual([
-      ["GET", JOBS_PATH, "?labelSelector=task%3DTEN-1"],
-      ["DELETE", `${PVCS_PATH}/task-ten-1`, ""],
-      ["HEAD", ARCHIVE_PATH, ""],
-      ["DELETE", ARCHIVE_PATH, ""],
-    ]);
-    expect(api.calls[1]?.auth).toBe(`Bearer ${TOKEN}`);
-    expect(run.out).not.toContain(BUCKET_SECRET);
+
+    test("a task with no running run is ok with an empty list", async () => {
+      const stopped = await machine(["stop", "TEN-1"]);
+      expect(stopped.json).toEqual({ ok: true, task: "TEN-1", stopped: [] });
+    });
+
+    test("without an id or with an extra word it is a usage error", async () => {
+      const bare = await machine(["stop"]);
+      expect(bare.code).toBe(USAGE_EXIT);
+      const extra = await machine(["stop", "TEN-1", "TEN-2"]);
+      expect(extra.code).toBe(USAGE_EXIT);
+    });
   });
 
-  test("machine rm of an archive that is already gone is missing, not an error", async () => {
-    api.archiveExists = false;
-    const run = await machine(["rm", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json.archive).toEqual({ name: "tasks/k7f3qa/TEN-1.tar.zst", state: "missing" });
-    expect(api.calls.map((c) => [c.method, c.path])).toEqual([
-      ["GET", JOBS_PATH],
-      ["DELETE", `${PVCS_PATH}/task-ten-1`],
-      ["HEAD", ARCHIVE_PATH],
-    ]);
+  test("machine rm is no command: a person deletes an archive, not an agent", async () => {
+    const removed = await machine(["rm", "TEN-1"]);
+    expect(removed.code).toBe(USAGE_EXIT);
+    expect(tenport.calls).toEqual([]);
   });
 
-  test("machine rm refuses with machine-busy while a Job of the task is active", async () => {
-    api.jobs = [fakeJob({ name: "task-ten-1-1021-100000", status: { active: 1 } })];
-    const run = await machine(["rm", "TEN-1"]);
-    expect([run.code, run.json.code]).toEqual([1, "machine-busy"]);
-    expect(String(run.json.error)).toContain("task-ten-1-1021-100000");
-    expect(api.calls.map((c) => c.method)).toEqual(["GET"]);
+  test("--follow with another action is a usage error and sends no request", async () => {
+    const listed = await machine(["ls", "TEN-1", "--follow"]);
+    expect(listed.code).toBe(USAGE_EXIT);
+    expect(tenport.calls).toEqual([]);
   });
 
-  test("machine rm of a volume that is already gone is missing, not an error", async () => {
-    api.deleteStatus = HTTP_NOT_FOUND;
-    const run = await machine(["rm", "TEN-1"]);
-    expect(run.code).toBe(0);
-    expect(run.json.volume).toEqual({ name: "task-ten-1", state: "missing" });
-  });
-
-  test("machine rm without an id or with an extra word is a usage error", async () => {
-    const none = await machine(["rm"]);
-    const extra = await machine(["rm", "TEN-1", "TEN-2"]);
-    expect([none.code, extra.code]).toEqual([USAGE_EXIT, USAGE_EXIT]);
-    expect(api.calls).toEqual([]);
+  test("tenbox help machine names no project GitHub token", async () => {
+    const help = await tenbox(["help", "machine"], project.mainDir, env);
+    expect(help.out + help.err).not.toContain("github_token");
   });
 });
