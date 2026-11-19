@@ -17,7 +17,7 @@ import {
   tierValue,
   type Values,
 } from "./args.ts";
-import { addAgent, sendAgentLogin } from "./commands/agent.ts";
+import { addAgent, writeAgentLogin } from "./commands/agent.ts";
 import { answerCard, answerWhenDue } from "./commands/answer.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
@@ -374,7 +374,7 @@ const COMMANDS: Record<CommandName, Command> = {
       const [action, ...names] = positionals;
       const [name] = names;
       if (action === "add" && names.length === 1 && name !== undefined) return addAgent(name);
-      if (action === "login" && names.length <= 1) return sendAgentLogin(name ?? null);
+      if (action === "login" && names.length <= 1) return writeAgentLogin(name ?? null);
       throw usageError(`usage: ${AGENT_USAGE}`);
     },
   },

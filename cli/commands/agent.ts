@@ -8,7 +8,7 @@ export async function addAgent(name: string): Promise<AgentAddResult> {
 }
 
 /** Sends this computer's claude.ai login to the named agent, else to the default agent. */
-export async function sendAgentLogin(name: string | null): Promise<AgentLoginResult> {
+export async function writeAgentLogin(name: string | null): Promise<AgentLoginResult> {
   const { agent, changed } = await agents.login(name);
   return { ok: true, agent, changed };
 }
