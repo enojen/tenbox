@@ -21,7 +21,7 @@ pulls the base and deletes the remote branch after a MERGED PR), the ClickUp and
 `tenbox task new` (a task in the project's tracker from the command line) and `tenbox report`
 (a bug or a missing piece of Tenbox itself, as an issue of `enojen/tenbox` or `enojen/tenyard`).
 Phase 3 (machines, `docs/design.md` "Machines") has started: the box image (`machines/k8s/`), the server image (`machines/server/`),
-the login sync to the Secrets of the box (`machines/login/`), and `tenbox machine run` and `ls`
+the login sync to your agent in Tenport (`machines/login/`, `tenbox agent login`), and `tenbox machine run` and `ls`
 (TEN-465): `run` asks Tenport for a run (`POST /runs`), which creates the Job from tenyard's
 `task/job.yaml`, and `ls <id>...` lists the runs of the tasks it names. The server's Job watch stores a `job.finished` per
 Job pod and `GET /tasks/{task}/runs` lists them (#94); for a `close` pod that exited 0 it also stores
@@ -104,6 +104,7 @@ One name per concept, in code, docs, prompts and JSON. Code names in brackets.
 | status report | The state of one task read from its files, its background session and its PR: the `task.json` status, round, parts, session, PR, last check; `tenbox status` prints it (`StatusReport`). |
 | blocked | The notification state of `tenbox hook blocked`: the task's background session waits on a permission prompt; the detail is the prompt's message. |
 | command | One tenbox CLI command, the first word after `tenbox`: `start`, `check`, `merge-check` ...; the command table of `cli/main.ts`, the machine run commands and the next command of a notification take its name from `COMMAND` (`CommandName`). |
+| agent | A coding agent of the user and its account in Tenport: kind `claude-code`, a name, and the claude.ai login that its runs use. `tenbox agent add <name>` adds one, the first is the default; `tenbox agent login [<name>]` sends `~/.claude/.credentials.json` to it, and Tenport writes it to the Secret `agent-<agent id>` and never gives it back. |
 | machine | Where the tenbox commands of one task run: the pod of a Job on the cluster (`machines`). |
 | machine run | One tenbox command of a task on its machine: one Tenport run, a Job in namespace `tenbox` that Tenport fills from tenyard's `task/job.yaml`. `tenbox machine run` starts it through `POST /runs`; `tenbox machine ls <id>...` lists the runs of the tasks it names, with Tenport's `phase` (`Running`, `Succeeded`, `Failed`, `Unknown`) (`machines.run`, `RunState`). The server's Job watch stores one `job.finished` event per pod when its box container ends or its pod goes, and for a `tenbox close` pod with exit code 0 one `close.output` event (the close JSON, with `stats.record`); `GET /tasks/{task}/runs` lists them (`machineRuns`, `JobFinished`). Not a `run` in stats, which is one Claude Code workflow run. |
 | resource class | A named share of CPU and RAM for a machine run, `plan`, `build` or `heavy` in tenyard `task/classes.yaml`; its RAM is request and limit alike. Its CPU is a request only, no limit. `start` and `close` take `plan`, `build` takes `machine.class` (`RESOURCE_CLASS`, `ResourceClass`). |
@@ -213,8 +214,8 @@ skills/     tenbox/SKILL.md: when and how a session in any project uses tenbox
 rules/      Biome GritQL plugins of the lint check: rule.grit, bad.ts, good.ts, rule.md;
             rules.test.ts proves each one
 machines/   k8s/ (the box image: Dockerfile, boot.sh; .github/workflows/box.yml pushes it to GHCR
-            on every merge), server/ (the server image; server.yml pushes it), login/ (the claude.ai login sync from your computer to the Secrets
-            of the box)
+            on every merge), server/ (the server image; server.yml pushes it), login/ (the claude.ai login sync from your computer to your agent in
+            Tenport)
 docs/       design.md (the target design), reference.md, the icon
 ```
 

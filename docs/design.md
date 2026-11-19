@@ -184,8 +184,9 @@ volume) belongs to Tenyard.
 
 **Login.** Remote Control needs a claude.ai login; `claude setup-token` runs the model
 but Remote Control refuses it (`Remote Control disconnected — /login`). A copy of
-`~/.claude/.credentials.json` works. Your computer writes the file to the Secret
-`claude-credentials` whenever it changes, and every Job reads the Secret of the moment. The
+`~/.claude/.credentials.json` works. Your computer sends the file to your agent in Tenport
+whenever it changes (`tenbox agent login`); Tenport writes it to the Secret `agent-<agent id>`,
+and every Job reads the Secret of its agent at the moment it starts. The
 access token lives hours and a run is shorter; the refresh token lives days, so `tenbox
 machine run` checks its expiry first and asks for `/login` instead of starting a box that
 cannot connect.
