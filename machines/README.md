@@ -59,7 +59,9 @@ refuses an added folder it does not trust. The whole container runs as `tenbox`,
 root and no `sudo`; tenyard's Job gives the home to its group with `fsGroup`. With
 `TENBOX_ARCHIVE_GET` set, the box first downloads the task archive and unpacks it into the home; an
 answer 404 is a new home, and any other failure stops the boot with exit 1 and saves nothing, so a
-good archive is never replaced by an empty home. After a restore it runs `TENBOX_SETUP` (the
+good archive is never replaced by an empty home. The download and the upload at the end are each
+tried up to four times (`curl --retry 3 --retry-all-errors`): the object storage has cut slow
+transfers at 60 seconds. After a restore it runs `TENBOX_SETUP` (the
 manifest's `setup`) in the task worktree, when that exists, because the archive holds no
 `node_modules`; a failed setup stops the boot with exit 1. `env -i` drops
 the rest of the env, so the command gets only `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the
