@@ -17,8 +17,9 @@ never gives it back.
 `machines/login/install.sh` installs a systemd user path unit on your computer that runs
 `tenbox agent login` whenever the file changes, and once right away; `/login` on your computer
 is all a new account needs. The service reads `TENPORT_URL` and `TENPORT_TOKEN` from
-`~/.config/tenbox/tenport.env` (two `NAME=value` lines, mode 600) and finds `tenbox` in
-`~/.bun/bin` (`bun link`). It exits 1 when the login could not be sent. The computer needs no
+`~/.config/tenbox/tenport.env` (two `NAME=value` lines, mode 600). `install.sh` writes into the
+unit the folders where your shell finds `tenbox` (`bun link`), `bun` and, when bun comes from
+asdf, `asdf`; run it again after you move one of them. It exits 1 when the login could not be sent. The computer needs no
 kubeconfig. The tracker key and the ntfy URL differ per project, so `tenbox machine run` writes
 them (below). `tenbox machine run` refuses before Tenport when the refresh token in
 `~/.claude/.credentials.json` has expired ("run /login on your computer"). The access token
