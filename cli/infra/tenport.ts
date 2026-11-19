@@ -93,8 +93,8 @@ const AgentSchema = z.object({
 });
 export type Agent = z.infer<typeof AgentSchema>;
 
-const SavedLoginSchema = z.object({ agent: z.string(), changed: z.string() });
-export type SavedLogin = z.infer<typeof SavedLoginSchema>;
+const WrittenLoginSchema = z.object({ agent: z.string(), changed: z.string() });
+export type WrittenLogin = z.infer<typeof WrittenLoginSchema>;
 
 interface NewAgent {
   server: TenportServer;
@@ -116,10 +116,10 @@ export const tenport = {
   listRuns,
   stopRun,
   streamLog,
-  saveProjectSecret,
+  writeProjectSecret,
   addAgent,
   listAgents,
-  saveAgentLogin,
+  writeAgentLogin,
 };
 
 /** `TENPORT_URL` and `TENPORT_TOKEN`; no-tenport without them. */
@@ -191,7 +191,7 @@ function streamLog(read: LogRead): Promise<AsyncIterable<string>> {
 }
 
 /** `PUT /projects/{project}/secrets/{name}`: a value the Job template of the project reads. */
-async function saveProjectSecret(secret: ProjectSecret): Promise<void> {
+async function writeProjectSecret(secret: ProjectSecret): Promise<void> {
   const { server, project, name, value } = secret;
   const path = `/projects/${encodeURIComponent(project)}/secrets/${encodeURIComponent(name)}`;
   const request = { endpoint: endpoint(server, path), body: { value }, schema: z.unknown() };
@@ -212,10 +212,10 @@ function listAgents(server: TenportServer): Promise<Agent[]> {
 }
 
 /** `PUT /agents/{agent}/login`: Tenport writes it to the Secret of the agent and keeps no copy. */
-function saveAgentLogin(login: AgentLogin): Promise<SavedLogin> {
+function writeAgentLogin(login: AgentLogin): Promise<WrittenLogin> {
   const { server, agent, value } = login;
   const path = `/agents/${encodeURIComponent(agent)}/login`;
-  const request = { endpoint: endpoint(server, path), body: { value }, schema: SavedLoginSchema };
+  const request = { endpoint: endpoint(server, path), body: { value }, schema: WrittenLoginSchema };
   return retried(() => http.put(request));
 }
 

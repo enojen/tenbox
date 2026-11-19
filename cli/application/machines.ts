@@ -272,7 +272,7 @@ function tenportProject(of: ProjectOfDir): TenportProject {
 async function startRun(command: CommandRun): Promise<string> {
   const { id, target, deadlineMs } = command;
   const run = await newRun(command);
-  await saveProjectSecrets(command);
+  await writeProjectSecrets(command);
   const post = () => postRun({ target, run });
   if (deadlineMs === null) {
     const started = await post();
@@ -328,7 +328,7 @@ async function newRun(command: CommandRun): Promise<NewRun> {
  * The tracker key and the ntfy URL this computer uses for the project, as the project secrets the
  * Job template reads. A value the project lacks is left out.
  */
-async function saveProjectSecrets(command: CommandRun): Promise<void> {
+async function writeProjectSecrets(command: CommandRun): Promise<void> {
   const { manifest, target } = command;
   const values = {
     [PROJECT_SECRET.trackerApiKey]: findApiKey(manifest.tracker),
@@ -337,7 +337,7 @@ async function saveProjectSecrets(command: CommandRun): Promise<void> {
   for (const [name, value] of Object.entries(values)) {
     if (value === null) continue;
     const { server, projectId } = target;
-    await tenport.saveProjectSecret({ server, project: projectId, name, value });
+    await tenport.writeProjectSecret({ server, project: projectId, name, value });
   }
 }
 
