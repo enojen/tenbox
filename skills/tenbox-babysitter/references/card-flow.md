@@ -23,7 +23,12 @@ a command.
 7. Build: wait for its end with `tenbox wait <id> --for build` (on the cluster, the `--wait` of
    `tenbox machine run`), never with a hand-written loop. Then `tenbox status <id>`. A failed
    build has its cause in `reason`. A decision card: the user answers, unless it is
-   `auto: true`; then `tenbox answer <id> <n>`.
+   `auto: true`; then `tenbox answer <id> <n>`. The answer resumes the same build run (its
+   output has `run` and `session`); do not start `tenbox build` again. On the cluster the
+   answer and the resumed build are one Job, so `tenbox machine run <id> --wait -- tenbox answer
+   <id> <n>` ends when the build ends, as a `--wait` of `tenbox build` does; then
+   `tenbox status <id>`. Start `tenbox build` again only when that status shows the build
+   stopped with no card and no `run` was given.
 8. A part that is `done` but needs one more thing:
    `tenbox part reopen <id> --part NN --accept "..."`, then `tenbox build <id>`. Never edit a
    part file by hand. Temporary, until #283: this command does not run on the cluster yet, so
