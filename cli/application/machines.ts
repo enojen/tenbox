@@ -6,10 +6,10 @@ import {
   machineBusyError,
   machineFailedError,
   machineTimeoutError,
+  noAgentError,
   noLoginError,
   noMachineRunError,
   noProjectIdError,
-  noTenportError,
 } from "../../domain/errors/tools.ts";
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
@@ -66,6 +66,7 @@ const MS_PER_SECOND = 1000;
 /** The Tenport problem codes a machine command acts on. */
 const PROBLEM = {
   machineBusy: "machine-busy",
+  noAgent: "no-agent",
   boxNotStarted: "box-not-started",
   jobGone: "job-gone",
 } as const;
@@ -262,8 +263,7 @@ async function currentProject(): Promise<TenportProject> {
 /** The project id of `tenbox.yaml` is the id Tenport gave the project. */
 function tenportProject(of: ProjectOfDir): TenportProject {
   const { project, manifest } = of;
-  const server = env().tenport;
-  if (server === null) throw noTenportError();
+  const server = tenport.server();
   if (manifest.id === undefined) throw noProjectIdError(project.mainDir);
   return { server, projectId: manifest.id };
 }
@@ -295,7 +295,9 @@ async function postRun(post: RunPost): Promise<string | null> {
   try {
     return await tenport.startRun({ server: target.server, run });
   } catch (e) {
-    if (failedAnswer(e)?.code !== PROBLEM.machineBusy) throw e;
+    const code = failedAnswer(e)?.code;
+    if (code === PROBLEM.noAgent) throw noAgentError(null);
+    if (code !== PROBLEM.machineBusy) throw e;
     return null;
   }
 }

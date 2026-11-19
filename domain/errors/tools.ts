@@ -112,10 +112,20 @@ export function machineTimeoutError(task: string, runs: string[]): TenboxError {
 }
 
 export function noTenportError(): TenboxError {
+  return new TenboxError("no Tenport; set TENPORT_URL and TENPORT_TOKEN", "no-tenport");
+}
+
+/** No agent of the user in Tenport, or none with this name: a run needs one with a login. */
+export function noAgentError(name: string | null): TenboxError {
+  const which = name === null ? "no agent of yours" : `no agent named ${name}`;
   return new TenboxError(
-    "no Tenport for the machine runs; set TENPORT_URL and TENPORT_TOKEN",
-    "no-tenport",
+    `${which} in Tenport; run tenbox agent add <name>, then tenbox agent login`,
+    "no-agent",
   );
+}
+
+export function agentExistsError(name: string): TenboxError {
+  return new TenboxError(`you have an agent named ${name} already`, "agent-exists");
 }
 
 /** A box that waits for something that does not come by itself, such as a missing Secret. */

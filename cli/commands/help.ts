@@ -267,6 +267,17 @@ Output: { ok, tasks: [status report] }
 Example:
   tenbox list`,
 
+  agent: `Adds your coding agent in Tenport and sends it this computer's claude.ai login.
+
+add <name>      adds a Claude Code agent; your first agent is your default
+login [<name>]  sends ~/.claude/.credentials.json to the agent, the default one without a name;
+                Tenport writes it to the Secret of the agent and never gives it back
+The login sync (machines/login/) runs login whenever the file changes.
+
+Output: add { ok, agent: { id, kind, name, default, login } }; login { ok, agent, changed }
+
+Example:
+  tenbox agent add personal && tenbox agent login`,
   machine: `Runs a tenbox command of a task on the cluster, and manages its Jobs and volume.
 
 Input: run takes the command after --: tenbox start, build or close.

@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { noTenportError } from "../../domain/errors/tools.ts";
 import { type GitAuthor, RUN_PHASE } from "../../domain/machines.ts";
-import type { TenportServer } from "./env.ts";
+import { env, type TenportServer } from "./env.ts";
 import { type Endpoint, failedStatus, http, wasUnreached } from "./http.ts";
 
 interface EventsPost {
@@ -79,7 +80,36 @@ interface ProjectSecret {
   value: string;
 }
 
+/** The kind of coding agent tenbox adds: Claude Code with a claude.ai login. */
+const AGENT_KIND = "claude-code";
+
+/** One coding agent of the user and its account; Tenport never gives the login back. */
+const AgentSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  name: z.string(),
+  default: z.boolean(),
+  login: z.object({ changed: z.string() }).nullable(),
+});
+export type Agent = z.infer<typeof AgentSchema>;
+
+const SavedLoginSchema = z.object({ agent: z.string(), changed: z.string() });
+export type SavedLogin = z.infer<typeof SavedLoginSchema>;
+
+interface NewAgent {
+  server: TenportServer;
+  name: string;
+}
+
+interface AgentLogin {
+  server: TenportServer;
+  agent: string;
+  /** The text of the claude.ai login file. */
+  value: string;
+}
+
 export const tenport = {
+  server,
   sendEvents,
   startRun,
   findRun,
@@ -87,7 +117,17 @@ export const tenport = {
   stopRun,
   streamLog,
   saveProjectSecret,
+  addAgent,
+  listAgents,
+  saveAgentLogin,
 };
+
+/** `TENPORT_URL` and `TENPORT_TOKEN`; no-tenport without them. */
+function server(): TenportServer {
+  const found = env().tenport;
+  if (found === null) throw noTenportError();
+  return found;
+}
 
 async function sendEvents(post: EventsPost): Promise<void> {
   const { server, events } = post;
@@ -156,6 +196,27 @@ async function saveProjectSecret(secret: ProjectSecret): Promise<void> {
   const path = `/projects/${encodeURIComponent(project)}/secrets/${encodeURIComponent(name)}`;
   const request = { endpoint: endpoint(server, path), body: { value }, schema: z.unknown() };
   await retried(() => http.put(request));
+}
+
+/** `POST /agents`: a Claude Code agent; the user's first agent is their default. */
+function addAgent(added: NewAgent): Promise<Agent> {
+  const { server, name } = added;
+  const body = { kind: AGENT_KIND, name };
+  const request = { endpoint: endpoint(server, "/agents"), body, schema: AgentSchema };
+  return retried(() => http.post(request));
+}
+
+function listAgents(server: TenportServer): Promise<Agent[]> {
+  const request = { endpoint: endpoint(server, "/agents"), schema: z.array(AgentSchema) };
+  return retried(() => http.get(request));
+}
+
+/** `PUT /agents/{agent}/login`: Tenport writes it to the Secret of the agent and keeps no copy. */
+function saveAgentLogin(login: AgentLogin): Promise<SavedLogin> {
+  const { server, agent, value } = login;
+  const path = `/agents/${encodeURIComponent(agent)}/login`;
+  const request = { endpoint: endpoint(server, path), body: { value }, schema: SavedLoginSchema };
+  return retried(() => http.put(request));
 }
 
 const runPath = (name: string): string => `/runs/${encodeURIComponent(name)}`;

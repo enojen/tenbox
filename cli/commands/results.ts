@@ -24,7 +24,7 @@ import type { StatsFrom } from "../application/stats.ts";
 import type { StatusUpdate } from "../application/tasks.ts";
 import type { BranchRemoveState, WorktreeRemoveState } from "../application/worktrees/index.ts";
 import type { PrBranch } from "../infra/gh.ts";
-import type { RunState } from "../infra/tenport.ts";
+import type { Agent, RunState } from "../infra/tenport.ts";
 import type { COMMENT_STATE, PULL_STATE, REMOTE_BRANCH_STATE, STATS_STATE } from "./close.ts";
 import type { LINK_STATE } from "./install.ts";
 import type { WaitEvent } from "./wait.ts";
@@ -338,6 +338,19 @@ export interface WaitEventResult {
   event: WaitEvent;
   file: string;
   decision: DecisionCard | null;
+}
+
+/** `tenbox agent add <name>`: the agent as Tenport keeps it. */
+export interface AgentAddResult {
+  ok: true;
+  agent: Agent;
+}
+
+/** `tenbox agent login [<name>]`: the agent id and when its login changed; never the login. */
+export interface AgentLoginResult {
+  ok: true;
+  agent: string;
+  changed: string;
 }
 
 export interface MachineRunResultJson {

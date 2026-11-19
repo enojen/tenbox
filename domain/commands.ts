@@ -22,6 +22,7 @@ export const COMMAND = {
   status: "status",
   list: "list",
   machine: "machine",
+  agent: "agent",
   task: "task",
   report: "report",
   install: "install",

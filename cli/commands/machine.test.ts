@@ -13,6 +13,7 @@ const MINUTE_MS = 60_000;
 const HTTP_OK = 200;
 const HTTP_CREATED = 201;
 const HTTP_NO_CONTENT = 204;
+const HTTP_BAD_REQUEST = 400;
 const HTTP_CONFLICT = 409;
 const HTTP_NOT_FOUND = 404;
 const HTTP_SERVICE_UNAVAILABLE = 503;
@@ -377,6 +378,16 @@ describe("machine", () => {
       const started = await run(["build"]);
       expect(started.json.code).toBe("machine-busy");
       expect(String(started.json.error)).toContain(OLD_RUN);
+    });
+
+    test("a user with no agent is no-agent and says how to add one", async () => {
+      tenport.posts = [
+        problem({ status: HTTP_BAD_REQUEST, code: "no-agent", detail: "the user has no agent" }),
+      ];
+      const started = await run(["build"]);
+      expect(started.json.code).toBe("no-agent");
+      expect(String(started.json.error)).toContain("tenbox agent add <name>");
+      expect(String(started.json.error)).toContain("tenbox agent login");
     });
 
     test("a Tenport without an answer for a moment is asked again", async () => {
