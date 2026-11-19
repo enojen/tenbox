@@ -25,8 +25,9 @@ a command.
    build has its cause in `reason`. A decision card: the user answers, unless it is
    `auto: true`; then `tenbox answer <id> <n>`. The answer resumes the same build run (its
    output has `run` and `session`); do not start `tenbox build` again. On the cluster the
-   answer and the resumed build are one Job, so `tenbox machine run <id> --wait -- tenbox answer
-   <id> <n>` ends when the build ends, as a `--wait` of `tenbox build` does; then
+   answer and the resumed build are one Job, so `tenbox machine run <id> --wait --timeout 3600 --
+   tenbox answer <id> <n>` ends when the build ends, as a `--wait` of `tenbox build` does (the
+   default 600 s is shorter than most builds; past it the build goes on); then
    `tenbox status <id>`. Start `tenbox build` again only when that status shows the build
    stopped with no card and no `run` was given.
 8. A part that is `done` but needs one more thing:
