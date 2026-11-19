@@ -157,6 +157,7 @@ remove_logins() {
 }
 
 archive_file=/tmp/tenbox-home.tar.zst
+archive_retry=(--retry 3 --retry-all-errors)
 archive_restored=0
 home_from_archive=0
 
@@ -165,7 +166,7 @@ restore_home() {
     return
   fi
   local code
-  code="$(curl -sS -o "$archive_file" -w '%{http_code}' "$TENBOX_ARCHIVE_GET")" || {
+  code="$(curl -sS "${archive_retry[@]}" -o "$archive_file" -w '%{http_code}' "$TENBOX_ARCHIVE_GET")" || {
     log "the task archive could not be downloaded"
     exit 1
   }
@@ -201,7 +202,7 @@ save_home() {
     log "the home could not be packed; the task archive stays as it was"
     return
   fi
-  if curl -sSf -o /dev/null -T "$archive_file" "$TENBOX_ARCHIVE_PUT"; then
+  if curl -sSf "${archive_retry[@]}" -o /dev/null -T "$archive_file" "$TENBOX_ARCHIVE_PUT"; then
     log "home saved to the task archive: $(du -h "$archive_file" | cut -f1)"
   else
     log "the task archive upload failed"
