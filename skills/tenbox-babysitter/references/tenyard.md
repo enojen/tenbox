@@ -7,9 +7,10 @@ Read this before the first `tenbox machine run`.
 Other work runs on the cluster too. A Job runs on a node the autoscaler adds. When the cloud
 account is at its limit, no node comes and the pod stays `Pending`.
 
-- After a `tenbox machine run`, see that the pod started.
-- A pod that is `Pending` for more than 5 minutes: read its events
-  (`kubectl -n tenbox describe pod <pod>`). The signs are `FailedScheduling`,
+- After a `tenbox machine run`, see that the run started: `tenbox machine ls <id>`.
+- A run whose box has not started after 5 minutes: Tenport does not show why a pod waits for a
+  node, so read the pod's events with the kubeconfig of the user's computer
+  (`kubectl -n tenbox describe pod <pod>`; read only). The signs are `FailedScheduling`,
   `NotTriggerScaleUp`, a max node group size, or a limit error of the cloud.
 - Then start no new Job, do not try again, stop no other Job, and change no class and no node
   pool. Write `waiting: cluster capacity` in "Next step" of the lane file, show the user the pod name
@@ -24,9 +25,9 @@ account is at its limit, no node comes and the pod stays `Pending`.
   after another with `--wait`.
 - An out-of-memory end (exit 137, `OOMKilled`): do not change the class; tell the user.
 - Never force-push a PR branch and never rebase it by hand: `tenbox pr` takes main itself.
-- The state of a task is on its volume. Read it with tenbox commands (`status`, `plan show`).
-  When a `kubectl exec` is the only way, run it as `env -u GITHUB_TOKEN kubectl exec ...` and do
-  all the work in one command: a box that started no session ends seconds after its command.
+- The state of a task is in its task archive in the bucket: each run restores it and saves it
+  again when it ends. There is no volume to read and no `kubectl exec`: read the state with
+  tenbox commands through `tenbox machine run <id> -- tenbox status <id>` or `plan show`.
 - The auto mode can refuse a command (a PR to ready, a close, a read of production). A refusal
   means stop: give the command to the user.
 - Before the first task, `tenbox machine ls <id>` must answer for the lane's tasks. A start that stops for the GitHub App
