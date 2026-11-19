@@ -1,6 +1,8 @@
 [Unit]
-Description=Write the claude.ai login to the Secrets of the box
+Description=Send the claude.ai login to your agent in Tenport
 
 [Service]
 Type=oneshot
+Environment=PATH=%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/tenbox/tenport.env
 ExecStart=%h/tenbox/machines/login/tenbox-login-sync.sh

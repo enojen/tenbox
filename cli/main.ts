@@ -17,6 +17,7 @@ import {
   tierValue,
   type Values,
 } from "./args.ts";
+import { addAgent, sendAgentLogin } from "./commands/agent.ts";
 import { answerCard, answerWhenDue } from "./commands/answer.ts";
 import { approveTask } from "./commands/approve.ts";
 import { checkApproved } from "./commands/approved.ts";
@@ -80,6 +81,7 @@ const BUILD_USAGE = "tenbox build <id> [--defaults]";
 const MACHINE_USAGE =
   "tenbox machine run <id> [--wait [--timeout 600]] -- tenbox start|build|close|approve|decide|answer|check|pr|status|plan show <id> [flags] | tenbox machine stop <id> | tenbox machine ls <id> [<id>...] | tenbox machine logs <id> [--follow]";
 const ATTACH_USAGE = "tenbox attach <id>";
+const AGENT_USAGE = "tenbox agent add <name> | tenbox agent login [<name>]";
 const DRAFT_USAGE =
   "--title X --why X --what X --done X [--label L]... | --json '{ title, why, what, done, labels }'";
 const TASK_NEW_USAGE = `tenbox task new ${DRAFT_USAGE} [--list <id>] [--parent <id>]`;
@@ -363,6 +365,17 @@ const COMMANDS: Record<CommandName, Command> = {
       const [, ...words] = rest;
       const id = idArg(rest, MACHINE_USAGE);
       return runOnMachine({ id, words, usage: MACHINE_USAGE, waitSeconds });
+    },
+  },
+  [COMMAND.agent]: {
+    usage: AGENT_USAGE,
+    options: {},
+    run: (positionals) => {
+      const [action, ...names] = positionals;
+      const [name] = names;
+      if (action === "add" && names.length === 1 && name !== undefined) return addAgent(name);
+      if (action === "login" && names.length <= 1) return sendAgentLogin(name ?? null);
+      throw usageError(`usage: ${AGENT_USAGE}`);
     },
   },
   [COMMAND.task]: {

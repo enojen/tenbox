@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs the login sync on this computer (Linux with systemd): the path unit watches
-# ~/.claude/.credentials.json and the service writes it to the Secret claude-credentials of the box.
-# Runs once right away.
+# ~/.claude/.credentials.json and the service sends it to your default agent in Tenport with
+# `tenbox agent login`. The service reads TENPORT_URL and TENPORT_TOKEN from
+# ~/.config/tenbox/tenport.env. Runs once right away.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 units="$HOME/.config/systemd/user"

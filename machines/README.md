@@ -8,17 +8,21 @@ sync (`login/`) and the server image (`server/`).
 ## The login: `login/`
 
 Remote Control needs a claude.ai login; `claude setup-token` runs the model but Remote
-Control refuses it, and a copy of `~/.claude/.credentials.json` works. `machines/login/install.sh`
-installs a systemd user path unit on your computer that writes the file to the Secrets of the
-box whenever it changes, and once right away; `/login` on your computer is all a new account
-needs. It writes one Secret in namespace `tenbox` of the cluster (`KUBECONFIG` from the env,
-else `~/.kube/tenyard.yaml`; the API is open from the home IP only): `claude-credentials` key
-`credentials.json` from `~/.claude/.credentials.json`. It exits 1 when the Secret could not be
-written. The shared `github-token` of the box is tenyard's, encrypted in its `secrets/`. The
-tracker key and the ntfy URL differ per project, so `tenbox machine run` writes them (below).
-Every Job reads the Secrets of the moment, so `tenbox machine run` refuses before the cluster
-when the refresh token in `~/.claude/.credentials.json` has expired ("run /login on your
-computer"). The access token lives hours and the refresh token days.
+Control refuses it, and a copy of `~/.claude/.credentials.json` works. The login belongs to
+your agent in Tenport: `tenbox agent add personal` adds it once (your first agent is your
+default), and `tenbox agent login` sends the file. Tenport writes it to the Secret
+`agent-<agent id>` in namespace `tenbox`, which the Job of each run of that agent reads, and
+never gives it back.
+
+`machines/login/install.sh` installs a systemd user path unit on your computer that runs
+`tenbox agent login` whenever the file changes, and once right away; `/login` on your computer
+is all a new account needs. The service reads `TENPORT_URL` and `TENPORT_TOKEN` from
+`~/.config/tenbox/tenport.env` (two `NAME=value` lines, mode 600) and finds `tenbox` in
+`~/.bun/bin` (`bun link`). It exits 1 when the login could not be sent. The computer needs no
+kubeconfig. The tracker key and the ntfy URL differ per project, so `tenbox machine run` writes
+them (below). `tenbox machine run` refuses before Tenport when the refresh token in
+`~/.claude/.credentials.json` has expired ("run /login on your computer"). The access token
+lives hours and the refresh token days.
 
 ## Box image: `k8s/` (TEN-460)
 

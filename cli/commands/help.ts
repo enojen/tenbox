@@ -267,25 +267,39 @@ Output: { ok, tasks: [status report] }
 Example:
   tenbox list`,
 
-  machine: `Runs a tenbox command of a task on the cluster, and manages its Jobs and volume.
+  agent: `Adds your coding agent in Tenport and sends it this computer's claude.ai login.
 
-Input: run takes the command after --: tenbox start, build or close.
+add <name>      adds a Claude Code agent; your first agent is your default
+login [<name>]  sends ~/.claude/.credentials.json to the agent, the default one without a name;
+                Tenport writes it to the Secret of the agent and never gives it back
+The login sync (machines/login/) runs login whenever the file changes.
+
+Output: add { ok, agent: { id, kind, name, default, login } }; login { ok, agent, changed }
+
+Example:
+  tenbox agent add personal && tenbox agent login`,
+  machine: `Runs a tenbox command of a task on the cluster through Tenport, and reads its runs.
+
+Input: run takes the command after --: tenbox start, build, close or another task command.
+ls takes one or more task ids.
 Flags:
   --follow   with logs: keep the stream open
-  --wait     with run, before --: wait for an active Job of the task, then for the new Job's end
+  --wait     with run, before --: wait for a running run of the task, then for the new run's end
   --timeout S   with --wait: the seconds both waits may take (default 600); then machine-timeout
   --title X, --force   passed to the command after --
 
 machine.plan_class (plan, build or heavy; default plan) is the resource class of start;
 machine.class is the one of the commands that run tests.
 
-Output: run { ok, task, cmd, url }; run --wait { ok, task, cmd, job, status, reason, output, log }
-with output the command's JSON and log the last 40 log lines; a failed Job is machine-failed
-with them in details; stop { ok, task, stopped }; rm { ok, task, volume }; ls { ok, runs } with a reason such as OOMKilled; logs { ok, task, job, status, reason }
+Output: run { ok, task, cmd, run }; run --wait { ok, task, cmd, run, phase, reason, exit_code,
+oom_kill, output } with output the command's JSON; a Failed or Unknown run is machine-failed
+with them in details; stop { ok, task, stopped }; ls { ok, runs }; logs { ok, task, run, phase,
+reason }
 
 Example:
   tenbox machine run TEN-301 -- tenbox build TEN-301
-  tenbox machine run TEN-301 --wait -- tenbox approve TEN-301`,
+  tenbox machine run TEN-301 --wait -- tenbox approve TEN-301
+  tenbox machine ls TEN-301 TEN-302`,
 
   task: `task new writes a task to the tracker of the project.
 
