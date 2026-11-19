@@ -37,4 +37,24 @@ check "no login file: exit 1 and no tenbox call" '[ "$code" = 1 ] && [ ! -s "$ro
 
 setup; TENBOX_FAIL=1 run; code=$?
 check "tenbox failure: exit 1" '[ "$code" = 1 ]'
+# install.sh writes the unit with the PATH where this shell finds tenbox and bun (bun may come from
+# asdf, not ~/.bun/bin); systemctl is a stub.
+setup
+mkdir -p "$root/asdf/shims" "$root/tools"
+printf '#!/usr/bin/env bash\n' > "$root/asdf/shims/bun"
+printf '#!/usr/bin/env bash\n' > "$root/tools/asdf"
+printf '#!/usr/bin/env bash\n' > "$root/bin/systemctl"
+chmod +x "$root/asdf/shims/bun" "$root/tools/asdf" "$root/bin/systemctl"
+cp "$here/install.sh" "$here/tenbox-login-sync.service" "$here/tenbox-login-sync.path" "$root/repo/machines/login/"
+PATH="$root/bin:$root/asdf/shims:$root/tools:/usr/bin:/bin" bash "$root/repo/machines/login/install.sh" > "$root/out.log" 2>&1; code=$?
+unit="$HOME/.config/systemd/user/tenbox-login-sync.service"
+check "install: exit 0" '[ "$code" = 0 ]'
+check "install: PATH has the dirs of tenbox, bun and asdf" 'grep -qx "Environment=PATH=$root/bin:$root/asdf/shims:$root/tools:/usr/local/bin:/usr/bin:/bin" "$unit"'
+check "install: ExecStart is the script of this checkout" 'grep -qx "ExecStart=$root/repo/machines/login/tenbox-login-sync.sh" "$unit"'
+
+setup
+cp "$here/install.sh" "$here/tenbox-login-sync.service" "$here/tenbox-login-sync.path" "$root/repo/machines/login/"
+printf '#!/usr/bin/env bash\n' > "$root/bin/systemctl"; chmod +x "$root/bin/systemctl"
+PATH="$root/bin:/usr/bin:/bin" bash "$root/repo/machines/login/install.sh" > "$root/out.log" 2>&1; code=$?
+check "install: no bun in PATH: exit 1 and says so" '[ "$code" = 1 ] && grep -q "no bun" "$root/out.log"'
 exit "$fails"
