@@ -24,6 +24,9 @@ account is at its limit, no node comes and the pod stays `Pending`.
   fails with `machine-busy`. `--wait` ends when the Job ends, so run the commands of one task one
   after another with `--wait`.
 - An out-of-memory end (exit 137, `OOMKilled`): do not change the class; tell the user.
+- `archive-failed` (exit code 75): the object storage did not answer for minutes, and the command
+  did not run or its state was not saved. Wait 10 minutes and run the same command once more; when
+  it fails again, write `waiting: task archive` in "Next step" of the lane file and tell the user.
 - Never force-push a PR branch and never rebase it by hand: `tenbox pr` takes main itself.
 - The state of a task is in its task archive in the bucket: each run restores it and saves it
   again when it ends. There is no volume to read and no `kubectl exec`: read the state with

@@ -361,7 +361,7 @@ export interface MachineRunResultJson {
   run: string;
 }
 
-/** `tenbox machine run --wait`: how the run ended; a failed one is `machine-failed` instead. */
+/** `tenbox machine run --wait`: how the run ended; a failed one is `archive-failed` or `machine-failed` instead. */
 export interface MachineWaitResultJson extends MachineRunEnd {
   ok: true;
 }

@@ -437,6 +437,14 @@ describe("machine", () => {
       });
     });
 
+    test("a run that ended with the archive exit code is archive-failed", async () => {
+      tenport.phases = ["Failed"];
+      tenport.end = { reason: "Error", exit_code: 75, oom_kill: 0 };
+      const waited = await waitRun(["decide"]);
+      expect([waited.code, waited.json.code]).toEqual([1, "archive-failed"]);
+      expect(waited.json.details).toMatchObject({ run: RUN, phase: "Failed", exit_code: 75 });
+    });
+
     test("an Unknown run is machine-failed", async () => {
       tenport.phases = ["Unknown"];
       const waited = await waitRun(["build"]);
