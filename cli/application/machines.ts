@@ -1,5 +1,6 @@
 import { COMMAND, type CommandName } from "../../domain/commands.ts";
 import {
+  archiveFailedError,
   boxNotStartedError,
   logGoneError,
   loginExpiredError,
@@ -14,6 +15,7 @@ import {
 import { usageError } from "../../domain/errors/usage.ts";
 import { type ProjectId, type TaskId, taskId } from "../../domain/ids.ts";
 import {
+  ARCHIVE_FAILED_EXIT_CODE,
   gitAuthor,
   lastingBoxReason,
   RESOURCE_CLASS,
@@ -155,8 +157,9 @@ async function run(input: MachineRunInput): Promise<MachineRunResult> {
 }
 
 /**
- * Polls Tenport until the run is no longer Running. A Failed or Unknown run is `machine-failed`
- * with the result in its details; past the deadline `machine-timeout`, and the run goes on.
+ * Polls Tenport until the run is no longer Running. A run that ended with the archive exit code
+ * is `archive-failed`, another Failed or Unknown run `machine-failed`, both with the result in
+ * their details; past the deadline `machine-timeout`, and the run goes on.
  */
 async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
   const { id, cmd, run: name, deadlineMs } = input;
@@ -169,8 +172,9 @@ async function wait(input: MachineWaitInput): Promise<MachineRunEnd> {
   if (ended === null) throw machineTimeoutError(id, [name]);
   const { phase, reason, exit_code, oom_kill, output } = ended;
   const result = { task: id, cmd, run: name, phase, reason, exit_code, oom_kill, output };
-  if (phase !== RUN_PHASE.succeeded) throw machineFailedError(name, result);
-  return result;
+  if (phase === RUN_PHASE.succeeded) return result;
+  if (exit_code === ARCHIVE_FAILED_EXIT_CODE) throw archiveFailedError(name, result);
+  throw machineFailedError(name, result);
 }
 
 /** Every run of each task, oldest first. */

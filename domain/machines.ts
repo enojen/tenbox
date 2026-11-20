@@ -30,6 +30,12 @@ export function lastingBoxReason(detail: string): string | null {
   return LASTING_BOX_REASONS.find((reason) => detail.endsWith(`: ${reason}`)) ?? null;
 }
 
+/**
+ * The exit code of a box whose task archive download or upload failed after every retry:
+ * `EX_TEMPFAIL` of sysexits.h, as the command did not fail and a later run can pass.
+ */
+export const ARCHIVE_FAILED_EXIT_CODE = 75;
+
 /** The reason of a box container that ended by the kernel's memory limit. */
 export const OOM_KILLED = "OOMKilled";
 

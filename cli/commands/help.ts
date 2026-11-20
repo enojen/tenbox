@@ -292,8 +292,9 @@ machine.plan_class (plan, build or heavy; default plan) is the resource class of
 machine.class is the one of the commands that run tests.
 
 Output: run { ok, task, cmd, run }; run --wait { ok, task, cmd, run, phase, reason, exit_code,
-oom_kill, output } with output the command's JSON; a Failed or Unknown run is machine-failed
-with them in details; stop { ok, task, stopped }; ls { ok, runs }; logs { ok, task, run, phase,
+oom_kill, output } with output the command's JSON; a run whose box could not download or upload
+the task archive (exit code 75) is archive-failed, another Failed or Unknown run machine-failed,
+both with them in details; stop { ok, task, stopped }; ls { ok, runs }; logs { ok, task, run, phase,
 reason }
 
 Example:

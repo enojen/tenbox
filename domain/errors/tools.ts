@@ -104,6 +104,15 @@ export function machineFailedError(run: string, details: unknown): TenboxError {
   return new TenboxError(`run ${run} failed on the cluster`, "machine-failed", details);
 }
 
+/** `details` as in machineFailedError: the box could not download or upload the task archive. */
+export function archiveFailedError(run: string, details: unknown): TenboxError {
+  return new TenboxError(
+    `run ${run} could not download or upload the task archive; run the command again later`,
+    "archive-failed",
+    details,
+  );
+}
+
 export function machineTimeoutError(task: string, runs: string[]): TenboxError {
   return new TenboxError(
     `task ${task} still runs on the cluster after the timeout: ${runs.join(", ")}; it keeps running`,

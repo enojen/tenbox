@@ -13,7 +13,8 @@
 # IDLE_MINUTES (a plan that waits for approval). Only the sessions of this run count: the
 # `id` + `pid` keys of `claude agents --json` are kept before the command, and after it a session
 # counts when its key is new or it is busy; with none the box ends at once. Last it logs the peak RAM and the
-# CPU time of the container. Exits with the command's exit code. The output is also in
+# CPU time of the container. Exits with the command's exit code, or with 75 when the task archive
+# could not be downloaded or uploaded after every retry. The output is also in
 # /var/log/tenbox-run.log.
 set -euo pipefail
 : "${TENBOX_TASK:?}" "${TENBOX_PROJECT:?}" "${TENBOX_REPO:?}" "${TENBOX_CMD:?}"
@@ -157,7 +158,8 @@ remove_logins() {
 }
 
 archive_file=/tmp/tenbox-home.tar.zst
-archive_retry=(--retry 3 --retry-all-errors)
+archive_retry=(--retry 8 --retry-max-time 600 --retry-all-errors)
+archive_failed_exit_code=75
 archive_restored=0
 home_from_archive=0
 
@@ -168,7 +170,7 @@ restore_home() {
   local code
   code="$(curl -sS "${archive_retry[@]}" -o "$archive_file" -w '%{http_code}' "$TENBOX_ARCHIVE_GET")" || {
     log "the task archive could not be downloaded"
-    exit 1
+    exit "$archive_failed_exit_code"
   }
   case "$code" in
     200)
@@ -180,7 +182,7 @@ restore_home() {
     404) log "no task archive yet: a new home" ;;
     *)
       log "the task archive download answered HTTP $code"
-      exit 1
+      exit "$archive_failed_exit_code"
       ;;
   esac
   archive_restored=1
@@ -190,7 +192,8 @@ pack_home() {
   local status=0
   tar -C "$home" -I 'zstd -q -T0 -3' -cf "$archive_file" \
     --exclude=node_modules --exclude=./.cache --exclude=./.npm --exclude=./.bun/install/cache \
-    --exclude=./.local/share/claude --exclude=./.local/share/pnpm . || status=$?
+    --exclude=./.local/share/claude --exclude=./.local/share/pnpm \
+    --exclude=./.claude/plugins/marketplaces . || status=$?
   [ "$status" -le 1 ]
 }
 
@@ -206,6 +209,8 @@ save_home() {
     log "home saved to the task archive: $(du -h "$archive_file" | cut -f1)"
   else
     log "the task archive upload failed"
+    rm -f "$archive_file"
+    exit "$archive_failed_exit_code"
   fi
   rm -f "$archive_file"
 }

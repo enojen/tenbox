@@ -58,10 +58,13 @@ worktree, `/opt/tenbox` and `~/.tenbox`, the folder of the task dirs, because `c
 refuses an added folder it does not trust. The whole container runs as `tenbox`, with no
 root and no `sudo`; tenyard's Job gives the home to its group with `fsGroup`. With
 `TENBOX_ARCHIVE_GET` set, the box first downloads the task archive and unpacks it into the home; an
-answer 404 is a new home, and any other failure stops the boot with exit 1 and saves nothing, so a
+answer 404 is a new home, and any other failure stops the boot with exit 75 and saves nothing, so a
 good archive is never replaced by an empty home. The download and the upload at the end are each
-tried up to four times (`curl --retry 3 --retry-all-errors`): the object storage has cut slow
-transfers at 60 seconds. After a restore it runs `TENBOX_SETUP` (the
+tried up to nine times within 10 minutes (`curl --retry 8 --retry-max-time 600 --retry-all-errors`),
+with a wait that doubles from 1 second, about 4 minutes in all: the object storage has slowed down
+for minutes at a time and cut slow transfers at 60 seconds, and a try minutes later passed. Exit 75
+(`EX_TEMPFAIL`) is the archive's own code, so `tenbox machine run --wait` reports
+`archive-failed` and not the command's failure. After a restore it runs `TENBOX_SETUP` (the
 manifest's `setup`) in the task worktree, when that exists, because the archive holds no
 `node_modules`; a failed setup stops the boot with exit 1. `env -i` drops
 the rest of the env, so the command gets only `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the
@@ -81,13 +84,15 @@ session resumed by `tenbox answer` can keep `state: working` after its turn ende
 not count. Last it logs one line with what the
 container used from its boot on, `tenbox-boot: memory peak <MiB> MiB, cpu <s> s, pids peak <n>, oom_kill <n>`, from
 `memory.peak`, `cpu.stat`, `pids.peak` (processes and threads) and `memory.events` of its cgroup (`oom_kill` counts the processes the kernel killed at the memory limit: above 0, `tenbox machine ls` and `logs` show reason `OOMKilled` even when the container ended with exit 0); the peak counts the file cache too, so the real need
-is at most that. tenyard's resource classes come from these lines. It exits with the command's exit code. The output goes to stdout and to `/var/log/tenbox-run.log`.
+is at most that. tenyard's resource classes come from these lines. It exits with the command's exit code, or 75 for the task archive. The output goes to stdout and to `/var/log/tenbox-run.log`.
 On exit, also after a SIGTERM (exit 143), it removes the logins from the home:
 `~/.claude/.credentials.json`, gh's `hosts.yml` and the main checkout's `tenbox.local.yaml`; the
 next boot writes them again. Then, when the archive was restored or was new and
 `TENBOX_ARCHIVE_PUT` is set, it packs the home with tar and zstd, without `node_modules`,
-`~/.cache`, `~/.npm`, `~/.bun/install/cache`, `~/.local/share/claude` and `~/.local/share/pnpm`,
-and uploads it; a failed pack or upload is one log line and keeps the old archive. A SIGKILL or
+`~/.cache`, `~/.npm`, `~/.bun/install/cache`, `~/.local/share/claude`, `~/.local/share/pnpm` and
+`~/.claude/plugins/marketplaces` (claude downloads a marketplace again), and uploads it. A failed
+pack is one log line and keeps the old archive. A failed upload also keeps the old archive, but the
+box then exits 75 whatever the command's exit code, because the state the run wrote is lost. A SIGKILL or
 an OOM kill of the box saves nothing: the next run starts from the archive of the run before.
 
 On the cluster, `tenbox machine run <id> -- tenbox start|build|close <id>` starts the box
